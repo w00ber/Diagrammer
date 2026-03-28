@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 80">
+  <g id="artwork">
+    <ellipse cx="50" cy="40" rx="48" ry="38"
+             fill="white" stroke="black" stroke-width="2"/>
+  </g>
+  <g id="ports" display="none">
+    <circle id="port:left" cx="2" cy="40" r="3"/>
+    <circle id="port:right" cx="98" cy="40" r="3"/>
+    <circle id="port:top" cx="50" cy="2" r="3"/>
+    <circle id="port:bottom" cx="50" cy="78" r="3"/>
+  </g>
+  <g id="labels" display="none">
+    <text id="label:title" x="50" y="40"/>
+  </g>
+</svg>

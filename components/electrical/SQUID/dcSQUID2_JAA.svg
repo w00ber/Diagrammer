@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 188 78">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        stroke-linejoin: bevel;
+      }
+
+      .st0, .st1 {
+        fill: none;
+      }
+
+      .st0, .st1, .st2 {
+        stroke: #000;
+        stroke-linecap: round;
+        stroke-width: 3px;
+      }
+
+      .st1, .st2 {
+        stroke-linejoin: round;
+      }
+    </style>
+  </defs>
+  <g id="ports">
+    <circle id="port:left" cx="22.8" cy="38.4" r="3"/>
+    <circle id="port:right" cx="162.8" cy="38.4" r="3"/>
+  </g>
+  <g id="artwork">
+    <circle class="st0" cx="92.9" cy="38.5" r="26.5"/>
+    <line class="st1" x1="97.9" y1="3.1" x2="87.5" y2="20.8"/>
+    <line class="st1" x1="97.9" y1="20.8" x2="87.5" y2="3.1"/>
+    <line class="st1" x1="97.9" y1="56.2" x2="87.5" y2="73.9"/>
+    <line class="st1" x1="97.9" y1="73.9" x2="87.5" y2="56.2"/>
+    <g>
+      <path class="st2" d="M66.4,38.5H22.8"/>
+      <path class="st2" d="M162.8,38.5h-43.3"/>
+    </g>
+  </g>
+</svg>

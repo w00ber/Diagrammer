@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diagrammer"
+version = "0.1.0"
+description = "A tool for building diagrams, including flowcharts, circuits, and more"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    {name = "Joe"},
+]
+dependencies = [
+    "PySide6>=6.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.scripts]
+diagrammer = "diagrammer.__main__:main"
+
+[project.gui-scripts]
+diagrammer-gui = "diagrammer.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

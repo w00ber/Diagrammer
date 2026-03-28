@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g id="artwork">
+    <polygon points="50,2 98,50 50,98 2,50"
+             fill="white" stroke="black" stroke-width="2"/>
+  </g>
+  <g id="ports" display="none">
+    <circle id="port:left" cx="2" cy="50" r="3"/>
+    <circle id="port:right" cx="98" cy="50" r="3"/>
+    <circle id="port:top" cx="50" cy="2" r="3"/>
+    <circle id="port:bottom" cx="50" cy="98" r="3"/>
+  </g>
+  <g id="labels" display="none">
+    <text id="label:title" x="50" y="50"/>
+  </g>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 50">
+  <g id="artwork">
+    <line x1="20" y1="0" x2="20" y2="20" stroke="black" stroke-width="2"/>
+    <line x1="5" y1="20" x2="35" y2="20" stroke="black" stroke-width="2"/>
+    <line x1="10" y1="28" x2="30" y2="28" stroke="black" stroke-width="2"/>
+    <line x1="15" y1="36" x2="25" y2="36" stroke="black" stroke-width="2"/>
+  </g>
+  <g id="ports" display="none">
+    <circle id="port:top" cx="20" cy="0" r="3"/>
+  </g>
+</svg>
