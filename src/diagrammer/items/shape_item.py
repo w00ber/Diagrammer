@@ -13,7 +13,8 @@ DEFAULT_STROKE_COLOR = QColor(50, 50, 50)
 DEFAULT_FILL_COLOR = QColor(255, 255, 255, 0)  # transparent
 DEFAULT_STROKE_WIDTH = 2.0
 SELECTION_PEN_COLOR = QColor(0, 120, 215)
-SELECTION_PEN_WIDTH = 1.5
+SELECTION_PEN_WIDTH = 1.2
+SELECTION_DASH_PATTERN = [4, 3]
 HANDLE_SIZE = 8.0
 HANDLE_COLOR = QColor(0, 120, 215)
 HANDLE_FILL = QColor(255, 255, 255)
@@ -130,7 +131,10 @@ class ShapeItem(QGraphicsItem):
         if not self.isSelected():
             return
         # Dashed selection rect
-        painter.setPen(QPen(SELECTION_PEN_COLOR, SELECTION_PEN_WIDTH, Qt.PenStyle.DashLine))
+        pen = QPen(SELECTION_PEN_COLOR, SELECTION_PEN_WIDTH)
+        pen.setDashPattern(SELECTION_DASH_PATTERN)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(QRectF(0, 0, self._width, self._height))
         # Resize handles

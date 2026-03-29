@@ -26,7 +26,8 @@ from PySide6.QtWidgets import (
 )
 
 SELECTION_PEN_COLOR = QColor(0, 120, 215)
-SELECTION_PEN_WIDTH = 1.5
+SELECTION_PEN_WIDTH = 1.2
+SELECTION_DASH_PATTERN = [4, 3]
 DEFAULT_FONT_FAMILY = "Helvetica"
 DEFAULT_FONT_SIZE = 12.0
 DEFAULT_TEXT_COLOR = QColor(0, 0, 0)
@@ -36,10 +37,13 @@ _MATH_RE = re.compile(r"\$(.+?)\$")
 
 # Common font families grouped by category
 FONT_FAMILIES = [
+    # Scientific / CM-like
+    "STIX Two Text",
+    "CMU Serif",
+    "CMU Sans Serif",
     # Sans-serif
     "Helvetica",
     "Arial",
-    "SF Pro",
     "Verdana",
     # Serif
     "Times New Roman",
@@ -52,11 +56,33 @@ FONT_FAMILIES = [
 ]
 
 
-def _render_latex_svg(text: str, font_size: float, color: QColor) -> bytes | None:
+# Map user font families to matplotlib mathtext fontsets.
+# Serif fonts → 'cm' (Computer Modern) or 'stix'; sans → 'stixsans' or 'dejavusans'
+_MATH_FONTSET_MAP = {
+    "STIX Two Text": "stix",
+    "CMU Serif": "cm",
+    "CMU Sans Serif": "stixsans",
+    "Times New Roman": "stix",
+    "Georgia": "stix",
+    "Palatino": "stix",
+    "Helvetica": "stixsans",
+    "Arial": "stixsans",
+    "Verdana": "dejavusans",
+    "Courier New": "stix",
+    "Menlo": "dejavusans",
+    "Monaco": "dejavusans",
+}
+
+
+def _render_latex_svg(text: str, font_size: float, color: QColor,
+                      font_family: str = "serif") -> bytes | None:
     """Render a string (with $...$ math) to SVG bytes using matplotlib.
 
     Matplotlib handles mixed text+math natively: ``$\\alpha$ hello``
     renders the math as glyphs and the rest as text, all as vector paths.
+
+    The math fontset is chosen to match the user's font family:
+    serif fonts use 'cm' or 'stix', sans-serif uses 'stixsans'.
 
     Returns SVG bytes or None if matplotlib is unavailable or rendering fails.
     """
@@ -68,18 +94,27 @@ def _render_latex_svg(text: str, font_size: float, color: QColor) -> bytes | Non
         return None
 
     try:
+        # Set math fontset to match the text font
+        fontset = _MATH_FONTSET_MAP.get(font_family, "stix")
+        old_fontset = matplotlib.rcParams.get("mathtext.fontset", "dejavusans")
+        matplotlib.rcParams["mathtext.fontset"] = fontset
+
         fig = plt.figure(figsize=(0.01, 0.01))
         mpl_color = f"#{color.red():02x}{color.green():02x}{color.blue():02x}"
         fig.text(
             0.5, 0.5, text,
             fontsize=font_size,
             color=mpl_color,
+            family=font_family,
             ha="center", va="center",
         )
         buf = io.BytesIO()
         fig.savefig(buf, format="svg", transparent=True,
                     bbox_inches="tight", pad_inches=0.02)
         plt.close(fig)
+
+        # Restore previous fontset
+        matplotlib.rcParams["mathtext.fontset"] = old_fontset
         return buf.getvalue()
     except Exception:
         return None
@@ -167,7 +202,7 @@ class AnnotationItem(QGraphicsTextItem):
         f = self.font()
         f.setFamily(family)
         self.setFont(f)
-        if self._math_renderer:
+        if _MATH_RE.search(self._source_text):
             self._try_render_math()
 
     @property
@@ -179,7 +214,7 @@ class AnnotationItem(QGraphicsTextItem):
         f = self.font()
         f.setPointSizeF(size)
         self.setFont(f)
-        if self._math_renderer:
+        if _MATH_RE.search(self._source_text):
             self._try_render_math()
 
     @property
@@ -209,7 +244,7 @@ class AnnotationItem(QGraphicsTextItem):
     @text_color.setter
     def text_color(self, color: QColor) -> None:
         self.setDefaultTextColor(color)
-        if self._math_renderer:
+        if _MATH_RE.search(self._source_text):
             self._try_render_math()
 
     @property
@@ -234,7 +269,8 @@ class AnnotationItem(QGraphicsTextItem):
             self._math_rect = QRectF()
             return
 
-        svg_bytes = _render_latex_svg(text, self.font_size, self.text_color)
+        svg_bytes = _render_latex_svg(text, self.font_size, self.text_color,
+                                       font_family=self.font_family)
         if svg_bytes is None:
             self._math_renderer = None
             self._math_rect = QRectF()
@@ -366,14 +402,20 @@ class AnnotationItem(QGraphicsTextItem):
             self._math_renderer.render(painter, self._math_rect)
             # Selection highlight
             if self.isSelected():
-                painter.setPen(QPen(SELECTION_PEN_COLOR, SELECTION_PEN_WIDTH, Qt.PenStyle.DashLine))
+                pen = QPen(SELECTION_PEN_COLOR, SELECTION_PEN_WIDTH)
+                pen.setDashPattern(SELECTION_DASH_PATTERN)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                painter.setPen(pen)
                 painter.setBrush(Qt.BrushStyle.NoBrush)
                 painter.drawRect(self._math_rect.adjusted(-2, -2, 2, 2))
             return
 
         # Draw selection highlight for regular text
         if self.isSelected() and not self._editing:
-            painter.setPen(QPen(SELECTION_PEN_COLOR, SELECTION_PEN_WIDTH, Qt.PenStyle.DashLine))
+            pen = QPen(SELECTION_PEN_COLOR, SELECTION_PEN_WIDTH)
+            pen.setDashPattern(SELECTION_DASH_PATTERN)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(self.boundingRect().adjusted(-2, -2, 2, 2))
 

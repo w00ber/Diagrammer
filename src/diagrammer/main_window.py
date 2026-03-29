@@ -1271,6 +1271,9 @@ class MainWindow(QMainWindow):
         snapped = self._view.snap(center)
 
         item = AnnotationItem("Text")
+        item.font_family = app_settings.default_annotation_font
+        item.font_size = app_settings.default_annotation_size
+        item.text_color = app_settings.default_annotation_color
         item.setPos(snapped)
 
         # Undoable add: push a command that adds/removes the item

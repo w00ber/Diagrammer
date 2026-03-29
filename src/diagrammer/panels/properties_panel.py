@@ -315,15 +315,15 @@ class PropertiesPanel(QDockWidget):
 
     def _build_multi_form(self, items: list) -> None:
         """Show shared editable properties for multiple selected items."""
+        from diagrammer.items.annotation_item import AnnotationItem, FONT_FAMILIES
         from diagrammer.items.connection_item import ConnectionItem
         self._form.addRow(QLabel(f"<b>{len(items)} items selected</b>"))
 
-        # Check if all selected items are connections
+        # Connections
         conns = [i for i in items if isinstance(i, ConnectionItem)]
         if conns:
             self._form.addRow(QLabel(f"{len(conns)} connection(s)"))
 
-            # Line width (shared)
             width_spin = QDoubleSpinBox()
             width_spin.setRange(0.5, 20.0)
             width_spin.setValue(conns[0].line_width)
@@ -339,7 +339,6 @@ class PropertiesPanel(QDockWidget):
             width_spin.valueChanged.connect(set_all_width)
             self._form.addRow("Width:", width_spin)
 
-            # Corner radius (shared)
             radius_spin = QDoubleSpinBox()
             radius_spin.setRange(0.0, 50.0)
             radius_spin.setValue(conns[0].corner_radius)
@@ -355,12 +354,63 @@ class PropertiesPanel(QDockWidget):
             radius_spin.valueChanged.connect(set_all_radius)
             self._form.addRow("Corner radius:", radius_spin)
 
-            # Color (shared)
             color_btn = self._make_color_button(
                 conns[0].line_color,
                 lambda c: self._set_all_color(conns, c),
             )
             self._form.addRow("Color:", color_btn)
+
+        # Annotations
+        annots = [i for i in items if isinstance(i, AnnotationItem)]
+        if annots:
+            self._form.addRow(QLabel(f"{len(annots)} annotation(s)"))
+
+            family_combo = QComboBox()
+            family_combo.addItems(FONT_FAMILIES)
+            current = annots[0].font_family
+            if current in FONT_FAMILIES:
+                family_combo.setCurrentText(current)
+            else:
+                family_combo.addItem(current)
+                family_combo.setCurrentText(current)
+            def set_all_font(v):
+                if self._scene and hasattr(self._scene, 'undo_stack'):
+                    self._scene.undo_stack.beginMacro("Set font")
+                for a in annots:
+                    self._push_style(a, 'font_family', a.font_family, v)
+                if self._scene and hasattr(self._scene, 'undo_stack'):
+                    self._scene.undo_stack.endMacro()
+            family_combo.currentTextChanged.connect(set_all_font)
+            self._form.addRow("Font:", family_combo)
+
+            size_spin = QDoubleSpinBox()
+            size_spin.setRange(4.0, 144.0)
+            size_spin.setValue(annots[0].font_size)
+            size_spin.setSuffix(" pt")
+            size_spin.setSingleStep(1.0)
+            def set_all_size(v):
+                if self._scene and hasattr(self._scene, 'undo_stack'):
+                    self._scene.undo_stack.beginMacro("Set font size")
+                for a in annots:
+                    self._push_style(a, 'font_size', a.font_size, v)
+                if self._scene and hasattr(self._scene, 'undo_stack'):
+                    self._scene.undo_stack.endMacro()
+            size_spin.valueChanged.connect(set_all_size)
+            self._form.addRow("Size:", size_spin)
+
+            color_btn = self._make_color_button(
+                annots[0].text_color,
+                lambda c: self._set_all_annot_color(annots, c),
+            )
+            self._form.addRow("Color:", color_btn)
+
+    def _set_all_annot_color(self, annots, color) -> None:
+        if self._scene and hasattr(self._scene, 'undo_stack'):
+            self._scene.undo_stack.beginMacro("Set annotation color")
+        for a in annots:
+            self._push_style(a, 'text_color', a.text_color, color)
+        if self._scene and hasattr(self._scene, 'undo_stack'):
+            self._scene.undo_stack.endMacro()
 
     def _set_all_color(self, conns, color) -> None:
         if self._scene and hasattr(self._scene, 'undo_stack'):

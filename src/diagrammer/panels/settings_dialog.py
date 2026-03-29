@@ -9,6 +9,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
+    QComboBox,
     QDialog,
     QDoubleSpinBox,
     QFormLayout,
@@ -56,6 +57,11 @@ class AppSettings:
         # Component styles
         self.default_component_fill = QColor(255, 255, 255, 0)
 
+        # Annotation defaults
+        self.default_annotation_font = "STIX Two Text"
+        self.default_annotation_size = 12.0
+        self.default_annotation_color = QColor(0, 0, 0)
+
         # Library
         self.hidden_libraries: set[str] = set()
         self.library_view_mode = "tree"  # "tree" or "grid"
@@ -83,6 +89,9 @@ class AppSettings:
                 "hidden_libraries": sorted(self.hidden_libraries),
                 "library_view_mode": self.library_view_mode,
                 "last_opened_file": self.last_opened_file,
+                "default_annotation_font": self.default_annotation_font,
+                "default_annotation_size": self.default_annotation_size,
+                "default_annotation_color": self.default_annotation_color.name(),
             }
             import json
             _SETTINGS_FILE.write_text(json.dumps(data, indent=2))
@@ -114,6 +123,11 @@ class AppSettings:
                 self.hidden_libraries = set(data.get("hidden_libraries", []))
                 self.library_view_mode = data.get("library_view_mode", self.library_view_mode)
                 self.last_opened_file = data.get("last_opened_file", "")
+                self.default_annotation_font = data.get("default_annotation_font", self.default_annotation_font)
+                self.default_annotation_size = data.get("default_annotation_size", self.default_annotation_size)
+                ac = data.get("default_annotation_color")
+                if ac:
+                    self.default_annotation_color = QColor(ac)
         except Exception:
             pass
 
@@ -310,6 +324,48 @@ class SettingsDialog(QDialog):
         junc_layout.addStretch()
         tabs.addTab(junc_tab, "Junctions")
 
+        # -- Annotations tab --
+        annot_tab = QWidget()
+        annot_layout = QVBoxLayout(annot_tab)
+        annot_group = QGroupBox("Default Annotation Style")
+        annot_form = QFormLayout()
+
+        from diagrammer.items.annotation_item import FONT_FAMILIES
+        self._annot_font_combo = QComboBox()
+        self._annot_font_combo.addItems(FONT_FAMILIES)
+        current_font = settings.default_annotation_font
+        if current_font in FONT_FAMILIES:
+            self._annot_font_combo.setCurrentText(current_font)
+        else:
+            self._annot_font_combo.addItem(current_font)
+            self._annot_font_combo.setCurrentText(current_font)
+        annot_form.addRow("Font:", self._annot_font_combo)
+
+        self._annot_size_spin = QDoubleSpinBox()
+        self._annot_size_spin.setRange(4.0, 144.0)
+        self._annot_size_spin.setValue(settings.default_annotation_size)
+        self._annot_size_spin.setSuffix(" pt")
+        self._annot_size_spin.setSingleStep(1.0)
+        annot_form.addRow("Size:", self._annot_size_spin)
+
+        self._annot_color = QColor(settings.default_annotation_color)
+        self._annot_color_btn = QPushButton()
+        self._annot_color_btn.setFixedSize(60, 24)
+        self._update_color_btn(self._annot_color_btn, self._annot_color)
+        self._annot_color_btn.clicked.connect(self._pick_annot_color)
+        annot_form.addRow("Color:", self._annot_color_btn)
+
+        annot_group.setLayout(annot_form)
+        annot_layout.addWidget(annot_group)
+
+        annot_hint = QLabel("Use $...$ in annotations for LaTeX math.\n"
+                            "STIX Two Text and CMU Serif closely match\n"
+                            "TeX's Computer Modern style.")
+        annot_hint.setStyleSheet("color: #666; font-size: 11px; margin-top: 8px;")
+        annot_layout.addWidget(annot_hint)
+        annot_layout.addStretch()
+        tabs.addTab(annot_tab, "Annotations")
+
         # -- OK / Cancel --
         btn_row = QHBoxLayout()
         ok_btn = QPushButton("OK")
@@ -349,6 +405,12 @@ class SettingsDialog(QDialog):
                 f"background-color: {c.name()}; border: 1px solid #888;"
             )
 
+    def _pick_annot_color(self) -> None:
+        c = QColorDialog.getColor(self._annot_color, self, "Default Annotation Color")
+        if c.isValid():
+            self._annot_color = c
+            self._update_color_btn(self._annot_color_btn, c)
+
     def apply(self) -> None:
         """Write dialog values into the settings object."""
         self._settings.default_line_width = self._line_width_spin.value()
@@ -372,5 +434,9 @@ class SettingsDialog(QDialog):
                 for cat in self._lib_checkboxes:
                     if cat.startswith(parent + "/"):
                         self._settings.hidden_libraries.add(cat)
+        # Annotation defaults
+        self._settings.default_annotation_font = self._annot_font_combo.currentText()
+        self._settings.default_annotation_size = self._annot_size_spin.value()
+        self._settings.default_annotation_color = QColor(self._annot_color)
         # Persist to disk
         self._settings.save()

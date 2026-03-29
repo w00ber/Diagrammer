@@ -12,6 +12,7 @@ from diagrammer.canvas.grid import (
     snap_to_grid,
 )
 from diagrammer.canvas.scene import DiagramScene
+from diagrammer.items.annotation_item import AnnotationItem
 from diagrammer.items.component_item import ComponentItem
 from diagrammer.items.junction_item import JunctionItem
 from diagrammer.items.port_item import PortItem
@@ -60,6 +61,9 @@ class DiagramView(QGraphicsView):
         # Enable rubber-band selection for group selection
         self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
         self.setAcceptDrops(True)
+        # Accept native gestures (pinch-to-zoom on trackpad)
+        self.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
+        self.grabGesture(Qt.GestureType.PinchGesture)
 
     # -- Properties --
 
@@ -97,16 +101,50 @@ class DiagramView(QGraphicsView):
     def zoom_window_mode(self, value: bool) -> None:
         self._zoom_window_mode = value
         if value:
-            self.setCursor(Qt.CursorShape.CrossCursor)
+            self.setCursor(self._make_zoom_cursor(zoom_in=True))
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
         else:
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+            # Restore cursor based on current scene mode
+            if hasattr(self._diagram_scene, 'mode'):
+                from diagrammer.canvas.scene import InteractionMode
+                if self._diagram_scene.mode == InteractionMode.CONNECT:
+                    self.setCursor(Qt.CursorShape.CrossCursor)
+                else:
+                    self.setCursor(Qt.CursorShape.ArrowCursor)
+            else:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
             self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
             # Clean up any in-progress zoom rect
             if self._zoom_rect_item:
                 self.scene().removeItem(self._zoom_rect_item)
                 self._zoom_rect_item = None
             self._zoom_rect_start = None
+        # Notify main window to update mode label and checkbox
+        self._diagram_scene.mode_changed.emit(self._diagram_scene.mode)
+
+    @staticmethod
+    def _make_zoom_cursor(zoom_in: bool = True):
+        """Create a magnifying glass cursor with + or - sign."""
+        from PySide6.QtGui import QCursor, QPixmap
+        size = 28
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        p = QPainter(pixmap)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # Lens circle
+        p.setPen(QPen(QColor(0, 0, 0), 2))
+        p.setBrush(QBrush(QColor(255, 255, 255, 160)))
+        p.drawEllipse(1, 1, 18, 18)
+        # Handle
+        p.setPen(QPen(QColor(60, 60, 60), 3))
+        p.drawLine(16, 16, 25, 25)
+        # Plus or minus sign inside the lens
+        p.setPen(QPen(QColor(0, 0, 0), 2))
+        p.drawLine(7, 10, 13, 10)  # horizontal bar (both + and -)
+        if zoom_in:
+            p.drawLine(10, 7, 10, 13)  # vertical bar (+ only)
+        p.end()
+        return QCursor(pixmap, 10, 10)
 
     @property
     def trace_routing(self) -> bool:
@@ -171,6 +209,26 @@ class DiagramView(QGraphicsView):
         delta = new_center - center
         self.translate(delta.x(), delta.y())
 
+    def zoom_at(self, factor: float, scene_pos: QPointF) -> None:
+        """Zoom by factor, keeping scene_pos visually stationary.
+
+        Uses the same anchor technique as the original wheelEvent:
+        record the viewport pixel position, scale, then measure how
+        that pixel now maps to a different scene point, and translate
+        to compensate.
+        """
+        new_scale = self.current_scale() * factor
+        if new_scale < ZOOM_MIN or new_scale > ZOOM_MAX:
+            return
+        # Convert scene_pos to a viewport pixel BEFORE scaling
+        view_point = self.mapFromScene(scene_pos)
+        self.scale(factor, factor)
+        # That same viewport pixel now maps to a new scene point
+        new_scene_pos = self.mapToScene(view_point)
+        # Translate so the original scene_pos lands back under that pixel
+        delta = new_scene_pos - scene_pos
+        self.translate(delta.x(), delta.y())
+
     # -- Background grid --
 
     def drawBackground(self, painter: QPainter, rect) -> None:
@@ -178,21 +236,49 @@ class DiagramView(QGraphicsView):
         if self._grid_visible:
             draw_grid(painter, rect, self._grid_spacing, self.current_scale())
 
-    # -- Zoom --
+    # -- Scroll / Zoom --
+
+    def event(self, event) -> bool:
+        """Handle gesture events (pinch-to-zoom on trackpad)."""
+        from PySide6.QtCore import QEvent
+        if event.type() == QEvent.Type.Gesture:
+            return self._handle_gesture(event)
+        return super().event(event)
+
+    def _handle_gesture(self, event) -> bool:
+        from PySide6.QtWidgets import QPinchGesture
+        pinch = event.gesture(Qt.GestureType.PinchGesture)
+        if pinch is not None:
+            flags = pinch.changeFlags()
+            if flags & QPinchGesture.ChangeFlag.ScaleFactorChanged:
+                factor = pinch.scaleFactor()
+                center = self.mapToScene(self.mapFromGlobal(pinch.centerPoint().toPoint()))
+                self.zoom_at(factor, center)
+            return True
+        return False
 
     def wheelEvent(self, event) -> None:
-        angle = event.angleDelta().y()
-        if angle == 0:
+        # Pinch-to-zoom on trackpad (phase-based gesture)
+        if event.phase() in (Qt.ScrollPhase.NoScrollPhase,):
+            # Discrete mouse wheel: zoom toward cursor
+            angle = event.angleDelta().y()
+            if angle == 0:
+                return
+            factor = ZOOM_FACTOR if angle > 0 else 1.0 / ZOOM_FACTOR
+            cursor_scene_pos = self.mapToScene(event.position().toPoint())
+            self.zoom_at(factor, cursor_scene_pos)
             return
-        factor = ZOOM_FACTOR if angle > 0 else 1.0 / ZOOM_FACTOR
-        new_scale = self.current_scale() * factor
-        if new_scale < ZOOM_MIN or new_scale > ZOOM_MAX:
-            return
-        cursor_scene_pos = self.mapToScene(event.position().toPoint())
-        self.scale(factor, factor)
-        new_cursor_scene_pos = self.mapToScene(event.position().toPoint())
-        delta = new_cursor_scene_pos - cursor_scene_pos
-        self.translate(delta.x(), delta.y())
+
+        # Trackpad two-finger scroll: pan (like graphulator)
+        dx = event.pixelDelta().x()
+        dy = event.pixelDelta().y()
+        if dx == 0 and dy == 0:
+            # Fall back to angle delta if pixel delta unavailable
+            dx = event.angleDelta().x()
+            dy = event.angleDelta().y()
+        if dx != 0 or dy != 0:
+            scale = self.current_scale()
+            self.translate(dx / scale, dy / scale)
 
     # -- Mouse event handling --
 
@@ -200,8 +286,6 @@ class DiagramView(QGraphicsView):
         """Return the top scene item at the position, skipping rubberband overlays."""
         scene_pos = self.mapToScene(viewport_pos.toPoint() if hasattr(viewport_pos, 'toPoint') else viewport_pos)
         # Use items() to get all items at the position, then skip overlays
-        from PySide6.QtCore import QRectF
-        from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsPathItem
         for item in self.scene().items(scene_pos, Qt.ItemSelectionMode.IntersectsItemShape,
                                         Qt.SortOrder.DescendingOrder, self.transform()):
             # Skip rubberband path and dot overlays
@@ -210,12 +294,23 @@ class DiagramView(QGraphicsView):
             if item in self._diagram_scene._rubberband_dots:
                 continue
             return item
+
+        # Fallback: check AnnotationItems by bounding rect manually.
+        # When math is rendered, QGraphicsTextItem's internal shape may be
+        # empty (document cleared), so scene.items() misses them even though
+        # our shape() override returns the full rect.
+        for item in self.scene().items():
+            if isinstance(item, AnnotationItem):
+                if item.mapToScene(item.boundingRect()).containsPoint(scene_pos, Qt.FillRule.WindingFill):
+                    return item
         return None
 
     def mousePressEvent(self, event) -> None:
-        # Zoom window mode — start rectangle
+        # Zoom window mode — start rectangle (don't change selection)
         if self._zoom_window_mode and event.button() == Qt.MouseButton.LeftButton:
             self._zoom_rect_start = self.mapToScene(event.position().toPoint())
+            # Save current selection so we can restore it after super() runs
+            self._zoom_saved_selection = list(self._diagram_scene.selectedItems())
             from PySide6.QtWidgets import QGraphicsRectItem
             from PySide6.QtCore import QRectF
             self._zoom_rect_item = QGraphicsRectItem(QRectF(self._zoom_rect_start, self._zoom_rect_start))
@@ -224,6 +319,9 @@ class DiagramView(QGraphicsView):
             self._zoom_rect_item.setZValue(200)
             self.scene().addItem(self._zoom_rect_item)
             event.accept()
+            # Restore selection in case Qt cleared it
+            for item in self._zoom_saved_selection:
+                item.setSelected(True)
             return
 
         # Middle-click pan
@@ -305,11 +403,11 @@ class DiagramView(QGraphicsView):
                 event.accept()
                 return
 
-            # -- Shift+click → toggle multi-select (components, connections, shapes, junctions) --
+            # -- Shift+click → toggle multi-select (components, connections, shapes, junctions, annotations) --
             if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                 from diagrammer.items.connection_item import ConnectionItem
                 from diagrammer.items.shape_item import LineItem, ShapeItem
-                if isinstance(item, (ComponentItem, ConnectionItem, ShapeItem, LineItem, JunctionItem)):
+                if isinstance(item, (ComponentItem, ConnectionItem, ShapeItem, LineItem, JunctionItem, AnnotationItem)):
                     item.setSelected(not item.isSelected())
                     event.accept()
                     return
@@ -338,6 +436,23 @@ class DiagramView(QGraphicsView):
                     self.setDragMode(QGraphicsView.DragMode.NoDrag)
                 event.accept()
                 return
+
+            # -- Click on an annotation → set up drag --
+            elif isinstance(item, AnnotationItem):
+                selected = [
+                    i for i in self._diagram_scene.selectedItems()
+                    if isinstance(i, (ComponentItem, JunctionItem, AnnotationItem))
+                ]
+                if item not in selected:
+                    selected = [item]
+                self._dragging_components = selected
+                self._drag_anchor_item = item
+                self._drag_anchor_start_pos = QPointF(item.pos())
+                for comp in selected:
+                    self._diagram_scene.record_move_start(comp.instance_id, comp.pos())
+                self._drag_internal_conns = []
+                self._drag_conn_waypoints = {}
+                self.setDragMode(QGraphicsView.DragMode.NoDrag)
 
             # -- Click on a component or junction → set up snap anchor and record move start --
             elif isinstance(item, (ComponentItem, JunctionItem)):
@@ -467,20 +582,24 @@ class DiagramView(QGraphicsView):
         self._diagram_scene.cursor_scene_pos_changed.emit(scene_pos.x(), scene_pos.y())
 
     def mouseReleaseEvent(self, event) -> None:
-        # Zoom window — complete: zoom to the drawn rectangle
+        # Zoom window — complete
         if self._zoom_window_mode and event.button() == Qt.MouseButton.LeftButton:
             if self._zoom_rect_item and self._zoom_rect_start:
                 rect = self._zoom_rect_item.rect()
                 self.scene().removeItem(self._zoom_rect_item)
                 self._zoom_rect_item = None
+                click_pos = self._zoom_rect_start
                 self._zoom_rect_start = None
-                # Only zoom if the rectangle is big enough (not just a click)
                 if rect.width() > 5 and rect.height() > 5:
+                    # Drag box: zoom to fit the rectangle
                     self.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
-                # Exit zoom window mode after use
-                self.zoom_window_mode = False
-                # Notify main window to uncheck the menu action
-                self._diagram_scene.mode_changed.emit(self._diagram_scene.mode)
+                else:
+                    # Click: zoom in at cursor (Shift+click = zoom out)
+                    if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                        self.zoom_at(0.5, click_pos)
+                    else:
+                        self.zoom_at(2.0, click_pos)
+                # Stay in zoom mode (don't exit — user can click repeatedly)
             event.accept()
             return
 
@@ -560,25 +679,42 @@ class DiagramView(QGraphicsView):
             self._diagram_scene.clear_alignment_ports()
 
         # Arrow keys: nudge selected items (20% of grid), or pan if nothing selected
+        # Skip nudge when an annotation is being edited (arrows navigate text)
         if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right):
-            selected = [
-                i for i in self._diagram_scene.selectedItems()
-                if hasattr(i, 'setPos')
-            ]
-            if selected:
-                self._nudge_selected(selected, event.key())
-                event.accept()
-                return
+            editing_annot = any(
+                isinstance(i, AnnotationItem) and i.is_editing
+                for i in self._diagram_scene.selectedItems()
+            )
+            if not editing_annot:
+                selected = [
+                    i for i in self._diagram_scene.selectedItems()
+                    if hasattr(i, 'setPos')
+                ]
+                if selected:
+                    fine = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                    self._nudge_selected(selected, event.key(), fine=fine)
+                    event.accept()
+                    return
+
+        # Update zoom cursor when Shift is pressed
+        if self._zoom_window_mode and event.key() == Qt.Key.Key_Shift:
+            self.setCursor(self._make_zoom_cursor(zoom_in=False))
 
         super().keyPressEvent(event)
 
-    def _nudge_selected(self, items, key) -> None:
-        """Move selected items by 20% of the grid spacing (fine nudge)."""
+    def keyReleaseEvent(self, event) -> None:
+        # Update zoom cursor when Shift is released
+        if self._zoom_window_mode and event.key() == Qt.Key.Key_Shift:
+            self.setCursor(self._make_zoom_cursor(zoom_in=True))
+        super().keyReleaseEvent(event)
+
+    def _nudge_selected(self, items, key, *, fine: bool = False) -> None:
+        """Move selected items by 20% of grid (or 10% with Shift held)."""
         from diagrammer.commands.add_command import MoveComponentCommand
         from diagrammer.commands.connect_command import EditWaypointsCommand
         from diagrammer.items.connection_item import ConnectionItem
 
-        step = self._grid_spacing * 0.2
+        step = self._grid_spacing * (0.1 if fine else 0.2)
         dx, dy = 0.0, 0.0
         if key == Qt.Key.Key_Left:
             dx = -step

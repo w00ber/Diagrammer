@@ -13,9 +13,10 @@ from diagrammer.items.port_item import PortItem
 from diagrammer.models.component_def import ComponentDef
 
 
-# Selection highlight
-SELECTION_PEN_COLOR = QColor(0, 120, 215)
-SELECTION_PEN_WIDTH = 2.0
+# Selection highlight — tweak these to change appearance:
+SELECTION_PEN_COLOR = QColor(0, 120, 215)   # blue
+SELECTION_PEN_WIDTH = 1.2                    # line thickness (pt)
+SELECTION_DASH_PATTERN = [4, 3]              # [dash_length, gap_length] in multiples of width
 
 # Stretch handle appearance
 STRETCH_HANDLE_SIZE = 14.0
@@ -659,7 +660,10 @@ class ComponentItem(QGraphicsItem):
 
         # Selection highlight
         if self.isSelected():
-            painter.setPen(QPen(SELECTION_PEN_COLOR, SELECTION_PEN_WIDTH, Qt.PenStyle.DashLine))
+            pen = QPen(SELECTION_PEN_COLOR, SELECTION_PEN_WIDTH)
+            pen.setDashPattern(SELECTION_DASH_PATTERN)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(QRectF(0, 0, self._width, self._height))
 
