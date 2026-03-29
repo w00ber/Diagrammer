@@ -170,14 +170,13 @@ class ComponentItem(QGraphicsItem):
         self._width = cdef.width + self._stretch_dx
         self._height = cdef.height + self._stretch_dy
 
-        # Update transform origin to new center
-        self.setTransformOriginPoint(self._width / 2, self._height / 2)
+        # NOTE: Do NOT change the transform origin here.
+        # Keep it at the original (unstretched) center so that rotation/flip
+        # stay stable during stretching. The stretch only affects the
+        # bounding rect, rendering, and port positions.
 
         # Reposition ports that are on the "far side" of the break
         self._update_port_positions_for_stretch()
-
-        # Rebuild the item transform so the new center is used
-        self._apply_transform()
 
         self.update()
 
@@ -289,9 +288,13 @@ class ComponentItem(QGraphicsItem):
         self._apply_transform()
 
     def _apply_transform(self) -> None:
-        """Rebuild the item transform from rotation + flip state."""
-        cx = self._width / 2
-        cy = self._height / 2
+        """Rebuild the item transform from rotation + flip state.
+
+        Uses the ORIGINAL (unstretched) center so that rotation/flip
+        behavior doesn't change when the component is stretched.
+        """
+        cx = self._def.width / 2
+        cy = self._def.height / 2
         t = QTransform()
         t.translate(cx, cy)
         sx = -1.0 if self._flip_h else 1.0
@@ -614,8 +617,11 @@ class ComponentItem(QGraphicsItem):
 
         return shortening
 
-    def _get_lead_renderer(self) -> QSvgRenderer:
-        """Get an SVG renderer with dynamically shortened leads."""
+    def refresh_lead_shortening(self) -> None:
+        """Recompute lead shortening based on current connections.
+
+        Call this from update_connections(), NOT from paint().
+        """
         shortening = self._compute_lead_shortening()
         if shortening != self._cached_lead_shortening:
             self._cached_lead_shortening = shortening
@@ -628,6 +634,10 @@ class ComponentItem(QGraphicsItem):
                 ))
             else:
                 self._lead_renderer = None
+            self.update()  # schedule repaint with new renderer
+
+    def _get_lead_renderer(self) -> QSvgRenderer:
+        """Return the cached lead renderer (computed by refresh_lead_shortening)."""
         return self._lead_renderer if self._lead_renderer else self._renderer
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None) -> None:
@@ -921,28 +931,46 @@ class ComponentItem(QGraphicsItem):
 
         super().mousePressEvent(event)
 
+    def _stretch_scene_axis(self, axis: str) -> QPointF:
+        """Get the scene-space direction of a local stretch axis.
+
+        Returns a unit vector in scene space that corresponds to the
+        local x-axis (for 'h') or y-axis (for 'v'), accounting for
+        the component's rotation and flip.
+        """
+        origin = self.mapToScene(QPointF(0, 0))
+        if axis == "h":
+            tip = self.mapToScene(QPointF(1, 0))
+        else:
+            tip = self.mapToScene(QPointF(0, 1))
+        dx = tip.x() - origin.x()
+        dy = tip.y() - origin.y()
+        length = max((dx * dx + dy * dy) ** 0.5, 1e-9)
+        return QPointF(dx / length, dy / length)
+
     def mouseMoveEvent(self, event) -> None:
         if self._dragging_stretch_h and self._stretch_drag_start_pos is not None:
-            local_start = self.mapFromScene(self._stretch_drag_start_pos)
-            local_now = self.mapFromScene(event.scenePos())
-            local_dx = local_now.x() - local_start.x()
+            # Project scene-space drag delta onto the stretch axis direction
+            scene_delta = event.scenePos() - self._stretch_drag_start_pos
+            axis_dir = self._stretch_scene_axis("h")
+            projected = scene_delta.x() * axis_dir.x() + scene_delta.y() * axis_dir.y()
 
             side = getattr(self, '_stretch_drag_side', 'right')
             if side == "left":
-                # Left handle: drag left = increase stretch, shift component left
-                raw_dx = self._stretch_drag_start_dx - local_dx
-                snapped_dx = self._snap_stretch_to_grid(raw_dx)
-                self.set_stretch(snapped_dx, self._stretch_dy)
-                # Shift component position so right side stays fixed
-                delta_dx = snapped_dx - self._stretch_drag_start_dx
+                raw_dx = self._stretch_drag_start_dx - projected
+            else:
+                raw_dx = self._stretch_drag_start_dx + projected
+            snapped_dx = self._snap_stretch_to_grid(raw_dx)
+            old_dx = self._stretch_dx
+            self.set_stretch(snapped_dx, self._stretch_dy)
+
+            if side == "left" and snapped_dx != old_dx:
+                growth = snapped_dx - self._stretch_drag_start_dx
+                scene_offset = QPointF(axis_dir.x() * growth, axis_dir.y() * growth)
                 start_pos = getattr(self, '_stretch_drag_start_comp_pos', self.pos())
                 self._skip_snap = True
-                self.setPos(start_pos.x() - delta_dx, start_pos.y())
+                self.setPos(start_pos - scene_offset)
                 self._skip_snap = False
-            else:
-                raw_dx = self._stretch_drag_start_dx + local_dx
-                snapped_dx = self._snap_stretch_to_grid(raw_dx)
-                self.set_stretch(snapped_dx, self._stretch_dy)
 
             if self.scene():
                 from diagrammer.canvas.scene import DiagramScene
@@ -953,24 +981,26 @@ class ComponentItem(QGraphicsItem):
             return
 
         if self._dragging_stretch_v and self._stretch_drag_start_pos is not None:
-            local_start = self.mapFromScene(self._stretch_drag_start_pos)
-            local_now = self.mapFromScene(event.scenePos())
-            local_dy = local_now.y() - local_start.y()
+            scene_delta = event.scenePos() - self._stretch_drag_start_pos
+            axis_dir = self._stretch_scene_axis("v")
+            projected = scene_delta.x() * axis_dir.x() + scene_delta.y() * axis_dir.y()
 
             side = getattr(self, '_stretch_drag_side', 'bottom')
             if side == "top":
-                raw_dy = self._stretch_drag_start_dy - local_dy
-                snapped_dy = self._snap_stretch_to_grid(raw_dy)
-                self.set_stretch(self._stretch_dx, snapped_dy)
-                delta_dy = snapped_dy - self._stretch_drag_start_dy
+                raw_dy = self._stretch_drag_start_dy - projected
+            else:
+                raw_dy = self._stretch_drag_start_dy + projected
+            snapped_dy = self._snap_stretch_to_grid(raw_dy)
+            old_dy = self._stretch_dy
+            self.set_stretch(self._stretch_dx, snapped_dy)
+
+            if side == "top" and snapped_dy != old_dy:
+                growth = snapped_dy - self._stretch_drag_start_dy
+                scene_offset = QPointF(axis_dir.x() * growth, axis_dir.y() * growth)
                 start_pos = getattr(self, '_stretch_drag_start_comp_pos', self.pos())
                 self._skip_snap = True
-                self.setPos(start_pos.x(), start_pos.y() - delta_dy)
+                self.setPos(start_pos - scene_offset)
                 self._skip_snap = False
-            else:
-                raw_dy = self._stretch_drag_start_dy + local_dy
-                snapped_dy = self._snap_stretch_to_grid(raw_dy)
-                self.set_stretch(self._stretch_dx, snapped_dy)
 
             if self.scene():
                 from diagrammer.canvas.scene import DiagramScene
@@ -1104,10 +1134,12 @@ class ComponentItem(QGraphicsItem):
         self._stretch_v_handle_hovered = v_side == "bottom"
         self._stretch_v_top_hovered = v_side == "top"
 
+        # Swap cursor direction when rotated 90/270 degrees
+        rotated_90 = (self._rotation_angle % 180) != 0
         if h_side is not None:
-            self.setCursor(Qt.CursorShape.SizeHorCursor)
+            self.setCursor(Qt.CursorShape.SizeVerCursor if rotated_90 else Qt.CursorShape.SizeHorCursor)
         elif v_side is not None:
-            self.setCursor(Qt.CursorShape.SizeVerCursor)
+            self.setCursor(Qt.CursorShape.SizeHorCursor if rotated_90 else Qt.CursorShape.SizeVerCursor)
         else:
             self.unsetCursor()
 

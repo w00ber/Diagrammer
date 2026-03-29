@@ -40,6 +40,8 @@ class DiagramScene(QGraphicsScene):
         super().__init__(parent)
         self._mode = InteractionMode.SELECT
         self._undo_stack = QUndoStack(self)
+        # Rebuild routes after any undo/redo so waypoints and positions stay in sync
+        self._undo_stack.indexChanged.connect(self._on_undo_redo)
         self._library = library or ComponentLibrary()
 
         # Drag-tracking for move undo support
@@ -109,7 +111,12 @@ class DiagramScene(QGraphicsScene):
 
             # Visibility
             if isinstance(item, (ComponentItem, ConnectionItem, JunctionItem, ShapeItem, LineItem)):
-                item.setVisible(layer.visible)
+                if isinstance(item, JunctionItem):
+                    # Respect show_junctions setting — never show if user hid them
+                    from diagrammer.panels.settings_dialog import app_settings
+                    item.setVisible(layer.visible and app_settings.show_junctions)
+                else:
+                    item.setVisible(layer.visible)
                 # Lock: prevent selection and movement
                 movable = not layer.locked
                 item.setFlag(item.GraphicsItemFlag.ItemIsMovable, movable)
@@ -529,6 +536,10 @@ class DiagramScene(QGraphicsScene):
 
     # -- Update connections when components move --
 
+    def _on_undo_redo(self, index: int) -> None:
+        """Called after undo/redo to rebuild routes with final state."""
+        self.update_connections()
+
     def update_connections(self) -> None:
         """Rebuild routes for all connections and refresh component lead rendering."""
         from diagrammer.items.component_item import ComponentItem
@@ -536,10 +547,10 @@ class DiagramScene(QGraphicsScene):
         for item in self.items():
             if isinstance(item, ConnectionItem):
                 item.update_route()
-        # Trigger repaint on components so lead shortening updates dynamically
+        # Recompute lead shortening (outside paint path to avoid perf issues)
         for item in self.items():
             if isinstance(item, ComponentItem):
-                item.update()
+                item.refresh_lead_shortening()
 
     # -- Move tracking for undo --
 
@@ -547,8 +558,13 @@ class DiagramScene(QGraphicsScene):
         """Record the starting position of a component drag."""
         self._drag_start_positions[instance_id] = QPointF(pos)
 
-    def record_move_end(self, item) -> None:
-        """Record the end of a component drag and push a MoveCommand if it moved."""
+    def record_move_end(self, item, update: bool = True) -> None:
+        """Record the end of a component drag and push a MoveCommand if it moved.
+
+        Args:
+            update: If True (default), update connections and check auto-join.
+                   Set to False during group moves to defer updates.
+        """
         from diagrammer.items.component_item import ComponentItem
         if not isinstance(item, ComponentItem):
             return
@@ -558,10 +574,9 @@ class DiagramScene(QGraphicsScene):
         from diagrammer.commands.add_command import MoveComponentCommand
         cmd = MoveComponentCommand(item, old_pos, item.pos())
         self._undo_stack.push(cmd)
-        # Update connection routes after move
-        self.update_connections()
-        # Auto-join overlapping ports
-        self.auto_join_overlapping_ports(item)
+        if update:
+            self.update_connections()
+            self.auto_join_overlapping_ports(item)
 
     # -- Rotation pivot port --
 

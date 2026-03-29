@@ -33,6 +33,9 @@ class DiagramView(QGraphicsView):
         self._panning = False
         self._pan_start = QPointF()
         self._dragging_components: list[ComponentItem] = []
+        self._drag_anchor_start_pos: QPointF | None = None  # scene pos of first dragged comp at drag start
+        self._drag_internal_conns: list = []  # connections with both ends in drag selection
+        self._drag_conn_waypoints: dict = {}  # conn instance_id -> initial waypoints
         self._trace_routing = False
         self._trace_vertices: list[QPointF] = []
         self._rubber_band_active = False
@@ -299,11 +302,14 @@ class DiagramView(QGraphicsView):
                 event.accept()
                 return
 
-            # -- Shift+click on component → toggle multi-select --
-            if isinstance(item, ComponentItem) and event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-                item.setSelected(not item.isSelected())
-                event.accept()
-                return
+            # -- Shift+click → toggle multi-select (components, connections, shapes) --
+            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                from diagrammer.items.connection_item import ConnectionItem
+                from diagrammer.items.shape_item import LineItem, ShapeItem
+                if isinstance(item, (ComponentItem, ConnectionItem, ShapeItem, LineItem)):
+                    item.setSelected(not item.isSelected())
+                    event.accept()
+                    return
 
             # -- Option/Alt+click on component → duplicate and drag --
             elif isinstance(item, ComponentItem) and event.modifiers() & Qt.KeyboardModifier.AltModifier:
@@ -332,7 +338,6 @@ class DiagramView(QGraphicsView):
             # -- Click on a component → set up snap anchor and record move start --
             elif isinstance(item, ComponentItem):
                 item.set_snap_anchor_closest_to(scene_pos)
-                # Record move start for ALL selected components (group move)
                 selected = [
                     i for i in self._diagram_scene.selectedItems()
                     if isinstance(i, ComponentItem)
@@ -340,9 +345,25 @@ class DiagramView(QGraphicsView):
                 if item not in selected:
                     selected = [item]
                 self._dragging_components = selected
+                self._drag_anchor_start_pos = QPointF(item.pos())
                 for comp in selected:
                     self._diagram_scene.record_move_start(comp.instance_id, comp.pos())
-                # Disable rubber-band while dragging a component
+
+                # Capture internal connections and their initial waypoints
+                from diagrammer.items.connection_item import ConnectionItem
+                comp_ids = set(id(c) for c in selected)
+                self._drag_internal_conns = []
+                self._drag_conn_waypoints = {}
+                for si in self._diagram_scene.items():
+                    if isinstance(si, ConnectionItem):
+                        src_in = id(si.source_port.component) in comp_ids
+                        tgt_in = id(si.target_port.component) in comp_ids
+                        if src_in and tgt_in:
+                            self._drag_internal_conns.append(si)
+                            self._drag_conn_waypoints[si.instance_id] = [
+                                QPointF(w) for w in si.vertices
+                            ]
+
                 self.setDragMode(QGraphicsView.DragMode.NoDrag)
 
         super().mousePressEvent(event)
@@ -394,6 +415,17 @@ class DiagramView(QGraphicsView):
 
         # Update connections if components are being dragged
         if self._dragging_components:
+            # Shift internal connection waypoints by the drag delta
+            if self._drag_anchor_start_pos and self._dragging_components:
+                anchor = self._dragging_components[0]
+                delta = anchor.pos() - self._drag_anchor_start_pos
+                for conn in self._drag_internal_conns:
+                    orig_wps = self._drag_conn_waypoints.get(conn.instance_id, [])
+                    if orig_wps:
+                        conn._waypoints = [
+                            QPointF(w.x() + delta.x(), w.y() + delta.y())
+                            for w in orig_wps
+                        ]
             self._diagram_scene.update_connections()
 
         scene_pos = self.mapToScene(event.position().toPoint())
@@ -440,13 +472,38 @@ class DiagramView(QGraphicsView):
 
             # Record move end for undo for all dragged components
             if self._dragging_components:
+                self._diagram_scene.undo_stack.beginMacro("Move group")
+                # Record each component's move WITHOUT triggering per-component updates
                 for comp in self._dragging_components:
-                    self._diagram_scene.record_move_end(comp)
+                    self._diagram_scene.record_move_end(comp, update=False)
                     comp.clear_snap_anchor()
+                # Record waypoint changes for internal connections
+                from diagrammer.commands.connect_command import EditWaypointsCommand
+                for conn in self._drag_internal_conns:
+                    orig_wps = self._drag_conn_waypoints.get(conn.instance_id, [])
+                    new_wps = [QPointF(w) for w in conn.vertices]
+                    if orig_wps != new_wps:
+                        cmd = EditWaypointsCommand(conn, orig_wps, new_wps)
+                        self._diagram_scene.undo_stack.push(cmd)
+                self._diagram_scene.undo_stack.endMacro()
+                # Clear drag state BEFORE update so approach segments aren't suppressed
                 self._dragging_components = []
+                self._drag_internal_conns = []
+                self._drag_conn_waypoints = {}
+                self._drag_anchor_start_pos = None
+                # Now update with drag state cleared
+                self._diagram_scene.update_connections()
                 self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
 
         super().mouseReleaseEvent(event)
+
+        # Safety: always restore rubber-band drag mode after any mouse release,
+        # in case an operation set NoDrag and didn't restore it.
+        if (not self._panning
+                and not self._zoom_window_mode
+                and not self._diagram_scene.is_connecting
+                and self.dragMode() != QGraphicsView.DragMode.RubberBandDrag):
+            self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
 
     def keyPressEvent(self, event) -> None:
         if event.key() == Qt.Key.Key_Escape:
@@ -464,6 +521,30 @@ class DiagramView(QGraphicsView):
             self._diagram_scene.clear_rotation_pivot()
             self._diagram_scene.clear_alignment_ports()
         super().keyPressEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        """Double-click in trace routing mode terminates the wire at the cursor."""
+        if (event.button() == Qt.MouseButton.LeftButton
+                and self._trace_routing
+                and self._diagram_scene.is_connecting):
+            scene_pos = self.mapToScene(event.position().toPoint())
+            snapped = self._snap_if_enabled(scene_pos)
+            # Place an invisible endpoint junction (just for connectivity, not shown)
+            from diagrammer.items.junction_item import JunctionItem
+            junction = JunctionItem()
+            junction.setPos(snapped)
+            junction.setVisible(False)  # endpoint, not a visual junction
+            self._diagram_scene.addItem(junction)
+            if hasattr(self._diagram_scene, 'assign_active_layer'):
+                self._diagram_scene.assign_active_layer(junction)
+            self._diagram_scene._current_target_port = junction.port
+            self._diagram_scene.finish_connection_with_vertices(
+                self._trace_vertices, cursor_pos=snapped,
+            )
+            self._trace_vertices.clear()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
     # -- Drag-and-drop from library panel --
 

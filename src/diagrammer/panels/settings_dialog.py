@@ -212,12 +212,66 @@ class SettingsDialog(QDialog):
         lib_group = QGroupBox("Visible Component Libraries")
         lib_form = QVBoxLayout()
         self._lib_checkboxes: dict[str, QCheckBox] = {}
+        self._parent_checkboxes: dict[str, QCheckBox] = {}
         if library:
+            # Group categories by parent
+            parents: dict[str, list[str]] = {}
+            top_level: list[str] = []
             for cat in sorted(library.categories.keys()):
+                parts = cat.split("/")
+                if len(parts) > 1:
+                    parent = parts[0]
+                    parents.setdefault(parent, []).append(cat)
+                else:
+                    top_level.append(cat)
+
+            def _update_parent(parent_cb, children_cbs):
+                """When parent is toggled, set all children to match."""
+                checked = parent_cb.isChecked()
+                for ccb in children_cbs:
+                    ccb.setChecked(checked)
+                    if not checked:
+                        ccb.setEnabled(False)
+                        ccb.setStyleSheet("color: #999;")
+                    else:
+                        ccb.setEnabled(True)
+                        ccb.setStyleSheet("")
+
+            # Top-level categories (no parent)
+            for cat in top_level:
                 cb = QCheckBox(cat.replace("_", " ").title())
                 cb.setChecked(cat not in settings.hidden_libraries)
                 lib_form.addWidget(cb)
                 self._lib_checkboxes[cat] = cb
+
+            # Parent groups with children
+            for parent, children in sorted(parents.items()):
+                # Parent checkbox
+                all_visible = all(c not in settings.hidden_libraries for c in children)
+                none_visible = all(c in settings.hidden_libraries for c in children)
+                parent_cb = QCheckBox(f"{parent.replace('_', ' ').title()}")
+                parent_cb.setStyleSheet("font-weight: bold; margin-top: 4px;")
+                parent_cb.setChecked(not none_visible)
+                lib_form.addWidget(parent_cb)
+                self._parent_checkboxes[parent] = parent_cb
+
+                # Child checkboxes
+                child_cbs = []
+                for cat in children:
+                    display = cat.split("/")[-1].replace("_", " ").title()
+                    cb = QCheckBox(f"    {display}")
+                    cb.setChecked(cat not in settings.hidden_libraries)
+                    if none_visible:
+                        cb.setEnabled(False)
+                        cb.setStyleSheet("color: #999;")
+                    lib_form.addWidget(cb)
+                    self._lib_checkboxes[cat] = cb
+                    child_cbs.append(cb)
+
+                # Connect parent to children
+                parent_cb.toggled.connect(
+                    lambda checked, p=parent_cb, cs=child_cbs: _update_parent(p, cs)
+                )
         else:
             lib_form.addWidget(QLabel("No library loaded"))
         lib_group.setLayout(lib_form)
@@ -312,5 +366,11 @@ class SettingsDialog(QDialog):
         for cat, cb in self._lib_checkboxes.items():
             if not cb.isChecked():
                 self._settings.hidden_libraries.add(cat)
+        # Also hide all children of unchecked parents
+        for parent, pcb in self._parent_checkboxes.items():
+            if not pcb.isChecked():
+                for cat in self._lib_checkboxes:
+                    if cat.startswith(parent + "/"):
+                        self._settings.hidden_libraries.add(cat)
         # Persist to disk
         self._settings.save()

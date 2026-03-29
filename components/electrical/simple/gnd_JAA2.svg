@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 45 50">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1 {
+        fill: none;
+        stroke: #231f20;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 3px;
+      }
+    </style>
+  </defs>
+  <g id="artwork">
+    <g id="artwork1" data-name="artwork">
+      <polyline class="st1" points="1.2 38.8 8.1 21.2 23.1 21.2 37.8 21.2 30.8 39"/>
+      <line class="st1" x1="16" y1="38.8" x2="22.9" y2="21.6"/>
+    </g>
+  </g>
+  <g id="leads">
+    <line class="st1" x1="23" x2="23" y2="21.2"/>
+  </g>
+  <g id="ports">
+    <g id="ports1" data-name="ports">
+      <circle id="port:left" class="st0" cx="23" r="3"/>
+    </g>
+  </g>
+</svg>

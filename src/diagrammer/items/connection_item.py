@@ -36,6 +36,7 @@ from diagrammer.utils.geometry import (
 # Routing mode constants
 ROUTE_ORTHO = "ortho"        # H/V segments only
 ROUTE_ORTHO_45 = "ortho_45"  # H/V + 45-degree diagonals
+ROUTE_DIRECT = "direct"      # Straight lines between waypoints (for rotated groups)
 
 if TYPE_CHECKING:
     from diagrammer.items.port_item import PortItem
@@ -213,6 +214,8 @@ class ConnectionItem(QGraphicsPathItem):
         and the last is always *p2* so that consecutive expansions can be
         concatenated by dropping the duplicate junction point.
         """
+        if self._routing_mode == ROUTE_DIRECT:
+            return [QPointF(p1), QPointF(p2)]  # straight line, no auto-routing
         if self._routing_mode == ROUTE_ORTHO_45:
             return ortho_route_45(p1, p2)
         return ortho_route(p1, p2)
@@ -239,10 +242,16 @@ class ConnectionItem(QGraphicsPathItem):
                 result.extend(seg)
 
         # Add approach segments at ports to fill the gap left by shortened
-        # leads.  The approach direction accounts for the component's current
-        # rotation/flip via scene-space transform.
+        # leads — but only when not in the middle of a drag operation,
+        # to avoid route corruption during multi-item moves.
         ext = self._corner_radius
-        if ext > 0 and len(result) >= 2:
+        scene = self.scene()
+        is_dragging = False
+        if scene:
+            views = scene.views()
+            if views and hasattr(views[0], '_dragging_components'):
+                is_dragging = bool(views[0]._dragging_components)
+        if ext > 0 and len(result) >= 2 and not is_dragging:
             self._add_lead_approach(result, self._source_port, at_start=True, ext=ext)
             self._add_lead_approach(result, self._target_port, at_start=False, ext=ext)
 
