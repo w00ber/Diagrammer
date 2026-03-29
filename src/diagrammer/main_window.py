@@ -797,7 +797,8 @@ class MainWindow(QMainWindow):
         # Determine the pivot point in scene coords
         if pivot is not None:
             pivot_scene = pivot.scene_center()
-        elif len(comp_targets) == 1 and not junc_targets:
+        elif len(comp_targets) == 1:
+            # Single component: pivot around its first port (junctions orbit around it)
             pivot_scene = comp_targets[0].ports[0].scene_center()
         else:
             # Group: use the center of all items

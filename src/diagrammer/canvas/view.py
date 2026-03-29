@@ -34,7 +34,8 @@ class DiagramView(QGraphicsView):
         self._panning = False
         self._pan_start = QPointF()
         self._dragging_components: list = []  # ComponentItem and/or JunctionItem
-        self._drag_anchor_start_pos: QPointF | None = None  # scene pos of first dragged comp at drag start
+        self._drag_anchor_item = None  # the specific item clicked to start the drag
+        self._drag_anchor_start_pos: QPointF | None = None  # scene pos of anchor at drag start
         self._drag_internal_conns: list = []  # connections with both ends in drag selection
         self._drag_conn_waypoints: dict = {}  # conn instance_id -> initial waypoints
         self._drag_auto_junctions: list = []  # junctions auto-included (need manual move)
@@ -332,6 +333,7 @@ class DiagramView(QGraphicsView):
                     clone.setSelected(True)
                     clone.set_snap_anchor_closest_to(scene_pos)
                     self._dragging_components = [clone]
+                    self._drag_anchor_item = clone
                     self._diagram_scene.record_move_start(clone.instance_id, clone.pos())
                     self.setDragMode(QGraphicsView.DragMode.NoDrag)
                 event.accept()
@@ -368,6 +370,7 @@ class DiagramView(QGraphicsView):
                         self._drag_auto_junctions.append(src_comp)
 
                 self._dragging_components = selected
+                self._drag_anchor_item = item  # the actual clicked item
                 self._drag_anchor_start_pos = QPointF(item.pos())
                 for comp in selected:
                     self._diagram_scene.record_move_start(comp.instance_id, comp.pos())
@@ -438,17 +441,19 @@ class DiagramView(QGraphicsView):
         # Update connections if components are being dragged
         if self._dragging_components:
             # Shift internal connection waypoints by the drag delta
-            if self._drag_anchor_start_pos and self._dragging_components:
-                anchor = self._dragging_components[0]
-                delta = anchor.pos() - self._drag_anchor_start_pos
-                # Manually move auto-included junctions (Qt won't drag
-                # invisible/unselected items)
-                for junc in getattr(self, '_drag_auto_junctions', []):
-                    start = self._diagram_scene._drag_start_positions.get(junc.instance_id)
-                    if start is not None:
-                        junc._skip_snap = True
-                        junc.setPos(start + delta)
-                        junc._skip_snap = False
+            if self._drag_anchor_start_pos and self._drag_anchor_item:
+                delta = self._drag_anchor_item.pos() - self._drag_anchor_start_pos
+                # Manually move ALL junctions in the drag group.
+                # Qt's group drag may skip invisible junctions even if they're
+                # selected.  setPos(start+delta) is idempotent — safe even if
+                # Qt already moved them.
+                for item in self._dragging_components:
+                    if isinstance(item, JunctionItem):
+                        start = self._diagram_scene._drag_start_positions.get(item.instance_id)
+                        if start is not None:
+                            item._skip_snap = True
+                            item.setPos(start + delta)
+                            item._skip_snap = False
                 for conn in self._drag_internal_conns:
                     orig_wps = self._drag_conn_waypoints.get(conn.instance_id, [])
                     if orig_wps:
@@ -519,6 +524,7 @@ class DiagramView(QGraphicsView):
                 self._diagram_scene.undo_stack.endMacro()
                 # Clear drag state BEFORE update so approach segments aren't suppressed
                 self._dragging_components = []
+                self._drag_anchor_item = None
                 self._drag_internal_conns = []
                 self._drag_conn_waypoints = {}
                 self._drag_anchor_start_pos = None
