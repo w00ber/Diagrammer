@@ -664,9 +664,8 @@ class MainWindow(QMainWindow):
             cmd = RotateComponentCommand(targets[0], degrees)
             self._scene.undo_stack.push(cmd)
         else:
-            # Group rotation: rotate around group center.
-            # Compute scene centers BEFORE any transforms are applied.
-            orig_center = QPointF(targets[0]._def.width / 2, targets[0]._def.height / 2)
+            # Group rotation: rigid-body — rotate each component internally
+            # AND orbit its position around the group center.
             scene_centers = [item.mapToScene(QPointF(item._def.width / 2, item._def.height / 2))
                              for item in targets]
             gcx = sum(p.x() for p in scene_centers) / len(scene_centers)
@@ -674,24 +673,22 @@ class MainWindow(QMainWindow):
             rad = math.radians(degrees)
             cos_a, sin_a = math.cos(rad), math.sin(rad)
 
-            # Pre-compute new positions for each component
-            new_positions = []
-            for i, item in enumerate(targets):
-                sc = scene_centers[i]
+            # Pre-compute orbited target positions
+            target_centers = []
+            for sc in scene_centers:
                 dx, dy = sc.x() - gcx, sc.y() - gcy
-                new_sc = QPointF(gcx + dx * cos_a - dy * sin_a,
-                                 gcy + dx * sin_a + dy * cos_a)
-                new_positions.append(new_sc)
+                target_centers.append(QPointF(
+                    gcx + dx * cos_a - dy * sin_a,
+                    gcy + dx * sin_a + dy * cos_a,
+                ))
 
             for i, item in enumerate(targets):
-                old_pos = QPointF(item.pos())
-                # Rotate the component's own angle
+                # Rotate the component internally
                 cmd = RotateComponentCommand(item, degrees)
                 self._scene.undo_stack.push(cmd)
-                # Now compute where pos should be so the scene center lands
-                # at the orbited position. After rotation, mapToScene changed.
+                # Move so the scene center lands at the orbited position
                 cur_sc = item.mapToScene(QPointF(item._def.width / 2, item._def.height / 2))
-                offset = new_positions[i] - cur_sc
+                offset = target_centers[i] - cur_sc
                 new_pos = item.pos() + offset
                 item._skip_snap = True
                 move_cmd = MoveComponentCommand(item, item.pos(), new_pos)
@@ -699,34 +696,25 @@ class MainWindow(QMainWindow):
                 item._skip_snap = False
 
             # Rotate internal connection waypoints around group center.
-            # Freeze and rotate waypoints for ALL internal connections.
-            # For 90° rotations, keep ortho routing. For others, use direct.
-            is_90 = (degrees % 90 == 0)
+            # Rotate existing waypoints of internal connections around group center.
+            # Only rotate USER waypoints — don't freeze expanded routes.
             comp_ids = set(id(c) for c in targets)
             for item in self._scene.items():
                 if not isinstance(item, ConnectionItem):
                     continue
                 if (id(item.source_port.component) in comp_ids and
                         id(item.target_port.component) in comp_ids):
-                    # Freeze the expanded route into waypoints
-                    expanded = item._expanded
-                    old_wps_orig = [QPointF(w) for w in item.vertices]
-                    freeze_wps = [QPointF(p) for p in expanded[1:-1]] if len(expanded) > 2 else []
-
-                    if freeze_wps:
+                    old_wps = [QPointF(w) for w in item.vertices]
+                    if old_wps:
                         new_wps = []
-                        for wp in freeze_wps:
+                        for wp in old_wps:
                             dx, dy = wp.x() - gcx, wp.y() - gcy
                             new_wps.append(QPointF(
                                 gcx + dx * cos_a - dy * sin_a,
                                 gcy + dx * sin_a + dy * cos_a,
                             ))
-                        cmd = EditWaypointsCommand(item, old_wps_orig, new_wps)
+                        cmd = EditWaypointsCommand(item, old_wps, new_wps)
                         self._scene.undo_stack.push(cmd)
-
-                    if not is_90:
-                        from diagrammer.items.connection_item import ROUTE_DIRECT
-                        item.routing_mode = ROUTE_DIRECT
 
         self._scene.undo_stack.endMacro()
         self._scene.update_connections()
@@ -774,25 +762,18 @@ class MainWindow(QMainWindow):
             cos_a, sin_a = math.cos(rad), math.sin(rad)
             px, py = pivot_scene.x(), pivot_scene.y()
             comp_ids = set(id(c) for c in targets)
-            is_90 = (degrees % 90 == 0)
             for item in self._scene.items():
                 if not isinstance(item, ConnectionItem):
                     continue
                 if (id(item.source_port.component) in comp_ids and
                         id(item.target_port.component) in comp_ids):
-                    if is_90:
-                        continue
-                    from diagrammer.items.connection_item import ROUTE_DIRECT
-                    expanded = item._expanded
-                    old_wps_orig = [QPointF(w) for w in item.vertices]
-                    freeze_wps = [QPointF(p) for p in expanded[1:-1]] if len(expanded) > 2 else []
-                    if freeze_wps:
+                    old_wps = [QPointF(w) for w in item.vertices]
+                    if old_wps:
                         new_wps = [QPointF(px + (w.x()-px)*cos_a - (w.y()-py)*sin_a,
                                            py + (w.x()-px)*sin_a + (w.y()-py)*cos_a)
-                                   for w in freeze_wps]
-                        cmd = EditWaypointsCommand(item, old_wps_orig, new_wps)
+                                   for w in old_wps]
+                        cmd = EditWaypointsCommand(item, old_wps, new_wps)
                         self._scene.undo_stack.push(cmd)
-                    item.routing_mode = ROUTE_DIRECT
 
         self._scene.undo_stack.endMacro()
         self._scene.update_connections()
@@ -850,17 +831,15 @@ class MainWindow(QMainWindow):
                 continue
             if (id(item.source_port.component) in comp_set and
                     id(item.target_port.component) in comp_set):
-                expanded = item._expanded
-                old_wps_orig = [QPointF(w) for w in item.vertices]
-                freeze_wps = [QPointF(p) for p in expanded[1:-1]] if len(expanded) > 2 else []
-                if freeze_wps:
+                old_wps = [QPointF(w) for w in item.vertices]
+                if old_wps:
                     new_wps = []
-                    for wp in freeze_wps:
+                    for wp in old_wps:
                         if horizontal:
                             new_wps.append(QPointF(2 * group_cx - wp.x(), wp.y()))
                         else:
                             new_wps.append(QPointF(wp.x(), 2 * group_cy - wp.y()))
-                    cmd = EditWaypointsCommand(item, old_wps_orig, new_wps)
+                    cmd = EditWaypointsCommand(item, old_wps, new_wps)
                     self._scene.undo_stack.push(cmd)
 
         self._scene.undo_stack.endMacro()
