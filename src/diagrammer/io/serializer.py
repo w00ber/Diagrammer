@@ -18,6 +18,7 @@ class DiagramSerializer:
     @staticmethod
     def save(scene: QGraphicsScene, path: str | Path) -> None:
         """Serialize all scene items to a .dgm JSON file."""
+        from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.items.junction_item import JunctionItem
@@ -36,6 +37,7 @@ class DiagramSerializer:
             "connections": [],
             "junctions": [],
             "shapes": [],
+            "annotations": [],
         }
 
         # Serialize components
@@ -62,11 +64,17 @@ class DiagramSerializer:
             elif isinstance(item, LineItem):
                 data["shapes"].append(_serialize_line(item))
 
+        # Serialize annotations
+        for item in scene.items():
+            if isinstance(item, AnnotationItem):
+                data["annotations"].append(_serialize_annotation(item))
+
         Path(path).write_text(json.dumps(data, indent=2))
 
     @staticmethod
     def load(scene: QGraphicsScene, path: str | Path, library=None) -> None:
         """Load a .dgm JSON file and populate the scene."""
+        from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.items.junction_item import JunctionItem
@@ -189,6 +197,31 @@ class DiagramSerializer:
                 item.fill_color = QColor(sd["fill_color"])
             scene.addItem(item)
 
+        # Load annotations
+        for ad in data.get("annotations", []):
+            item = AnnotationItem(instance_id=ad.get("id"))
+            # Restore font properties BEFORE setting text (affects math rendering)
+            if "font_family" in ad:
+                item.font_family = ad["font_family"]
+            if "font_size" in ad:
+                item.font_size = ad["font_size"]
+            if "font_bold" in ad:
+                item.font_bold = ad["font_bold"]
+            if "font_italic" in ad:
+                item.font_italic = ad["font_italic"]
+            if "text_color" in ad:
+                item.text_color = QColor(ad["text_color"])
+            # Use source_text if available (preserves $..$ math for re-editing)
+            if "source_text" in ad:
+                item.text_content = ad["source_text"]
+            elif "html" in ad:
+                item.setHtml(ad["html"])
+            elif "text" in ad:
+                item.setPlainText(ad["text"])
+            item.setPos(QPointF(ad["pos"][0], ad["pos"][1]))
+            item._layer_index = ad.get("layer", 0)
+            scene.addItem(item)
+
         # Update all connection routes
         from diagrammer.canvas.scene import DiagramScene
         if isinstance(scene, DiagramScene):
@@ -267,5 +300,20 @@ def _serialize_line(item) -> dict:
         "end": [item.line_end.x(), item.line_end.y()],
         "stroke_color": item.stroke_color.name(),
         "stroke_width": item.stroke_width,
+        "layer": getattr(item, '_layer_index', 0),
+    }
+
+
+def _serialize_annotation(item) -> dict:
+    return {
+        "id": item.instance_id,
+        "pos": [item.pos().x(), item.pos().y()],
+        "source_text": item.source_text,
+        "html": item.html_content,
+        "font_family": item.font_family,
+        "font_size": item.font_size,
+        "font_bold": item.font_bold,
+        "font_italic": item.font_italic,
+        "text_color": item.text_color.name(),
         "layer": getattr(item, '_layer_index', 0),
     }

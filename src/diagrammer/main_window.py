@@ -314,7 +314,7 @@ class MainWindow(QMainWindow):
 
         self._trace_mode_act = QAction("&Trace Routing Mode", self)
         self._trace_mode_act.setCheckable(True)
-        self._trace_mode_act.setShortcut(QKeySequence(Qt.Key.Key_T))
+        self._trace_mode_act.setShortcut(QKeySequence(Qt.Key.Key_W))
         self._trace_mode_act.toggled.connect(self._toggle_trace_mode)
         routing_menu.addAction(self._trace_mode_act)
 
@@ -374,6 +374,13 @@ class MainWindow(QMainWindow):
         draw_line_act = QAction("&Line", self)
         draw_line_act.triggered.connect(lambda: self._add_shape("line"))
         draw_menu.addAction(draw_line_act)
+
+        draw_menu.addSeparator()
+
+        draw_text_act = QAction("&Text", self)
+        draw_text_act.setShortcut(QKeySequence("T"))
+        draw_text_act.triggered.connect(self._add_annotation)
+        draw_menu.addAction(draw_text_act)
 
         # ---- Help ----
         help_menu = menu_bar.addMenu("&Help")
@@ -629,12 +636,13 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------- Delete / Transform
 
     def _select_all(self) -> None:
+        from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.items.junction_item import JunctionItem
         from diagrammer.items.shape_item import LineItem, ShapeItem
         for item in self._scene.items():
-            if isinstance(item, (ComponentItem, ConnectionItem, JunctionItem, ShapeItem, LineItem)):
+            if isinstance(item, (ComponentItem, ConnectionItem, JunctionItem, ShapeItem, LineItem, AnnotationItem)):
                 if item.flags() & item.GraphicsItemFlag.ItemIsSelectable:
                     item.setSelected(True)
 
@@ -1021,7 +1029,8 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------- Cut / Copy / Paste
 
     def _copy(self) -> None:
-        """Copy selected components, junctions, and connections between them to clipboard."""
+        """Copy selected components, junctions, annotations, and connections to clipboard."""
+        from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.items.junction_item import JunctionItem
@@ -1034,7 +1043,11 @@ class MainWindow(QMainWindow):
             item for item in self._scene.selectedItems()
             if isinstance(item, JunctionItem)
         ]
-        if not selected_comps and not selected_juncs:
+        selected_annots = [
+            item for item in self._scene.selectedItems()
+            if isinstance(item, AnnotationItem)
+        ]
+        if not selected_comps and not selected_juncs and not selected_annots:
             return
 
         # Use a combined set for internal connection detection
@@ -1049,8 +1062,7 @@ class MainWindow(QMainWindow):
                         id(item.target_port.component) in item_set):
                     selected_conns.append(item)
 
-        # Serialize to clipboard: store component defs, positions, transforms, and connection topology
-        # Components and junctions share a single index space for connection references
+        # Serialize to clipboard
         self._clipboard = []
         id_map: dict[str, int] = {}  # instance_id -> clipboard index
         idx = 0
@@ -1074,6 +1086,17 @@ class MainWindow(QMainWindow):
                 "pos": (junc.pos().x(), junc.pos().y()),
             })
             idx += 1
+        for annot in selected_annots:
+            self._clipboard.append({
+                "type": "annotation",
+                "pos": (annot.pos().x(), annot.pos().y()),
+                "source_text": annot.source_text,
+                "font_family": annot.font_family,
+                "font_size": annot.font_size,
+                "font_bold": annot.font_bold,
+                "font_italic": annot.font_italic,
+                "text_color": annot.text_color.name(),
+            })
         for conn in selected_conns:
             src_idx = id_map.get(conn.source_port.component.instance_id)
             tgt_idx = id_map.get(conn.target_port.component.instance_id)
@@ -1104,12 +1127,14 @@ class MainWindow(QMainWindow):
         self._scene.undo_stack.beginMacro("Paste")
         from diagrammer.commands.add_command import AddComponentCommand
         from diagrammer.commands.connect_command import CreateConnectionCommand
+        from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.junction_item import JunctionItem
 
         PASTE_OFFSET = 40.0  # offset pasted items from originals
 
-        # First pass: create components and junctions (they share an index space)
-        new_items: list = []  # ComponentItem or JunctionItem or None
+        # First pass: create components, junctions, and annotations
+        new_items: list = []  # ComponentItem, JunctionItem, AnnotationItem, or None
+        pasted_annotations: list = []
         for entry in self._clipboard:
             if entry["type"] == "component":
                 comp_def = self._library.get(entry["def_key"])
@@ -1145,6 +1170,22 @@ class MainWindow(QMainWindow):
                 junc._skip_snap = False
                 self._scene.addItem(junc)
                 new_items.append(junc)
+            elif entry["type"] == "annotation":
+                annot = AnnotationItem(entry.get("source_text", "Text"))
+                pos = QPointF(entry["pos"][0] + PASTE_OFFSET, entry["pos"][1] + PASTE_OFFSET)
+                if "font_family" in entry:
+                    annot.font_family = entry["font_family"]
+                if "font_size" in entry:
+                    annot.font_size = entry["font_size"]
+                if entry.get("font_bold"):
+                    annot.font_bold = True
+                if entry.get("font_italic"):
+                    annot.font_italic = True
+                if "text_color" in entry:
+                    annot.text_color = QColor(entry["text_color"])
+                annot.setPos(pos)
+                self._scene.addItem(annot)
+                pasted_annotations.append(annot)
 
         # Second pass: create connections
         for entry in self._clipboard:
@@ -1192,6 +1233,8 @@ class MainWindow(QMainWindow):
         for item in new_items:
             if item is not None:
                 item.setSelected(True)
+        for item in pasted_annotations:
+            item.setSelected(True)
 
     # ----------------------------------------------------------- Shape drawing
 
@@ -1217,6 +1260,45 @@ class MainWindow(QMainWindow):
 
         cmd = AddShapeCommand(self._scene, item, snapped)
         self._scene.undo_stack.push(cmd)
+
+    def _add_annotation(self) -> None:
+        """Add a text annotation at the center of the current view."""
+        from diagrammer.items.annotation_item import AnnotationItem
+
+        center = self._view.mapToScene(
+            self._view.viewport().rect().center()
+        )
+        snapped = self._view.snap(center)
+
+        item = AnnotationItem("Text")
+        item.setPos(snapped)
+
+        # Undoable add: push a command that adds/removes the item
+        from PySide6.QtGui import QUndoCommand
+
+        class AddAnnotationCommand(QUndoCommand):
+            def __init__(self, scene, annotation):
+                super().__init__("Add text annotation")
+                self._scene = scene
+                self._item = annotation
+                self._first = True
+
+            def redo(self):
+                if self._first:
+                    self._first = False
+                    return  # item added manually below
+                self._scene.addItem(self._item)
+
+            def undo(self):
+                self._scene.removeItem(self._item)
+
+        cmd = AddAnnotationCommand(self._scene, item)
+        self._scene.addItem(item)
+        self._scene.undo_stack.push(cmd)
+
+        self._scene.clearSelection()
+        item.setSelected(True)
+        item.start_editing()
 
     # --------------------------------------------------------- File operations
 

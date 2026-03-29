@@ -5,7 +5,9 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QColorDialog,
+    QComboBox,
     QDockWidget,
     QDoubleSpinBox,
     QFormLayout,
@@ -22,6 +24,7 @@ class PropertiesPanel(QDockWidget):
     def __init__(self, parent=None):
         super().__init__("Properties", parent)
         self._current_item = None
+        self._scene = None
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setInterval(250)
         self._refresh_timer.timeout.connect(self._live_refresh)
@@ -47,12 +50,27 @@ class PropertiesPanel(QDockWidget):
             Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
         )
 
+    def _push_style(self, item, prop: str, old_val, new_val) -> None:
+        """Push an undoable style change onto the scene's undo stack."""
+        if old_val == new_val:
+            return
+        from diagrammer.commands.style_command import ChangeStyleCommand
+        if self._scene and hasattr(self._scene, 'undo_stack'):
+            cmd = ChangeStyleCommand(item, prop, old_val, new_val)
+            self._scene.undo_stack.push(cmd)
+        else:
+            # Fallback: direct mutation
+            setattr(item, prop, new_val)
+            item.update()
+
     def update_for_selection(self, scene) -> None:
+        from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.items.junction_item import JunctionItem
         from diagrammer.items.shape_item import LineItem, ShapeItem
 
+        self._scene = scene
         selected = scene.selectedItems()
         self._clear_form()
         self._current_item = None
@@ -80,6 +98,8 @@ class PropertiesPanel(QDockWidget):
             self._build_component_form(item)
         elif isinstance(item, (ShapeItem, LineItem)):
             self._build_shape_form(item)
+        elif isinstance(item, AnnotationItem):
+            self._build_annotation_form(item)
         elif isinstance(item, JunctionItem):
             self._info_label.setText("Junction")
             self._info_label.show()
@@ -125,7 +145,9 @@ class PropertiesPanel(QDockWidget):
         width_spin.setValue(item.line_width)
         width_spin.setSuffix(" pt")
         width_spin.setSingleStep(0.5)
-        width_spin.valueChanged.connect(lambda v: setattr(item, 'line_width', v) or item.update())
+        width_spin.valueChanged.connect(
+            lambda v, it=item: self._push_style(it, 'line_width', it.line_width, v)
+        )
         self._form.addRow("Width:", width_spin)
 
         radius_spin = QDoubleSpinBox()
@@ -133,11 +155,15 @@ class PropertiesPanel(QDockWidget):
         radius_spin.setValue(item.corner_radius)
         radius_spin.setSuffix(" pt")
         radius_spin.setSingleStep(1.0)
-        radius_spin.valueChanged.connect(lambda v: _set_corner_radius(item, v))
+        radius_spin.valueChanged.connect(
+            lambda v, it=item: self._push_style(it, 'corner_radius', it.corner_radius, v)
+        )
         self._form.addRow("Corner radius:", radius_spin)
 
-        color_btn = self._make_color_button(item.line_color,
-                                             lambda c: setattr(item, 'line_color', c) or item.update())
+        color_btn = self._make_color_button(
+            item.line_color,
+            lambda c, it=item: self._push_style(it, 'line_color', it.line_color, c),
+        )
         self._form.addRow("Color:", color_btn)
 
     # -- Component form --
@@ -187,17 +213,21 @@ class PropertiesPanel(QDockWidget):
         width_spin.setValue(item.stroke_width)
         width_spin.setSuffix(" pt")
         width_spin.setSingleStep(0.5)
-        width_spin.valueChanged.connect(lambda v: setattr(item, 'stroke_width', v) or item.update())
+        width_spin.valueChanged.connect(
+            lambda v, it=item: self._push_style(it, 'stroke_width', it.stroke_width, v)
+        )
         self._form.addRow("Stroke:", width_spin)
 
-        color_btn = self._make_color_button(item.stroke_color,
-                                             lambda c: setattr(item, 'stroke_color', c) or item.update())
+        color_btn = self._make_color_button(
+            item.stroke_color,
+            lambda c, it=item: self._push_style(it, 'stroke_color', it.stroke_color, c),
+        )
         self._form.addRow("Stroke color:", color_btn)
 
         if isinstance(item, ShapeItem):
             fill_btn = self._make_color_button(
                 item.fill_color,
-                lambda c: setattr(item, 'fill_color', c) or item.update(),
+                lambda c, it=item: self._push_style(it, 'fill_color', it.fill_color, c),
                 alpha=True,
             )
             self._form.addRow("Fill:", fill_btn)
@@ -216,6 +246,73 @@ class PropertiesPanel(QDockWidget):
             h_spin.valueChanged.connect(lambda v: item.resize(item.shape_width, v))
             self._form.addRow("Height:", h_spin)
 
+    # -- Annotation form --
+
+    def _build_annotation_form(self, item) -> None:
+        from diagrammer.items.annotation_item import FONT_FAMILIES
+        self._form.addRow(QLabel("<b>Text Annotation</b>"))
+
+        # Font family
+        family_combo = QComboBox()
+        family_combo.addItems(FONT_FAMILIES)
+        current = item.font_family
+        if current in FONT_FAMILIES:
+            family_combo.setCurrentText(current)
+        else:
+            family_combo.addItem(current)
+            family_combo.setCurrentText(current)
+        family_combo.currentTextChanged.connect(
+            lambda v, it=item: self._push_style(it, 'font_family', it.font_family, v)
+        )
+        self._form.addRow("Font:", family_combo)
+
+        # Font size
+        size_spin = QDoubleSpinBox()
+        size_spin.setRange(4.0, 144.0)
+        size_spin.setValue(item.font_size)
+        size_spin.setSuffix(" pt")
+        size_spin.setSingleStep(1.0)
+        size_spin.valueChanged.connect(
+            lambda v, it=item: self._push_style(it, 'font_size', it.font_size, v)
+        )
+        self._form.addRow("Size:", size_spin)
+
+        # Bold / Italic
+        bold_cb = QCheckBox("Bold")
+        bold_cb.setChecked(item.font_bold)
+        bold_cb.toggled.connect(
+            lambda v, it=item: self._push_style(it, 'font_bold', it.font_bold, v)
+        )
+        self._form.addRow("", bold_cb)
+
+        italic_cb = QCheckBox("Italic")
+        italic_cb.setChecked(item.font_italic)
+        italic_cb.toggled.connect(
+            lambda v, it=item: self._push_style(it, 'font_italic', it.font_italic, v)
+        )
+        self._form.addRow("", italic_cb)
+
+        # Text color
+        color_btn = self._make_color_button(
+            item.text_color,
+            lambda c, it=item: self._push_style(it, 'text_color', it.text_color, c),
+        )
+        self._form.addRow("Color:", color_btn)
+
+        # Math hint
+        self._form.addRow(QLabel("<small>Wrap LaTeX in $...$ for math</small>"))
+
+        # Position (live-updating)
+        pos_x = QLabel(f"{item.pos().x():.1f}")
+        self._form.addRow("X:", pos_x)
+        pos_y = QLabel(f"{item.pos().y():.1f}")
+        self._form.addRow("Y:", pos_y)
+
+        self._live_widgets = {"pos_x": pos_x, "pos_y": pos_y}
+        self._refresh_timer.start()
+
+    # -- Multi-selection form --
+
     def _build_multi_form(self, items: list) -> None:
         """Show shared editable properties for multiple selected items."""
         from diagrammer.items.connection_item import ConnectionItem
@@ -233,9 +330,12 @@ class PropertiesPanel(QDockWidget):
             width_spin.setSuffix(" pt")
             width_spin.setSingleStep(0.5)
             def set_all_width(v):
+                if self._scene and hasattr(self._scene, 'undo_stack'):
+                    self._scene.undo_stack.beginMacro("Set width")
                 for c in conns:
-                    c.line_width = v
-                    c.update()
+                    self._push_style(c, 'line_width', c.line_width, v)
+                if self._scene and hasattr(self._scene, 'undo_stack'):
+                    self._scene.undo_stack.endMacro()
             width_spin.valueChanged.connect(set_all_width)
             self._form.addRow("Width:", width_spin)
 
@@ -246,17 +346,29 @@ class PropertiesPanel(QDockWidget):
             radius_spin.setSuffix(" pt")
             radius_spin.setSingleStep(1.0)
             def set_all_radius(v):
+                if self._scene and hasattr(self._scene, 'undo_stack'):
+                    self._scene.undo_stack.beginMacro("Set corner radius")
                 for c in conns:
-                    _set_corner_radius(c, v)
+                    self._push_style(c, 'corner_radius', c.corner_radius, v)
+                if self._scene and hasattr(self._scene, 'undo_stack'):
+                    self._scene.undo_stack.endMacro()
             radius_spin.valueChanged.connect(set_all_radius)
             self._form.addRow("Corner radius:", radius_spin)
 
             # Color (shared)
             color_btn = self._make_color_button(
                 conns[0].line_color,
-                lambda c: [setattr(conn, 'line_color', c) or conn.update() for conn in conns],
+                lambda c: self._set_all_color(conns, c),
             )
             self._form.addRow("Color:", color_btn)
+
+    def _set_all_color(self, conns, color) -> None:
+        if self._scene and hasattr(self._scene, 'undo_stack'):
+            self._scene.undo_stack.beginMacro("Set color")
+        for c in conns:
+            self._push_style(c, 'line_color', c.line_color, color)
+        if self._scene and hasattr(self._scene, 'undo_stack'):
+            self._scene.undo_stack.endMacro()
 
     def _make_color_button(self, color: QColor, callback, alpha: bool = False) -> QPushButton:
         btn = QPushButton()
@@ -272,12 +384,3 @@ class PropertiesPanel(QDockWidget):
 
         btn.clicked.connect(pick)
         return btn
-
-
-def _set_corner_radius(item, value: float) -> None:
-    item.corner_radius = value
-    item.update_route()
-    # Update connected components' lead shortening
-    scene = item.scene()
-    if scene and hasattr(scene, 'update_connections'):
-        scene.update_connections()

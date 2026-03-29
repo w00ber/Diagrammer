@@ -22,6 +22,10 @@
         fill: #fff;
       }
 
+      .st4 {
+        display: none;
+      }
+
       .st2 {
         stroke: #999;
         stroke-miterlimit: 10;
@@ -29,7 +33,7 @@
       }
     </style>
   </defs>
-  <g id="guides">
+  <g id="guides" class="st4">
     <rect class="st2" y="20" width="50" height="20"/>
   </g>
   <g id="ports">

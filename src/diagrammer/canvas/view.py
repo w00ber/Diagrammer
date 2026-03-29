@@ -558,7 +558,76 @@ class DiagramView(QGraphicsView):
             # Clear rotation pivot and alignment selection on Escape
             self._diagram_scene.clear_rotation_pivot()
             self._diagram_scene.clear_alignment_ports()
+
+        # Arrow keys: nudge selected items (20% of grid), or pan if nothing selected
+        if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right):
+            selected = [
+                i for i in self._diagram_scene.selectedItems()
+                if hasattr(i, 'setPos')
+            ]
+            if selected:
+                self._nudge_selected(selected, event.key())
+                event.accept()
+                return
+
         super().keyPressEvent(event)
+
+    def _nudge_selected(self, items, key) -> None:
+        """Move selected items by 20% of the grid spacing (fine nudge)."""
+        from diagrammer.commands.add_command import MoveComponentCommand
+        from diagrammer.commands.connect_command import EditWaypointsCommand
+        from diagrammer.items.connection_item import ConnectionItem
+
+        step = self._grid_spacing * 0.2
+        dx, dy = 0.0, 0.0
+        if key == Qt.Key.Key_Left:
+            dx = -step
+        elif key == Qt.Key.Key_Right:
+            dx = step
+        elif key == Qt.Key.Key_Up:
+            dy = -step
+        elif key == Qt.Key.Key_Down:
+            dy = step
+
+        # Split into movable items and selected connections
+        movable = [i for i in items if not isinstance(i, ConnectionItem)]
+        selected_conns = [i for i in items if isinstance(i, ConnectionItem)]
+
+        if not movable and not selected_conns:
+            return
+
+        self._diagram_scene.undo_stack.beginMacro("Nudge")
+
+        # Move items (components, junctions, annotations, shapes)
+        for item in movable:
+            old_pos = item.pos()
+            new_pos = QPointF(old_pos.x() + dx, old_pos.y() + dy)
+            cmd = MoveComponentCommand(item, old_pos, new_pos)
+            self._diagram_scene.undo_stack.push(cmd)
+
+        # Shift waypoints of internal connections (both ends in movable set)
+        item_ids = set(id(i) for i in movable)
+        for si in self._diagram_scene.items():
+            if not isinstance(si, ConnectionItem):
+                continue
+            if (id(si.source_port.component) in item_ids and
+                    id(si.target_port.component) in item_ids):
+                old_wps = [QPointF(w) for w in si.vertices]
+                if old_wps:
+                    new_wps = [QPointF(w.x() + dx, w.y() + dy) for w in old_wps]
+                    cmd = EditWaypointsCommand(si, old_wps, new_wps)
+                    self._diagram_scene.undo_stack.push(cmd)
+
+        # Shift waypoints of explicitly selected connections
+        for conn in selected_conns:
+            old_wps = [QPointF(w) for w in conn.vertices]
+            if old_wps:
+                new_wps = [QPointF(w.x() + dx, w.y() + dy) for w in old_wps]
+                cmd = EditWaypointsCommand(conn, old_wps, new_wps)
+                self._diagram_scene.undo_stack.push(cmd)
+
+        self._diagram_scene.undo_stack.endMacro()
+        self._diagram_scene.update_connections()
 
     def mouseDoubleClickEvent(self, event) -> None:
         """Double-click in trace routing mode terminates the wire at the cursor."""
@@ -613,6 +682,55 @@ class DiagramView(QGraphicsView):
             event.acceptProposedAction()
         else:
             super().dropEvent(event)
+
+    # -- Context menu --
+
+    def contextMenuEvent(self, event) -> None:
+        from PySide6.QtWidgets import QMenu
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.shape_item import LineItem, ShapeItem
+        from diagrammer.panels.settings_dialog import app_settings
+
+        scene_pos = self.mapToScene(event.pos())
+        item = self._item_at_pos(event.pos())
+        menu = QMenu(self)
+
+        if isinstance(item, ConnectionItem):
+            adopt_act = menu.addAction("Use as Default Style")
+            adopt_act.triggered.connect(lambda: self._adopt_connection_style(item))
+        elif isinstance(item, (ShapeItem, LineItem)):
+            adopt_act = menu.addAction("Use as Default Style")
+            adopt_act.triggered.connect(lambda: self._adopt_shape_style(item))
+
+        # Always offer delete if something is selected
+        selected = self._diagram_scene.selectedItems()
+        if selected:
+            if menu.actions():
+                menu.addSeparator()
+            del_act = menu.addAction("Delete")
+            del_act.triggered.connect(lambda: self.parent()._delete_selected())
+
+        if menu.actions():
+            menu.exec(event.globalPos())
+        event.accept()
+
+    def _adopt_connection_style(self, item) -> None:
+        """Set global defaults to match this connection's style."""
+        from diagrammer.panels.settings_dialog import app_settings
+        app_settings.default_line_width = item.line_width
+        app_settings.default_line_color = item.line_color
+        app_settings.default_corner_radius = item.corner_radius
+        app_settings.save()
+
+    def _adopt_shape_style(self, item) -> None:
+        """Set global defaults to match this shape's style."""
+        from diagrammer.panels.settings_dialog import app_settings
+        from diagrammer.items.shape_item import ShapeItem
+        app_settings.default_line_width = item.stroke_width
+        app_settings.default_line_color = item.stroke_color
+        if isinstance(item, ShapeItem):
+            app_settings.default_component_fill = item.fill_color
+        app_settings.save()
 
     # -- Fit view --
 
