@@ -559,14 +559,15 @@ class DiagramScene(QGraphicsScene):
         self._drag_start_positions[instance_id] = QPointF(pos)
 
     def record_move_end(self, item, update: bool = True) -> None:
-        """Record the end of a component drag and push a MoveCommand if it moved.
+        """Record the end of a component/junction drag and push a MoveCommand if it moved.
 
         Args:
             update: If True (default), update connections and check auto-join.
                    Set to False during group moves to defer updates.
         """
         from diagrammer.items.component_item import ComponentItem
-        if not isinstance(item, ComponentItem):
+        from diagrammer.items.junction_item import JunctionItem
+        if not isinstance(item, (ComponentItem, JunctionItem)):
             return
         old_pos = self._drag_start_positions.pop(item.instance_id, None)
         if old_pos is None or old_pos == item.pos():
@@ -576,7 +577,8 @@ class DiagramScene(QGraphicsScene):
         self._undo_stack.push(cmd)
         if update:
             self.update_connections()
-            self.auto_join_overlapping_ports(item)
+            if isinstance(item, ComponentItem):
+                self.auto_join_overlapping_ports(item)
 
     # -- Rotation pivot port --
 

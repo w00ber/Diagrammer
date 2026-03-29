@@ -13,6 +13,7 @@ from diagrammer.canvas.grid import (
 )
 from diagrammer.canvas.scene import DiagramScene
 from diagrammer.items.component_item import ComponentItem
+from diagrammer.items.junction_item import JunctionItem
 from diagrammer.items.port_item import PortItem
 from diagrammer.panels.library_panel import COMPONENT_MIME_TYPE
 
@@ -32,10 +33,11 @@ class DiagramView(QGraphicsView):
         self._snap_enabled = True
         self._panning = False
         self._pan_start = QPointF()
-        self._dragging_components: list[ComponentItem] = []
+        self._dragging_components: list = []  # ComponentItem and/or JunctionItem
         self._drag_anchor_start_pos: QPointF | None = None  # scene pos of first dragged comp at drag start
         self._drag_internal_conns: list = []  # connections with both ends in drag selection
         self._drag_conn_waypoints: dict = {}  # conn instance_id -> initial waypoints
+        self._drag_auto_junctions: list = []  # junctions auto-included (need manual move)
         self._trace_routing = False
         self._trace_vertices: list[QPointF] = []
         self._rubber_band_active = False
@@ -302,11 +304,11 @@ class DiagramView(QGraphicsView):
                 event.accept()
                 return
 
-            # -- Shift+click → toggle multi-select (components, connections, shapes) --
+            # -- Shift+click → toggle multi-select (components, connections, shapes, junctions) --
             if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                 from diagrammer.items.connection_item import ConnectionItem
                 from diagrammer.items.shape_item import LineItem, ShapeItem
-                if isinstance(item, (ComponentItem, ConnectionItem, ShapeItem, LineItem)):
+                if isinstance(item, (ComponentItem, ConnectionItem, ShapeItem, LineItem, JunctionItem)):
                     item.setSelected(not item.isSelected())
                     event.accept()
                     return
@@ -335,22 +337,42 @@ class DiagramView(QGraphicsView):
                 event.accept()
                 return
 
-            # -- Click on a component → set up snap anchor and record move start --
-            elif isinstance(item, ComponentItem):
-                item.set_snap_anchor_closest_to(scene_pos)
+            # -- Click on a component or junction → set up snap anchor and record move start --
+            elif isinstance(item, (ComponentItem, JunctionItem)):
+                if isinstance(item, ComponentItem):
+                    item.set_snap_anchor_closest_to(scene_pos)
                 selected = [
                     i for i in self._diagram_scene.selectedItems()
-                    if isinstance(i, ComponentItem)
+                    if isinstance(i, (ComponentItem, JunctionItem))
                 ]
                 if item not in selected:
                     selected = [item]
+
+                # Auto-include connected junctions not in the selection
+                # (e.g. invisible T-junction markers on wires)
+                from diagrammer.items.connection_item import ConnectionItem
+                selected_ids = set(id(c) for c in selected)
+                self._drag_auto_junctions = []  # junctions we added that Qt won't drag
+                for si in self._diagram_scene.items():
+                    if not isinstance(si, ConnectionItem):
+                        continue
+                    src_comp = si.source_port.component
+                    tgt_comp = si.target_port.component
+                    if id(src_comp) in selected_ids and isinstance(tgt_comp, JunctionItem) and id(tgt_comp) not in selected_ids:
+                        selected.append(tgt_comp)
+                        selected_ids.add(id(tgt_comp))
+                        self._drag_auto_junctions.append(tgt_comp)
+                    elif id(tgt_comp) in selected_ids and isinstance(src_comp, JunctionItem) and id(src_comp) not in selected_ids:
+                        selected.append(src_comp)
+                        selected_ids.add(id(src_comp))
+                        self._drag_auto_junctions.append(src_comp)
+
                 self._dragging_components = selected
                 self._drag_anchor_start_pos = QPointF(item.pos())
                 for comp in selected:
                     self._diagram_scene.record_move_start(comp.instance_id, comp.pos())
 
                 # Capture internal connections and their initial waypoints
-                from diagrammer.items.connection_item import ConnectionItem
                 comp_ids = set(id(c) for c in selected)
                 self._drag_internal_conns = []
                 self._drag_conn_waypoints = {}
@@ -419,6 +441,14 @@ class DiagramView(QGraphicsView):
             if self._drag_anchor_start_pos and self._dragging_components:
                 anchor = self._dragging_components[0]
                 delta = anchor.pos() - self._drag_anchor_start_pos
+                # Manually move auto-included junctions (Qt won't drag
+                # invisible/unselected items)
+                for junc in getattr(self, '_drag_auto_junctions', []):
+                    start = self._diagram_scene._drag_start_positions.get(junc.instance_id)
+                    if start is not None:
+                        junc._skip_snap = True
+                        junc.setPos(start + delta)
+                        junc._skip_snap = False
                 for conn in self._drag_internal_conns:
                     orig_wps = self._drag_conn_waypoints.get(conn.instance_id, [])
                     if orig_wps:
@@ -470,13 +500,14 @@ class DiagramView(QGraphicsView):
                 event.accept()
                 return
 
-            # Record move end for undo for all dragged components
+            # Record move end for undo for all dragged items
             if self._dragging_components:
                 self._diagram_scene.undo_stack.beginMacro("Move group")
-                # Record each component's move WITHOUT triggering per-component updates
+                # Record each item's move WITHOUT triggering per-item updates
                 for comp in self._dragging_components:
                     self._diagram_scene.record_move_end(comp, update=False)
-                    comp.clear_snap_anchor()
+                    if hasattr(comp, 'clear_snap_anchor'):
+                        comp.clear_snap_anchor()
                 # Record waypoint changes for internal connections
                 from diagrammer.commands.connect_command import EditWaypointsCommand
                 for conn in self._drag_internal_conns:
@@ -491,6 +522,7 @@ class DiagramView(QGraphicsView):
                 self._drag_internal_conns = []
                 self._drag_conn_waypoints = {}
                 self._drag_anchor_start_pos = None
+                self._drag_auto_junctions = []
                 # Now update with drag state cleared
                 self._diagram_scene.update_connections()
                 self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)

@@ -645,6 +645,34 @@ class MainWindow(QMainWindow):
             cmd = DeleteCommand(self._scene, selected)
             self._scene.undo_stack.push(cmd)
 
+    def _gather_connected_junctions(self, selected_items) -> list:
+        """Find JunctionItems connected to selected items but not explicitly selected.
+
+        When a connection terminates on a JunctionItem (e.g. a T-junction on a wire),
+        that junction must move with the group even if it wasn't explicitly selected
+        (it may be invisible or too small to rubber-band).
+        """
+        from diagrammer.items.component_item import ComponentItem
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.junction_item import JunctionItem
+
+        selected_ids = set(id(i) for i in selected_items)
+        extra_juncs = []
+        for item in self._scene.items():
+            if not isinstance(item, ConnectionItem):
+                continue
+            src_comp = item.source_port.component
+            tgt_comp = item.target_port.component
+            # If one end is in the selection and the other is a junction NOT in
+            # the selection, pull that junction into the group.
+            if id(src_comp) in selected_ids and isinstance(tgt_comp, JunctionItem) and id(tgt_comp) not in selected_ids:
+                extra_juncs.append(tgt_comp)
+                selected_ids.add(id(tgt_comp))
+            elif id(tgt_comp) in selected_ids and isinstance(src_comp, JunctionItem) and id(src_comp) not in selected_ids:
+                extra_juncs.append(src_comp)
+                selected_ids.add(id(src_comp))
+        return extra_juncs
+
     def _rotate_selected(self, degrees: float) -> None:
         import math
         from diagrammer.commands.add_command import MoveComponentCommand
@@ -652,22 +680,34 @@ class MainWindow(QMainWindow):
         from diagrammer.commands.transform_command import RotateComponentCommand
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.junction_item import JunctionItem
 
-        targets = [i for i in self._scene.selectedItems() if isinstance(i, ComponentItem)]
-        if not targets:
+        comp_targets = [i for i in self._scene.selectedItems() if isinstance(i, ComponentItem)]
+        junc_targets = [i for i in self._scene.selectedItems() if isinstance(i, JunctionItem)]
+        if not comp_targets and not junc_targets:
             return
 
-        self._scene.undo_stack.beginMacro(f"Rotate {len(targets)} items")
+        # Auto-include connected junctions that aren't in the selection
+        all_selected = comp_targets + junc_targets
+        extra_juncs = self._gather_connected_junctions(all_selected)
+        junc_targets.extend(extra_juncs)
+        all_targets = comp_targets + junc_targets
+        self._scene.undo_stack.beginMacro(f"Rotate {len(all_targets)} items")
 
-        if len(targets) == 1:
+        if len(all_targets) == 1 and len(comp_targets) == 1:
             # Single component: rotate around its own center
-            cmd = RotateComponentCommand(targets[0], degrees)
+            cmd = RotateComponentCommand(comp_targets[0], degrees)
             self._scene.undo_stack.push(cmd)
         else:
             # Group rotation: rigid-body — rotate each component internally
-            # AND orbit its position around the group center.
-            scene_centers = [item.mapToScene(QPointF(item._def.width / 2, item._def.height / 2))
-                             for item in targets]
+            # AND orbit all item positions around the group center.
+            # Compute scene centers for all items
+            scene_centers = []
+            for item in comp_targets:
+                scene_centers.append(item.mapToScene(QPointF(item._def.width / 2, item._def.height / 2)))
+            for item in junc_targets:
+                scene_centers.append(item.mapToScene(QPointF(0, 0)))
+
             gcx = sum(p.x() for p in scene_centers) / len(scene_centers)
             gcy = sum(p.y() for p in scene_centers) / len(scene_centers)
             rad = math.radians(degrees)
@@ -682,28 +722,39 @@ class MainWindow(QMainWindow):
                     gcy + dx * sin_a + dy * cos_a,
                 ))
 
-            for i, item in enumerate(targets):
-                # Rotate the component internally
+            # Rotate and orbit components
+            idx = 0
+            for item in comp_targets:
                 cmd = RotateComponentCommand(item, degrees)
                 self._scene.undo_stack.push(cmd)
-                # Move so the scene center lands at the orbited position
                 cur_sc = item.mapToScene(QPointF(item._def.width / 2, item._def.height / 2))
-                offset = target_centers[i] - cur_sc
+                offset = target_centers[idx] - cur_sc
                 new_pos = item.pos() + offset
                 item._skip_snap = True
                 move_cmd = MoveComponentCommand(item, item.pos(), new_pos)
                 self._scene.undo_stack.push(move_cmd)
                 item._skip_snap = False
+                idx += 1
+
+            # Orbit junctions (no internal rotation needed — they're dots)
+            for item in junc_targets:
+                cur_sc = item.mapToScene(QPointF(0, 0))
+                offset = target_centers[idx] - cur_sc
+                new_pos = item.pos() + offset
+                item._skip_snap = True
+                move_cmd = MoveComponentCommand(item, item.pos(), new_pos)
+                self._scene.undo_stack.push(move_cmd)
+                item._skip_snap = False
+                idx += 1
 
             # Rotate internal connection waypoints around group center.
-            # Rotate existing waypoints of internal connections around group center.
             # Only rotate USER waypoints — don't freeze expanded routes.
-            comp_ids = set(id(c) for c in targets)
+            item_ids = set(id(c) for c in all_targets)
             for item in self._scene.items():
                 if not isinstance(item, ConnectionItem):
                     continue
-                if (id(item.source_port.component) in comp_ids and
-                        id(item.target_port.component) in comp_ids):
+                if (id(item.source_port.component) in item_ids and
+                        id(item.target_port.component) in item_ids):
                     old_wps = [QPointF(w) for w in item.vertices]
                     if old_wps:
                         new_wps = []
@@ -722,33 +773,46 @@ class MainWindow(QMainWindow):
     def _fine_rotate_selected(self, degrees: float) -> None:
         """Fine-rotate selected components around the pivot port (or first port)."""
         import math
+        from diagrammer.commands.add_command import MoveComponentCommand
         from diagrammer.commands.connect_command import EditWaypointsCommand
         from diagrammer.commands.transform_command import RotateAroundPortCommand
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.junction_item import JunctionItem
 
         pivot = self._scene.rotation_pivot_port
-        targets = [i for i in self._scene.selectedItems()
-                   if isinstance(i, ComponentItem) and i.ports]
-        if not targets:
+        comp_targets = [i for i in self._scene.selectedItems()
+                        if isinstance(i, ComponentItem) and i.ports]
+        junc_targets = [i for i in self._scene.selectedItems()
+                        if isinstance(i, JunctionItem)]
+        if not comp_targets and not junc_targets:
             return
-        self._scene.undo_stack.beginMacro(f"Fine rotate {len(targets)} items")
+        # Auto-include connected junctions
+        all_selected = comp_targets + junc_targets
+        extra_juncs = self._gather_connected_junctions(all_selected)
+        junc_targets.extend(extra_juncs)
+        all_targets = comp_targets + junc_targets
+        self._scene.undo_stack.beginMacro(f"Fine rotate {len(all_targets)} items")
 
         # Determine the pivot point in scene coords
         if pivot is not None:
             pivot_scene = pivot.scene_center()
-        elif len(targets) == 1:
-            pivot_scene = targets[0].ports[0].scene_center()
+        elif len(comp_targets) == 1 and not junc_targets:
+            pivot_scene = comp_targets[0].ports[0].scene_center()
         else:
-            # Group: use the center of the group
-            centers = [QPointF(c.pos().x() + c._def.width / 2,
-                               c.pos().y() + c._def.height / 2) for c in targets]
+            # Group: use the center of all items
+            centers = []
+            for c in comp_targets:
+                centers.append(QPointF(c.pos().x() + c._def.width / 2,
+                                       c.pos().y() + c._def.height / 2))
+            for j in junc_targets:
+                centers.append(j.mapToScene(QPointF(0, 0)))
             pivot_scene = QPointF(
                 sum(p.x() for p in centers) / len(centers),
                 sum(p.y() for p in centers) / len(centers),
             )
 
-        for item in targets:
+        for item in comp_targets:
             if pivot is not None and pivot.component is item:
                 port = pivot
             else:
@@ -756,17 +820,30 @@ class MainWindow(QMainWindow):
             cmd = RotateAroundPortCommand(item, port, degrees)
             self._scene.undo_stack.push(cmd)
 
+        # Orbit junctions around pivot
+        rad = math.radians(degrees)
+        cos_a, sin_a = math.cos(rad), math.sin(rad)
+        px, py = pivot_scene.x(), pivot_scene.y()
+        for junc in junc_targets:
+            sc = junc.mapToScene(QPointF(0, 0))
+            dx, dy = sc.x() - px, sc.y() - py
+            new_sc = QPointF(px + dx * cos_a - dy * sin_a,
+                             py + dx * sin_a + dy * cos_a)
+            offset = new_sc - sc
+            new_pos = junc.pos() + offset
+            junc._skip_snap = True
+            move_cmd = MoveComponentCommand(junc, junc.pos(), new_pos)
+            self._scene.undo_stack.push(move_cmd)
+            junc._skip_snap = False
+
         # Rotate internal connection waypoints around the pivot
-        if len(targets) > 1:
-            rad = math.radians(degrees)
-            cos_a, sin_a = math.cos(rad), math.sin(rad)
-            px, py = pivot_scene.x(), pivot_scene.y()
-            comp_ids = set(id(c) for c in targets)
+        if len(all_targets) > 1:
+            item_ids = set(id(c) for c in all_targets)
             for item in self._scene.items():
                 if not isinstance(item, ConnectionItem):
                     continue
-                if (id(item.source_port.component) in comp_ids and
-                        id(item.target_port.component) in comp_ids):
+                if (id(item.source_port.component) in item_ids and
+                        id(item.target_port.component) in item_ids):
                     old_wps = [QPointF(w) for w in item.vertices]
                     if old_wps:
                         new_wps = [QPointF(px + (w.x()-px)*cos_a - (w.y()-py)*sin_a,
@@ -783,16 +860,26 @@ class MainWindow(QMainWindow):
         from diagrammer.commands.transform_command import FlipComponentCommand
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.junction_item import JunctionItem
 
         selected_comps = [
             i for i in self._scene.selectedItems()
             if isinstance(i, ComponentItem)
         ]
+        selected_juncs = [
+            i for i in self._scene.selectedItems()
+            if isinstance(i, JunctionItem)
+        ]
+        # Auto-include connected junctions that aren't in the selection
+        all_selected = selected_comps + selected_juncs
+        extra_juncs = self._gather_connected_junctions(all_selected)
+        selected_juncs.extend(extra_juncs)
+        all_selected = selected_comps + selected_juncs
 
         axis = "H" if horizontal else "V"
-        self._scene.undo_stack.beginMacro(f"Flip {axis} {len(selected_comps)} items")
+        self._scene.undo_stack.beginMacro(f"Flip {axis} {len(all_selected)} items")
 
-        if len(selected_comps) <= 1:
+        if len(all_selected) <= 1:
             for item in selected_comps:
                 cmd = FlipComponentCommand(item, horizontal)
                 self._scene.undo_stack.push(cmd)
@@ -800,12 +887,16 @@ class MainWindow(QMainWindow):
             self._scene.update_connections()
             return
 
-        # Multi-component: flip each component AND mirror positions around group center
-        centers = [QPointF(c.pos().x() + c._width / 2, c.pos().y() + c._height / 2) for c in selected_comps]
+        # Multi-item: flip each component AND mirror all positions around group center
+        centers = []
+        for c in selected_comps:
+            centers.append(QPointF(c.pos().x() + c._width / 2, c.pos().y() + c._height / 2))
+        for j in selected_juncs:
+            centers.append(j.mapToScene(QPointF(0, 0)))
         group_cx = sum(p.x() for p in centers) / len(centers)
         group_cy = sum(p.y() for p in centers) / len(centers)
 
-        comp_set = set(id(c) for c in selected_comps)
+        item_set = set(id(c) for c in all_selected)
 
         for comp in selected_comps:
             cmd = FlipComponentCommand(comp, horizontal)
@@ -824,13 +915,28 @@ class MainWindow(QMainWindow):
             self._scene.undo_stack.push(move_cmd)
             comp._skip_snap = False
 
-        # Mirror connection waypoints for connections between selected components
+        # Mirror junction positions (no internal flip needed)
+        for junc in selected_juncs:
+            old_pos = junc.pos()
+            sc = junc.mapToScene(QPointF(0, 0))
+            if horizontal:
+                new_sc_x = 2 * group_cx - sc.x()
+                new_pos = QPointF(old_pos.x() + (new_sc_x - sc.x()), old_pos.y())
+            else:
+                new_sc_y = 2 * group_cy - sc.y()
+                new_pos = QPointF(old_pos.x(), old_pos.y() + (new_sc_y - sc.y()))
+            junc._skip_snap = True
+            move_cmd = MoveComponentCommand(junc, old_pos, new_pos)
+            self._scene.undo_stack.push(move_cmd)
+            junc._skip_snap = False
+
+        # Mirror connection waypoints for connections between selected items
         from diagrammer.commands.connect_command import EditWaypointsCommand
         for item in self._scene.items():
             if not isinstance(item, ConnectionItem):
                 continue
-            if (id(item.source_port.component) in comp_set and
-                    id(item.target_port.component) in comp_set):
+            if (id(item.source_port.component) in item_set and
+                    id(item.target_port.component) in item_set):
                 old_wps = [QPointF(w) for w in item.vertices]
                 if old_wps:
                     new_wps = []
@@ -914,32 +1020,41 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------- Cut / Copy / Paste
 
     def _copy(self) -> None:
-        """Copy selected components (and connections between them) to clipboard."""
+        """Copy selected components, junctions, and connections between them to clipboard."""
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.junction_item import JunctionItem
 
         selected_comps = [
             item for item in self._scene.selectedItems()
             if isinstance(item, ComponentItem)
         ]
-        if not selected_comps:
+        selected_juncs = [
+            item for item in self._scene.selectedItems()
+            if isinstance(item, JunctionItem)
+        ]
+        if not selected_comps and not selected_juncs:
             return
 
-        comp_set = set(id(c) for c in selected_comps)
+        # Use a combined set for internal connection detection
+        all_selected = selected_comps + selected_juncs
+        item_set = set(id(c) for c in all_selected)
 
         # Collect connections where both endpoints are in the selection
         selected_conns = []
         for item in self._scene.items():
             if isinstance(item, ConnectionItem):
-                if (id(item.source_port.component) in comp_set and
-                        id(item.target_port.component) in comp_set):
+                if (id(item.source_port.component) in item_set and
+                        id(item.target_port.component) in item_set):
                     selected_conns.append(item)
 
         # Serialize to clipboard: store component defs, positions, transforms, and connection topology
+        # Components and junctions share a single index space for connection references
         self._clipboard = []
-        comp_id_map: dict[str, int] = {}  # instance_id -> clipboard index
-        for i, comp in enumerate(selected_comps):
-            comp_id_map[comp.instance_id] = i
+        id_map: dict[str, int] = {}  # instance_id -> clipboard index
+        idx = 0
+        for comp in selected_comps:
+            id_map[comp.instance_id] = idx
             self._clipboard.append({
                 "type": "component",
                 "def_key": comp.library_key,
@@ -950,9 +1065,17 @@ class MainWindow(QMainWindow):
                 "stretch_dx": comp.stretch_dx,
                 "stretch_dy": comp.stretch_dy,
             })
+            idx += 1
+        for junc in selected_juncs:
+            id_map[junc.instance_id] = idx
+            self._clipboard.append({
+                "type": "junction",
+                "pos": (junc.pos().x(), junc.pos().y()),
+            })
+            idx += 1
         for conn in selected_conns:
-            src_idx = comp_id_map.get(conn.source_port.component.instance_id)
-            tgt_idx = comp_id_map.get(conn.target_port.component.instance_id)
+            src_idx = id_map.get(conn.source_port.component.instance_id)
+            tgt_idx = id_map.get(conn.target_port.component.instance_id)
             if src_idx is not None and tgt_idx is not None:
                 self._clipboard.append({
                     "type": "connection",
@@ -980,50 +1103,63 @@ class MainWindow(QMainWindow):
         self._scene.undo_stack.beginMacro("Paste")
         from diagrammer.commands.add_command import AddComponentCommand
         from diagrammer.commands.connect_command import CreateConnectionCommand
+        from diagrammer.items.junction_item import JunctionItem
 
         PASTE_OFFSET = 40.0  # offset pasted items from originals
 
-        # First pass: create components
-        new_comps: list = []
+        # First pass: create components and junctions (they share an index space)
+        new_items: list = []  # ComponentItem or JunctionItem or None
         for entry in self._clipboard:
-            if entry["type"] != "component":
-                continue
-            comp_def = self._library.get(entry["def_key"])
-            if comp_def is None:
-                new_comps.append(None)
-                continue
-            pos = QPointF(entry["pos"][0] + PASTE_OFFSET, entry["pos"][1] + PASTE_OFFSET)
-            cmd = AddComponentCommand(self._scene, comp_def, pos)
-            self._scene.undo_stack.push(cmd)
-            item = cmd.item
-            if item is None:
-                new_comps.append(None)
-                continue
-            # Apply transforms — bypass snap during setup
-            item._skip_snap = True
-            if entry.get("rotation", 0):
-                item.rotate_by(entry["rotation"])
-            if entry.get("flip_h"):
-                item.set_flip_h(True)
-            if entry.get("flip_v"):
-                item.set_flip_v(True)
-            if entry.get("stretch_dx", 0) or entry.get("stretch_dy", 0):
-                item.set_stretch(entry.get("stretch_dx", 0), entry.get("stretch_dy", 0))
-            # Set exact position after all transforms
-            item.setPos(pos)
-            item._skip_snap = False
-            new_comps.append(item)
+            if entry["type"] == "component":
+                comp_def = self._library.get(entry["def_key"])
+                if comp_def is None:
+                    new_items.append(None)
+                    continue
+                pos = QPointF(entry["pos"][0] + PASTE_OFFSET, entry["pos"][1] + PASTE_OFFSET)
+                cmd = AddComponentCommand(self._scene, comp_def, pos)
+                self._scene.undo_stack.push(cmd)
+                item = cmd.item
+                if item is None:
+                    new_items.append(None)
+                    continue
+                # Apply transforms — bypass snap during setup
+                item._skip_snap = True
+                if entry.get("rotation", 0):
+                    item.rotate_by(entry["rotation"])
+                if entry.get("flip_h"):
+                    item.set_flip_h(True)
+                if entry.get("flip_v"):
+                    item.set_flip_v(True)
+                if entry.get("stretch_dx", 0) or entry.get("stretch_dy", 0):
+                    item.set_stretch(entry.get("stretch_dx", 0), entry.get("stretch_dy", 0))
+                # Set exact position after all transforms
+                item.setPos(pos)
+                item._skip_snap = False
+                new_items.append(item)
+            elif entry["type"] == "junction":
+                junc = JunctionItem()
+                pos = QPointF(entry["pos"][0] + PASTE_OFFSET, entry["pos"][1] + PASTE_OFFSET)
+                junc._skip_snap = True
+                junc.setPos(pos)
+                junc._skip_snap = False
+                self._scene.addItem(junc)
+                new_items.append(junc)
 
         # Second pass: create connections
         for entry in self._clipboard:
             if entry["type"] != "connection":
                 continue
-            src_comp = new_comps[entry["src_comp"]] if entry["src_comp"] < len(new_comps) else None
-            tgt_comp = new_comps[entry["tgt_comp"]] if entry["tgt_comp"] < len(new_comps) else None
-            if src_comp is None or tgt_comp is None:
+            src_item = new_items[entry["src_comp"]] if entry["src_comp"] < len(new_items) else None
+            tgt_item = new_items[entry["tgt_comp"]] if entry["tgt_comp"] < len(new_items) else None
+            if src_item is None or tgt_item is None:
                 continue
-            src_port = src_comp.port_by_name(entry["src_port"])
-            tgt_port = tgt_comp.port_by_name(entry["tgt_port"])
+            src_port = src_item.port_by_name(entry["src_port"]) if hasattr(src_item, 'port_by_name') else None
+            tgt_port = tgt_item.port_by_name(entry["tgt_port"]) if hasattr(tgt_item, 'port_by_name') else None
+            # JunctionItem: single port named "center"
+            if src_port is None and isinstance(src_item, JunctionItem):
+                src_port = src_item.port if entry["src_port"] == "center" else None
+            if tgt_port is None and isinstance(tgt_item, JunctionItem):
+                tgt_port = tgt_item.port if entry["tgt_port"] == "center" else None
             if src_port and tgt_port:
                 cmd = CreateConnectionCommand(self._scene, src_port, tgt_port)
                 self._scene.undo_stack.push(cmd)
@@ -1052,9 +1188,9 @@ class MainWindow(QMainWindow):
 
         # Select the pasted items
         self._scene.clearSelection()
-        for comp in new_comps:
-            if comp is not None:
-                comp.setSelected(True)
+        for item in new_items:
+            if item is not None:
+                item.setSelected(True)
 
     # ----------------------------------------------------------- Shape drawing
 

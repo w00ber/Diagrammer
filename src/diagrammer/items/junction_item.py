@@ -34,6 +34,7 @@ class JunctionItem(QGraphicsItem):
     ) -> None:
         super().__init__(parent)
         self._id = instance_id or uuid.uuid4().hex[:12]
+        self._skip_snap = False
 
         # Create the single center port
         port_def = PortDef(name="center", x=0.0, y=0.0)
@@ -82,6 +83,8 @@ class JunctionItem(QGraphicsItem):
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
+            if self._skip_snap:
+                return value
             from diagrammer.canvas.grid import snap_to_grid
             views = self.scene().views()
             if views and getattr(views[0], '_snap_enabled', True):

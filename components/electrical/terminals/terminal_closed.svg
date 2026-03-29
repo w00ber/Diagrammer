@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 20 20">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #c66;
+      }
+    </style>
+  </defs>
+  <g id="ports">
+    <g id="ports1">
+      <circle id="port:left" class="st0" cx="10" cy="10" r="3"/>
+    </g>
+  </g>
+  <circle id="artwork" cx="10" cy="10" r="3"/>
+</svg>

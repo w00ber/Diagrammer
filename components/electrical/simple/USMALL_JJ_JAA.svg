@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 60">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        stroke-width: 2.7px;
+      }
+
+      .st0, .st1, .st2 {
+        fill: none;
+        stroke-linecap: round;
+      }
+
+      .st0, .st1, .st2, .st3 {
+        stroke-linejoin: round;
+      }
+
+      .st0, .st1, .st3 {
+        stroke: #000;
+      }
+
+      .st4 {
+        fill: #c66;
+      }
+
+      .st1 {
+        stroke-width: 2.1px;
+      }
+
+      .st2 {
+        stroke: #999;
+        stroke-width: .5px;
+      }
+
+      .st3 {
+        stroke-width: 3px;
+      }
+
+      .st5 {
+        display: none;
+      }
+    </style>
+  </defs>
+  <g id="guides" class="st5">
+    <rect class="st2" y="30.3" width="40" height="30"/>
+  </g>
+  <g id="leads">
+    <path class="st3" d="M40.1,21.5V0"/>
+    <path class="st3" d="M40.1,60v-20.9"/>
+  </g>
+  <g id="ports">
+    <circle id="port:bot" class="st4" cx="40" r="3"/>
+    <circle id="port:top" class="st4" cx="40.1" cy="60" r="3"/>
+  </g>
+  <g id="artwork">
+    <g>
+      <line class="st1" x1="25.2" y1="21.5" x2="55" y2="39.1"/>
+      <line class="st1" x1="55" y1="21.5" x2="25.2" y2="39.1"/>
+    </g>
+    <rect class="st0" x="25.2" y="21.5" width="29.9" height="17.6"/>
+  </g>
+</svg>

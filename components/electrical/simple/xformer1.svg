@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 100 100">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        stroke-width: 3px;
+      }
+
+      .st0, .st1 {
+        stroke: #000;
+        stroke-linecap: round;
+        stroke-linejoin: bevel;
+      }
+
+      .st0, .st1, .st2 {
+        fill: none;
+      }
+
+      .st3 {
+        fill: #c66;
+      }
+
+      .st1 {
+        stroke-width: 1.5px;
+      }
+
+      .st4 {
+        display: none;
+      }
+
+      .st2 {
+        stroke: #999;
+        stroke-miterlimit: 10;
+        stroke-width: .2px;
+      }
+    </style>
+  </defs>
+  <g id="guides" class="st4">
+    <rect class="st2" y="50.1" width="50" height="50"/>
+  </g>
+  <g id="artwork">
+    <g>
+      <g>
+        <path class="st0" d="M17.2,63.9c15.4,3.1,15.4,15.4,0,18.5"/>
+        <path class="st0" d="M17.2,63.9c-15.4-3.1-15.4,6.2,0,3.1"/>
+        <path class="st0" d="M17.2,17.8c15.4,3.1,15.4,15.4,0,18.5"/>
+        <path class="st0" d="M17.2,33.2c15.4,3.1,15.4,15.4,0,18.5"/>
+        <path class="st0" d="M17.2,48.6c15.4,3.1,15.4,15.4,0,18.5"/>
+        <path class="st0" d="M17.2,33.2c-15.4-3.1-15.4,6.2,0,3.1"/>
+        <path class="st0" d="M17.2,48.6c-15.4-3.1-15.4,6.2,0,3.1"/>
+      </g>
+      <g>
+        <path class="st0" d="M82.9,82.4c-15.4-3.1-15.4-15.4,0-18.5"/>
+        <path class="st0" d="M82.9,67c15.4,3.1,15.4-6.2,0-3.1"/>
+        <path class="st0" d="M82.9,36.3c-15.4-3.1-15.4-15.4,0-18.5"/>
+        <path class="st0" d="M82.9,51.6c-15.4-3.1-15.4-15.4,0-18.5"/>
+        <path class="st0" d="M82.9,67c-15.4-3.1-15.4-15.4,0-18.5"/>
+        <path class="st0" d="M82.9,36.3c15.4,3.1,15.4-6.2,0-3.1"/>
+        <path class="st0" d="M82.9,51.6c15.4,3.1,15.4-6.2,0-3.1"/>
+      </g>
+      <g>
+        <line class="st1" x1="42.6" y1=".9" x2="42.6" y2="99.3"/>
+        <line class="st1" x1="50.1" y1=".9" x2="50.1" y2="99.3"/>
+        <line class="st1" x1="57.5" y1=".9" x2="57.5" y2="99.3"/>
+      </g>
+    </g>
+  </g>
+  <g id="ports">
+    <circle id="port:left" class="st3" cx="82.9" cy="100" r="3"/>
+    <circle id="port:right" class="st3" cx="17.1" cy="100" r="3"/>
+    <circle id="port:left1" data-name="port:left" class="st3" cx="82.9" r="3"/>
+    <circle id="port:right1" data-name="port:right" class="st3" cx="17.2" r="3"/>
+  </g>
+  <g id="leads">
+    <path class="st0" d="M17.1,82.4v16.9"/>
+    <path class="st0" d="M82.9,99.3v-16.9"/>
+    <path class="st0" d="M17.1,17.8V.9"/>
+    <path class="st0" d="M82.9.9v16.9"/>
+  </g>
+</svg>
