@@ -28,6 +28,8 @@ class AddShapeCommand(QUndoCommand):
         return self._item
 
     def redo(self) -> None:
+        if not hasattr(self._item, '_layer_index') and hasattr(self._scene, 'assign_active_layer'):
+            self._scene.assign_active_layer(self._item)
         self._item.setPos(self._pos)
         self._scene.addItem(self._item)
 

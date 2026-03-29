@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 100 40">
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 100 40">
   <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
   <defs>
     <style>
@@ -20,12 +20,11 @@
     <path class="st0" d="M61.6,22.2c2.6-13.1,12.9-13.1,15.4,0M61.6,22.2c-2.6,13.1,5.1,13.1,2.6,0M23,22.2c2.6-13.1,12.9-13.1,15.4,0M35.9,22.2c2.6-13.1,12.9-13.1,15.4,0M48.7,22.2c2.6-13.1,12.9-13.1,15.4,0M35.9,22.2c-2.6,13.1,5.1,13.1,2.6,0M48.7,22.2c-2.6,13.1,5.1,13.1,2.6,0M77,22.2h0M23,22.2h0"/>
   </g>
   <g id="leads">
-    <line class="st0" x1="23" y1="22.2" x2="0" y2="22.2"/>
+    <line class="st0" x1="23" y1="22.2" y2="22.2"/>
     <line class="st0" x1="100" y1="22.2" x2="77" y2="22.2"/>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st1" cx="0" cy="22.2" r="3"/>
+    <circle id="port:left" class="st1" cy="22.2" r="3"/>
     <circle id="port:right" class="st1" cx="100" cy="22.2" r="3"/>
-    <rect class="st1" x="85.1" y="14.7" width="0" height="2.5"/>
   </g>
 </svg>

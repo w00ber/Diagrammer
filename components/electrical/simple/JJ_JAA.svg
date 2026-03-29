@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 60">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: none;
+      }
+
+      .st0, .st1 {
+        stroke: #000;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 3px;
+      }
+
+      .st2 {
+        fill: #c66;
+      }
+    </style>
+  </defs>
+  <g id="artwork">
+    <g>
+      <line class="st0" x1="31" y1="24.6" x2="49.3" y2="35.4"/>
+      <line class="st0" x1="49.3" y1="24.6" x2="31" y2="35.4"/>
+    </g>
+  </g>
+  <g id="leads">
+    <path class="st1" d="M40.1,30V0"/>
+    <path class="st1" d="M40.1,60v-29.4"/>
+  </g>
+  <g id="ports">
+    <circle id="port:bot" class="st2" cx="40" r="3"/>
+    <circle id="port:top" class="st2" cx="40.1" cy="60" r="3"/>
+  </g>
+</svg>

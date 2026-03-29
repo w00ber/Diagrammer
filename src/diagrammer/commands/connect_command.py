@@ -48,6 +48,9 @@ class CreateConnectionCommand(QUndoCommand):
             self._connection.line_width = app_settings.default_line_width
             self._connection.line_color = app_settings.default_line_color
             self._connection.corner_radius = app_settings.default_corner_radius
+            # Assign to active layer
+            if hasattr(self._scene, 'assign_active_layer'):
+                self._scene.assign_active_layer(self._connection)
         self._scene.addItem(self._connection)
 
     def undo(self) -> None:

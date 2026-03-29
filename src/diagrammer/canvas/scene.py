@@ -61,6 +61,10 @@ class DiagramScene(QGraphicsScene):
         from diagrammer.items.connection_item import ROUTE_ORTHO
         self._default_routing_mode: str = ROUTE_ORTHO
 
+        # Layer management
+        from diagrammer.panels.layers_panel import LayerManager
+        self._layer_manager = LayerManager()
+
         # Scene bounds — large default workspace
         self.setSceneRect(-5000, -5000, 10000, 10000)
 
@@ -86,6 +90,70 @@ class DiagramScene(QGraphicsScene):
         return self._library
 
     @property
+    def layer_manager(self):
+        return self._layer_manager
+
+    def apply_layer_state(self) -> None:
+        """Update item visibility and selectability based on layer settings."""
+        from diagrammer.items.component_item import ComponentItem
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.items.shape_item import LineItem, ShapeItem
+
+        for item in self.items():
+            layer_idx = getattr(item, '_layer_index', 0)
+            if layer_idx < 0 or layer_idx >= len(self._layer_manager.layers):
+                layer_idx = 0
+
+            layer = self._layer_manager.layers[layer_idx]
+
+            # Visibility
+            if isinstance(item, (ComponentItem, ConnectionItem, JunctionItem, ShapeItem, LineItem)):
+                item.setVisible(layer.visible)
+                # Lock: prevent selection and movement
+                movable = not layer.locked
+                item.setFlag(item.GraphicsItemFlag.ItemIsMovable, movable)
+                item.setFlag(item.GraphicsItemFlag.ItemIsSelectable, not layer.locked)
+
+    def assign_active_layer(self, item) -> None:
+        """Assign the active layer index to a newly created item."""
+        item._layer_index = self._layer_manager.active_index
+
+    def flash_layer(self, layer_index: int) -> None:
+        """Briefly highlight all items on the given layer with a selection flash."""
+        from diagrammer.items.component_item import ComponentItem
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.items.shape_item import LineItem, ShapeItem
+        from PySide6.QtCore import QTimer
+
+        # Collect items on this layer
+        targets = []
+        for item in self.items():
+            if not isinstance(item, (ComponentItem, ConnectionItem, JunctionItem, ShapeItem, LineItem)):
+                continue
+            if getattr(item, '_layer_index', 0) == layer_index:
+                targets.append(item)
+
+        if not targets:
+            return
+
+        # Flash: temporarily select them, then restore after 400ms
+        old_selection = [i for i in self.selectedItems()]
+        self.clearSelection()
+        for item in targets:
+            if item.isVisible():
+                item.setSelected(True)
+
+        def restore():
+            self.clearSelection()
+            for item in old_selection:
+                if item.scene() is self:
+                    item.setSelected(True)
+
+        QTimer.singleShot(400, restore)
+
+    @property
     def default_routing_mode(self) -> str:
         return self._default_routing_mode
 
@@ -100,8 +168,18 @@ class DiagramScene(QGraphicsScene):
 
     # -- Component placement via drop --
 
+    def is_active_layer_locked(self) -> bool:
+        """Check if the active layer is locked."""
+        return self._layer_manager.active_layer.locked
+
     def place_component(self, component_def: ComponentDef, pos: QPointF) -> None:
         """Place a component on the scene at the given position (undoable)."""
+        if self.is_active_layer_locked():
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(None, "Layer Locked",
+                                f"Cannot add to locked layer \"{self._layer_manager.active_layer.name}\".\n"
+                                "Unlock the layer or switch to a different one.")
+            return
         from diagrammer.commands.add_command import AddComponentCommand
         cmd = AddComponentCommand(self, component_def, pos)
         self._undo_stack.push(cmd)

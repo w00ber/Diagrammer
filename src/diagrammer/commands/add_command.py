@@ -34,6 +34,9 @@ class AddComponentCommand(QUndoCommand):
     def redo(self) -> None:
         if self._item is None:
             self._item = ComponentItem(self._component_def)
+            # Assign to active layer
+            if hasattr(self._scene, 'assign_active_layer'):
+                self._scene.assign_active_layer(self._item)
         self._item.setPos(self._pos)
         self._scene.addItem(self._item)
 

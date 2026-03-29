@@ -165,7 +165,8 @@ def _parse_ports(root: ET.Element) -> list[PortDef]:
         return []
 
     ports: list[PortDef] = []
-    for elem in ports_group:
+    # Search recursively — Illustrator may nest ports inside sub-groups
+    for elem in ports_group.iter():
         tag = _strip_ns(elem.tag)
         elem_id = elem.get("id", "")
 

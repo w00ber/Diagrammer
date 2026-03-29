@@ -299,10 +299,35 @@ class DiagramView(QGraphicsView):
                 event.accept()
                 return
 
-            # -- Shift+click on component → multi-select (let Qt handle it) --
+            # -- Shift+click on component → toggle multi-select --
             if isinstance(item, ComponentItem) and event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-                # Fall through to super() which toggles selection with Shift
-                pass  # don't start drag tracking for Shift+click
+                item.setSelected(not item.isSelected())
+                event.accept()
+                return
+
+            # -- Option/Alt+click on component → duplicate and drag --
+            elif isinstance(item, ComponentItem) and event.modifiers() & Qt.KeyboardModifier.AltModifier:
+                from diagrammer.commands.add_command import AddComponentCommand
+                cmd = AddComponentCommand(self._diagram_scene, item.component_def, item.pos())
+                self._diagram_scene.undo_stack.push(cmd)
+                clone = cmd.item
+                if clone:
+                    # Copy transforms
+                    if item.rotation_angle:
+                        clone.rotate_by(item.rotation_angle)
+                    if item.flip_h:
+                        clone.set_flip_h(True)
+                    if item.flip_v:
+                        clone.set_flip_v(True)
+                    # Start dragging the clone
+                    self._diagram_scene.clearSelection()
+                    clone.setSelected(True)
+                    clone.set_snap_anchor_closest_to(scene_pos)
+                    self._dragging_components = [clone]
+                    self._diagram_scene.record_move_start(clone.instance_id, clone.pos())
+                    self.setDragMode(QGraphicsView.DragMode.NoDrag)
+                event.accept()
+                return
 
             # -- Click on a component → set up snap anchor and record move start --
             elif isinstance(item, ComponentItem):

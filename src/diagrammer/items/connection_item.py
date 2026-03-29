@@ -296,9 +296,10 @@ class ConnectionItem(QGraphicsPathItem):
         if dot > 0.5:
             return  # already aligned with lead — no bend needed
 
-        # Inward point: goes into the gap left by the shortened lead.
-        # Use 2.5x radius so build_rounded_path has room for full rounding.
-        reach = ext * 2.5
+        # Inward point: fills the gap left by the shortened lead.
+        # 2x radius so build_rounded_path applies the full corner radius
+        # (it clamps to half the shortest segment).
+        reach = ext * 2.0
         if at_start:
             inner = QPointF(
                 points[0].x() - adx * reach,

@@ -66,28 +66,43 @@ components/
 
 ## Keyboard Shortcuts
 
+See [docs/help.md](docs/help.md) for the full reference, or press **F1** in the app.
+
 | Key | Action |
 |-----|--------|
-| T | Toggle trace routing mode |
-| Z | Zoom window mode |
+| **Navigation** | |
 | A | Zoom all / fit |
+| Z | Zoom window mode |
+| Middle-click drag | Pan |
+| Scroll wheel | Zoom at cursor |
+| Ctrl+/- | Zoom in/out (centered) |
+| **Components** | |
 | Space | Rotate 90° CCW |
 | Shift+Space | Rotate 90° CW |
-| R | Fine rotate 15° CW (around selected port) |
+| R | Fine rotate 15° CW |
 | Shift+R | Fine rotate 15° CCW |
 | F | Flip horizontal |
 | Shift+F | Flip vertical |
-| H | Align selected horizontally |
-| V | Align selected vertically |
-| Ctrl+, | Settings |
-| Delete/Backspace | Delete selected |
+| Shift+click port | Set rotation pivot |
+| **Routing** | |
+| T | Toggle trace routing mode |
+| Shift (while routing) | Constrain to H/V |
+| **Layers** | |
+| H | Hide active layer |
+| Shift+H | Show active layer |
+| L | Lock active layer |
+| Shift+L | Unlock active layer |
+| **Selection & Alignment** | |
+| Shift+click | Multi-select components |
+| Ctrl+click port | Select port for alignment |
+| Ctrl+Shift+H | Align horizontally |
+| Ctrl+Shift+V | Align vertically |
+| **Editing** | |
+| Delete / Backspace | Delete selected |
 | Ctrl+Z | Undo |
 | Ctrl+Shift+Z | Redo |
-| Ctrl+C/X/V | Copy / Cut / Paste |
-| Shift+click component | Multi-select |
-| Ctrl+click port | Select port for alignment |
-| Shift+click port | Set rotation pivot |
-| Middle-click drag | Pan |
+| Ctrl+C / X / V | Copy / Cut / Paste |
+| Ctrl+, | Settings |
 | Escape | Cancel current operation |
 
 ## License

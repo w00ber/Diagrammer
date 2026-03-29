@@ -32,27 +32,34 @@ class ComponentLibrary:
         return self._by_key.get(key)
 
     def scan(self, root: Path) -> None:
-        """Scan a directory tree and load all SVG component definitions."""
+        """Scan a directory tree recursively and load all SVG component definitions.
+
+        Supports nested directories: electrical/simple/resistor.svg gets
+        category 'electrical/simple' and key 'electrical/simple/resistor'.
+        """
         if not root.is_dir():
             return
 
-        for category_dir in sorted(root.iterdir()):
-            if not category_dir.is_dir() or category_dir.name.startswith("."):
+        for svg_file in sorted(root.rglob("*.svg")):
+            # Skip hidden directories
+            rel = svg_file.relative_to(root)
+            if any(part.startswith(".") for part in rel.parts):
                 continue
 
-            category = category_dir.name
-            defs: list[ComponentDef] = []
+            # Category is the parent directory path relative to root
+            if len(rel.parts) < 2:
+                continue  # SVGs must be in at least one subdirectory
+            category = str(rel.parent).replace("\\", "/")
 
-            for svg_file in sorted(category_dir.glob("*.svg")):
-                try:
-                    comp_def = ComponentDef.from_svg(svg_file, category=category)
-                    defs.append(comp_def)
-                    self._by_key[f"{category}/{comp_def.name}"] = comp_def
-                except Exception as e:
-                    print(f"Warning: failed to load {svg_file}: {e}")
-
-            if defs:
-                self._categories[category] = defs
+            try:
+                comp_def = ComponentDef.from_svg(svg_file, category=category)
+                key = f"{category}/{comp_def.name}"
+                self._by_key[key] = comp_def
+                if category not in self._categories:
+                    self._categories[category] = []
+                self._categories[category].append(comp_def)
+            except Exception as e:
+                print(f"Warning: failed to load {svg_file}: {e}")
 
     def all_defs(self) -> list[ComponentDef]:
         """Return a flat list of all component definitions."""

@@ -396,34 +396,65 @@ class ComponentItem(QGraphicsItem):
 
         mx, my = float(tokens[1]), float(tokens[2])
 
-        # Check start point
+        # Check start point (port at the M position)
         name_start, _ = ComponentItem._find_port_at(mx, my, positions, name_map)
         if name_start and shortening.get(name_start, 0) > 0:
             amt = shortening[name_start]
-            if len(tokens) > 3 and tokens[3].upper() == 'H':
-                hx = float(tokens[4])
-                tokens[1] = str(mx + (1.0 if hx > mx else -1.0) * amt)
-            elif len(tokens) > 3 and tokens[3].upper() == 'V':
-                vy = float(tokens[4])
-                tokens[2] = str(my + (1.0 if vy > my else -1.0) * amt)
+            cmd = tokens[3] if len(tokens) > 3 else ""
+            if cmd.upper() == 'H':
+                is_relative = cmd == 'h'
+                hval = float(tokens[4])
+                if is_relative:
+                    # M moves inward, shrink relative distance to keep far end fixed
+                    sign = 1.0 if hval > 0 else -1.0
+                    tokens[1] = str(mx + sign * amt)
+                    tokens[4] = str(hval - sign * amt)
+                else:
+                    sign = 1.0 if hval > mx else -1.0
+                    tokens[1] = str(mx + sign * amt)
+            elif cmd.upper() == 'V':
+                is_relative = cmd == 'v'
+                vval = float(tokens[4])
+                if is_relative:
+                    sign = 1.0 if vval > 0 else -1.0
+                    tokens[2] = str(my + sign * amt)
+                    tokens[4] = str(vval - sign * amt)
+                else:
+                    sign = 1.0 if vval > my else -1.0
+                    tokens[2] = str(my + sign * amt)
             elem.set("d", " ".join(tokens))
             return
 
-        # Check end point
-        if len(tokens) > 3 and tokens[3].upper() == 'H':
-            hx = float(tokens[4])
-            name_end, _ = ComponentItem._find_port_at(hx, my, positions, name_map)
-            if name_end and shortening.get(name_end, 0) > 0:
-                amt = shortening[name_end]
-                tokens[4] = str(hx + (1.0 if mx > hx else -1.0) * amt)
-                elem.set("d", " ".join(tokens))
-        elif len(tokens) > 3 and tokens[3].upper() == 'V':
-            vy = float(tokens[4])
-            name_end, _ = ComponentItem._find_port_at(mx, vy, positions, name_map)
-            if name_end and shortening.get(name_end, 0) > 0:
-                amt = shortening[name_end]
-                tokens[4] = str(vy + (1.0 if my > vy else -1.0) * amt)
-                elem.set("d", " ".join(tokens))
+        # Check end point (port at the H/V destination)
+        if len(tokens) > 3:
+            cmd = tokens[3]
+            is_relative = cmd.islower()
+            if cmd.upper() == 'H':
+                hval = float(tokens[4])
+                end_x = mx + hval if is_relative else hval
+                name_end, _ = ComponentItem._find_port_at(end_x, my, positions, name_map)
+                if name_end and shortening.get(name_end, 0) > 0:
+                    amt = shortening[name_end]
+                    if is_relative:
+                        sign = 1.0 if hval < 0 else -1.0
+                        tokens[4] = str(hval + sign * amt)
+                    else:
+                        sign = 1.0 if mx > hval else -1.0
+                        tokens[4] = str(hval + sign * amt)
+                    elem.set("d", " ".join(tokens))
+            elif cmd.upper() == 'V':
+                vval = float(tokens[4])
+                end_y = my + vval if is_relative else vval
+                name_end, _ = ComponentItem._find_port_at(mx, end_y, positions, name_map)
+                if name_end and shortening.get(name_end, 0) > 0:
+                    amt = shortening[name_end]
+                    if is_relative:
+                        sign = 1.0 if vval < 0 else -1.0
+                        tokens[4] = str(vval + sign * amt)
+                    else:
+                        sign = 1.0 if my > vval else -1.0
+                        tokens[4] = str(vval + sign * amt)
+                    elem.set("d", " ".join(tokens))
 
     # -- Stretch handle geometry --
 
@@ -577,8 +608,9 @@ class ComponentItem(QGraphicsItem):
                 if dot > 0.5:
                     continue  # wire is inline with lead — no shortening
 
-                # Wire is perpendicular — shorten this port's lead
-                shortening[port.port_name] = radius
+                # Wire is perpendicular — shorten by 2*radius so
+                # build_rounded_path can apply the full corner radius
+                shortening[port.port_name] = radius * 2.0
 
         return shortening
 

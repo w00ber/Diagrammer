@@ -1,4 +1,4 @@
-"""LibraryPanel — component library with search, dense view, recently used, and favorites."""
+"""LibraryPanel — component library with search, grouped grid/list views, and drag-and-drop."""
 
 from __future__ import annotations
 
@@ -10,14 +10,20 @@ from PySide6.QtGui import QDrag, QIcon, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QButtonGroup,
     QDockWidget,
+    QFrame,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QStackedWidget,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -27,25 +33,21 @@ from PySide6.QtWidgets import (
 from diagrammer.models.component_def import ComponentDef
 from diagrammer.models.library import ComponentLibrary
 
-# Drag MIME type for component library keys
 COMPONENT_MIME_TYPE = "application/x-diagrammer-component"
-
-# Thumbnail sizes
 THUMB_SIZE = QSize(48, 48)
 DENSE_THUMB_SIZE = QSize(40, 40)
-
-# Favorites/recents persistence file
 _PREFS_FILE = Path.home() / ".diagrammer" / "library_prefs.json"
 
 
 class LibraryPanel(QDockWidget):
-    """Dock widget showing the component library with search, dense view, recents, and favorites."""
+    """Dock widget showing the component library with search, grouped views, and reorderable categories."""
 
     def __init__(self, library: ComponentLibrary, parent=None):
         super().__init__("Component Library", parent)
         self._library = library
-        self._favorites: set[str] = set()   # set of library keys
-        self._recents: list[str] = []       # ordered list of library keys (most recent first)
+        self._favorites: set[str] = set()
+        self._recents: list[str] = []
+        self._category_order: list[str] = []  # user-defined category order
         self._load_prefs()
 
         container = QWidget()
@@ -53,15 +55,14 @@ class LibraryPanel(QDockWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        # -- Search bar --
+        # Search bar
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search components\u2026")
         self._search.setClearButtonEnabled(True)
         self._search.textChanged.connect(self._on_search)
         layout.addWidget(self._search)
 
-        # -- View toggle (segmented control) --
-        from PySide6.QtWidgets import QButtonGroup
+        # View toggle
         toggle_row = QHBoxLayout()
         toggle_row.setSpacing(0)
         self._view_group = QButtonGroup(self)
@@ -96,15 +97,13 @@ class LibraryPanel(QDockWidget):
         )
         layout.addLayout(toggle_row)
 
-        # -- Stacked views --
+        # Stacked views
         self._stack = QStackedWidget()
 
-        # Tree view (list mode)
         self._tree = _DragTree(library, self._favorites)
         self._stack.addWidget(self._tree)
 
-        # Grid view (dense mode)
-        self._grid = _DragGrid(library)
+        self._grid = _GroupedGrid(library, self)
         self._stack.addWidget(self._grid)
 
         layout.addWidget(self._stack)
@@ -115,16 +114,14 @@ class LibraryPanel(QDockWidget):
         )
 
     def record_use(self, key: str) -> None:
-        """Record a component as recently used."""
         if key in self._recents:
             self._recents.remove(key)
         self._recents.insert(0, key)
-        self._recents = self._recents[:20]  # keep last 20
+        self._recents = self._recents[:20]
         self._tree.populate(self._library, self._favorites, self._recents)
         self._save_prefs()
 
     def toggle_favorite(self, key: str) -> None:
-        """Toggle a component's favorite status."""
         if key in self._favorites:
             self._favorites.discard(key)
         else:
@@ -137,7 +134,48 @@ class LibraryPanel(QDockWidget):
         self._tree.populate(self._library, self._favorites, self._recents)
         self._grid.populate(self._library)
 
-    # -- View mode --
+    def _sorted_categories(self, library: ComponentLibrary) -> list[str]:
+        """Return categories in user-defined order, with any new ones appended."""
+        all_cats = sorted(library.categories.keys())
+        ordered = [c for c in self._category_order if c in all_cats]
+        for c in all_cats:
+            if c not in ordered:
+                ordered.append(c)
+        return ordered
+
+    def _visible_library(self) -> ComponentLibrary:
+        """Return a filtered library with hidden categories removed."""
+        from diagrammer.panels.settings_dialog import app_settings
+        if not app_settings.hidden_libraries:
+            return self._library
+        filtered = ComponentLibrary()
+        for cat, defs in self._library.categories.items():
+            if cat not in app_settings.hidden_libraries:
+                filtered._categories[cat] = defs
+                for d in defs:
+                    filtered._by_key[f"{cat}/{d.name}"] = d
+        return filtered
+
+    def _refresh_views(self) -> None:
+        """Refresh both views with current visibility and ordering."""
+        lib = self._visible_library()
+        order = self._sorted_categories(lib)
+        self._tree.populate(lib, self._favorites, self._recents, category_order=order)
+        self._grid.populate(lib, category_order=order)
+
+    def move_category(self, category: str, direction: int) -> None:
+        """Move a category up (-1) or down (+1) in the display order."""
+        order = self._sorted_categories(self._library)
+        idx = order.index(category) if category in order else -1
+        if idx < 0:
+            return
+        new_idx = max(0, min(len(order) - 1, idx + direction))
+        if new_idx == idx:
+            return
+        order.insert(new_idx, order.pop(idx))
+        self._category_order = order
+        self._save_prefs()
+        self._refresh_views()
 
     def _set_view_mode(self, mode: str) -> None:
         self._stack.setCurrentIndex(0 if mode == "tree" else 1)
@@ -145,17 +183,14 @@ class LibraryPanel(QDockWidget):
         app_settings.library_view_mode = mode
         app_settings.save()
 
-    # -- Search --
-
     def _on_search(self, text: str) -> None:
         text = text.strip().lower()
         if not text:
-            self._tree.populate(self._library, self._favorites, self._recents)
-            self._grid.populate(self._library)
+            self._refresh_views()
             return
-        # Filter components matching the search
+        base = self._visible_library()
         filtered = ComponentLibrary()
-        for cat, defs in self._library.categories.items():
+        for cat, defs in base.categories.items():
             matches = [d for d in defs if text in d.name.lower() or text in cat.lower()]
             if matches:
                 filtered._categories[cat] = matches
@@ -164,14 +199,13 @@ class LibraryPanel(QDockWidget):
         self._tree.populate(filtered, self._favorites, self._recents)
         self._grid.populate(filtered)
 
-    # -- Persistence --
-
     def _load_prefs(self) -> None:
         try:
             if _PREFS_FILE.exists():
                 data = json.loads(_PREFS_FILE.read_text())
                 self._favorites = set(data.get("favorites", []))
                 self._recents = data.get("recents", [])
+                self._category_order = data.get("category_order", [])
         except Exception:
             pass
 
@@ -181,14 +215,17 @@ class LibraryPanel(QDockWidget):
             _PREFS_FILE.write_text(json.dumps({
                 "favorites": sorted(self._favorites),
                 "recents": self._recents,
+                "category_order": self._category_order,
             }))
         except Exception:
             pass
 
 
-class _DragTree(QTreeWidget):
-    """Tree view with categories, favorites section, and recently used section."""
+# =========================================================================
+# Tree view (list mode)
+# =========================================================================
 
+class _DragTree(QTreeWidget):
     def __init__(self, library: ComponentLibrary, favorites: set[str], parent=None):
         super().__init__(parent)
         self.setHeaderHidden(True)
@@ -197,14 +234,16 @@ class _DragTree(QTreeWidget):
         self._favorites = favorites
         self.populate(library, favorites, [])
 
-    def populate(self, library: ComponentLibrary, favorites: set[str] | None = None, recents: list[str] | None = None) -> None:
+    def populate(self, library: ComponentLibrary, favorites: set[str] | None = None,
+                 recents: list[str] | None = None,
+                 category_order: list[str] | None = None) -> None:
         self.clear()
         if favorites is not None:
             self._favorites = favorites
         fav_set = self._favorites
         recent_list = recents or []
 
-        # Favorites section
+        # Favorites
         fav_defs = [library.get(k) for k in sorted(fav_set) if library.get(k)]
         if fav_defs:
             fav_item = QTreeWidgetItem(self, ["\u2605 Favorites"])
@@ -213,7 +252,7 @@ class _DragTree(QTreeWidget):
                 self._add_comp_child(fav_item, comp_def)
             fav_item.setExpanded(True)
 
-        # Recently used section
+        # Recently used
         recent_defs = []
         seen = set()
         for k in recent_list:
@@ -231,10 +270,23 @@ class _DragTree(QTreeWidget):
                 self._add_comp_child(rec_item, comp_def)
             rec_item.setExpanded(True)
 
-        # Regular categories
-        for category, defs in sorted(library.categories.items()):
-            cat_item = QTreeWidgetItem(self, [category.replace("_", " ").title()])
+        # Categories in specified order
+        if category_order:
+            cats = [c for c in category_order if c in library.categories]
+            for c in sorted(library.categories.keys()):
+                if c not in cats:
+                    cats.append(c)
+        else:
+            cats = sorted(library.categories.keys())
+
+        for category in cats:
+            defs = library.categories.get(category, [])
+            if not defs:
+                continue
+            label = category.replace("/", " / ").replace("_", " ").title()
+            cat_item = QTreeWidgetItem(self, [label])
             cat_item.setFlags(cat_item.flags() & ~Qt.ItemFlag.ItemIsDragEnabled)
+            cat_item.setData(0, Qt.ItemDataRole.UserRole + 1, category)  # store raw category
             for comp_def in defs:
                 self._add_comp_child(cat_item, comp_def)
             cat_item.setExpanded(True)
@@ -270,66 +322,257 @@ class _DragTree(QTreeWidget):
         if item is None:
             return
         key = item.data(0, Qt.ItemDataRole.UserRole)
-        if key is None:
-            return
+        raw_cat = item.data(0, Qt.ItemDataRole.UserRole + 1)
+
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self)
-        is_fav = key in self._favorites
-        fav_act = menu.addAction("\u2605 Remove from Favorites" if is_fav else "\u2606 Add to Favorites")
-        action = menu.exec(event.globalPos())
-        if action is fav_act:
-            # Notify the panel to toggle
+
+        # Component context menu
+        if key is not None:
+            is_fav = key in self._favorites
+            fav_act = menu.addAction("\u2605 Remove from Favorites" if is_fav else "\u2606 Add to Favorites")
+            action = menu.exec(event.globalPos())
+            if action is fav_act:
+                panel = self.parent()
+                while panel and not isinstance(panel, LibraryPanel):
+                    panel = panel.parent()
+                if isinstance(panel, LibraryPanel):
+                    panel.toggle_favorite(key)
+            return
+
+        # Category context menu (reorder)
+        if raw_cat is not None:
+            up_act = menu.addAction("\u2191 Move Up")
+            down_act = menu.addAction("\u2193 Move Down")
+            action = menu.exec(event.globalPos())
             panel = self.parent()
             while panel and not isinstance(panel, LibraryPanel):
                 panel = panel.parent()
             if isinstance(panel, LibraryPanel):
-                panel.toggle_favorite(key)
+                if action is up_act:
+                    panel.move_category(raw_cat, -1)
+                elif action is down_act:
+                    panel.move_category(raw_cat, 1)
 
 
-class _DragGrid(QListWidget):
-    """Dense Nx3 grid view of component thumbnails."""
+# =========================================================================
+# Grouped grid view
+# =========================================================================
 
-    def __init__(self, library: ComponentLibrary, parent=None):
+class _GroupedGrid(QScrollArea):
+    """Grid view with components grouped by category, each with a collapsible header."""
+
+    def __init__(self, library: ComponentLibrary, panel: LibraryPanel, parent=None):
         super().__init__(parent)
-        self.setViewMode(QListWidget.ViewMode.IconMode)
-        self.setIconSize(DENSE_THUMB_SIZE)
-        self.setGridSize(QSize(DENSE_THUMB_SIZE.width() + 8, DENSE_THUMB_SIZE.height() + 8))
-        self.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self.setWrapping(True)
-        self.setDragEnabled(True)
-        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.setSpacing(2)
+        self._panel = panel
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._container = QWidget()
+        self._layout = QVBoxLayout(self._container)
+        self._layout.setContentsMargins(2, 2, 2, 2)
+        self._layout.setSpacing(1)
+        self.setWidget(self._container)
         self.populate(library)
 
-    def populate(self, library: ComponentLibrary) -> None:
-        self.clear()
-        for _cat, defs in sorted(library.categories.items()):
-            for comp_def in defs:
-                key = f"{comp_def.category}/{comp_def.name}"
-                item = QListWidgetItem(_make_icon(comp_def), "")
-                item.setData(Qt.ItemDataRole.UserRole, key)
-                item.setToolTip(comp_def.name.replace("_", " ").title())
-                self.addItem(item)
+    def populate(self, library: ComponentLibrary, category_order: list[str] | None = None) -> None:
+        # Clear existing
+        while self._layout.count():
+            child = self._layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
 
-    def startDrag(self, supportedActions) -> None:
-        item = self.currentItem()
-        if item is None:
-            return
-        key = item.data(Qt.ItemDataRole.UserRole)
-        if key is None:
-            return
-        mime = QMimeData()
-        mime.setData(COMPONENT_MIME_TYPE, key.encode("utf-8"))
-        drag = QDrag(self)
-        drag.setMimeData(mime)
-        icon = item.icon()
-        if not icon.isNull():
-            drag.setPixmap(icon.pixmap(DENSE_THUMB_SIZE))
-        drag.exec(Qt.DropAction.CopyAction)
+        if category_order:
+            cats = [c for c in category_order if c in library.categories]
+            for c in sorted(library.categories.keys()):
+                if c not in cats:
+                    cats.append(c)
+        else:
+            cats = sorted(library.categories.keys())
 
+        for category in cats:
+            defs = library.categories.get(category, [])
+            if not defs:
+                continue
+            section = _CategorySection(category, defs, self._panel)
+            self._layout.addWidget(section)
+
+        self._layout.addStretch()
+
+
+class _CategorySection(QWidget):
+    """A collapsible category section with header and flow grid of thumbnails."""
+
+    def __init__(self, category: str, defs: list[ComponentDef], panel: LibraryPanel, parent=None):
+        super().__init__(parent)
+        self._category = category
+        self._panel = panel
+        self._collapsed = False
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Header row
+        header = QWidget()
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(4, 1, 4, 1)
+        header_layout.setSpacing(4)
+
+        self._toggle_btn = QToolButton()
+        self._toggle_btn.setArrowType(Qt.ArrowType.DownArrow)
+        self._toggle_btn.setFixedSize(16, 16)
+        self._toggle_btn.setStyleSheet("QToolButton { border: none; }")
+        self._toggle_btn.clicked.connect(self._toggle_collapse)
+        header_layout.addWidget(self._toggle_btn)
+
+        label = QLabel(f"<b>{category.replace('/', ' / ').replace('_', ' ').title()}</b>")
+        header_layout.addWidget(label)
+        header_layout.addStretch()
+
+        # Reorder buttons
+        up_btn = QToolButton()
+        up_btn.setText("\u2191")
+        up_btn.setFixedSize(18, 18)
+        up_btn.setStyleSheet("QToolButton { border: 1px solid #ccc; font-size: 10px; }")
+        up_btn.clicked.connect(lambda: panel.move_category(category, -1))
+        header_layout.addWidget(up_btn)
+
+        down_btn = QToolButton()
+        down_btn.setText("\u2193")
+        down_btn.setFixedSize(18, 18)
+        down_btn.setStyleSheet("QToolButton { border: 1px solid #ccc; font-size: 10px; }")
+        down_btn.clicked.connect(lambda: panel.move_category(category, 1))
+        header_layout.addWidget(down_btn)
+
+        header.setStyleSheet("background: #f0f0f0; border-radius: 3px;")
+        layout.addWidget(header)
+
+        # Thumbnail grid (flow layout)
+        self._grid_widget = QWidget()
+        self._grid_layout = _FlowLayout(self._grid_widget, margin=2, spacing=2)
+        for comp_def in defs:
+            thumb = _DragThumbnail(comp_def)
+            self._grid_layout.addWidget(thumb)
+        layout.addWidget(self._grid_widget)
+
+    def _toggle_collapse(self) -> None:
+        self._collapsed = not self._collapsed
+        self._grid_widget.setVisible(not self._collapsed)
+        self._toggle_btn.setArrowType(
+            Qt.ArrowType.RightArrow if self._collapsed else Qt.ArrowType.DownArrow
+        )
+
+
+class _DragThumbnail(QLabel):
+    """A single draggable component thumbnail in the grid view."""
+
+    def __init__(self, comp_def: ComponentDef, parent=None):
+        super().__init__(parent)
+        self._comp_def = comp_def
+        self._key = f"{comp_def.category}/{comp_def.name}"
+        icon = _make_icon(comp_def)
+        self.setPixmap(icon.pixmap(DENSE_THUMB_SIZE))
+        self.setFixedSize(DENSE_THUMB_SIZE.width() + 2, DENSE_THUMB_SIZE.height() + 2)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setToolTip(comp_def.name.replace("_", " ").title())
+        self.setStyleSheet("QLabel:hover { background: #ddeeff; border-radius: 3px; }")
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            mime = QMimeData()
+            mime.setData(COMPONENT_MIME_TYPE, self._key.encode("utf-8"))
+            drag = QDrag(self)
+            drag.setMimeData(mime)
+            drag.setPixmap(self.pixmap())
+            drag.exec(Qt.DropAction.CopyAction)
+
+
+# =========================================================================
+# Flow layout (since Qt doesn't provide one natively in Python)
+# =========================================================================
+
+class _FlowLayout(QLayout):
+    """A flow layout that arranges widgets left-to-right, wrapping to next row."""
+
+    def __init__(self, parent=None, margin: int = 0, spacing: int = -1):
+        super().__init__(parent)
+        self.setContentsMargins(margin, margin, margin, margin)
+        self._spacing = spacing
+        self._items: list = []
+
+    def addItem(self, item) -> None:
+        self._items.append(item)
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, index: int):
+        if 0 <= index < len(self._items):
+            return self._items[index]
+        return None
+
+    def takeAt(self, index: int):
+        if 0 <= index < len(self._items):
+            return self._items.pop(index)
+        return None
+
+    def spacing(self) -> int:
+        return self._spacing if self._spacing >= 0 else 4
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        from PySide6.QtCore import QRect
+        return self._do_layout(QRect(0, 0, width, 0), test_only=True)
+
+    def setGeometry(self, rect) -> None:
+        super().setGeometry(rect)
+        self._do_layout(rect, test_only=False)
+
+    def sizeHint(self):
+        from PySide6.QtCore import QSize as QS
+        return self.minimumSize()
+
+    def minimumSize(self):
+        from PySide6.QtCore import QSize as QS
+        size = QS()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        m = self.contentsMargins()
+        size += QS(m.left() + m.right(), m.top() + m.bottom())
+        return size
+
+    def _do_layout(self, rect, test_only: bool) -> int:
+        from PySide6.QtCore import QRect
+        m = self.contentsMargins()
+        x = rect.x() + m.left()
+        y = rect.y() + m.top()
+        right_edge = rect.right() - m.right()
+        row_height = 0
+        space = self.spacing()
+        start_x = x
+
+        for item in self._items:
+            w = item.sizeHint().width()
+            h = item.sizeHint().height()
+            if x + w > right_edge and row_height > 0:
+                x = start_x
+                y += row_height + space
+                row_height = 0
+            if not test_only:
+                item.setGeometry(QRect(int(x), int(y), w, h))
+            x += w + space
+            row_height = max(row_height, h)
+
+        return y + row_height - rect.y()
+
+
+# =========================================================================
+# Thumbnail rendering
+# =========================================================================
 
 def _make_icon(comp_def: ComponentDef) -> QIcon:
-    """Render the component SVG into a small QIcon thumbnail, preserving aspect ratio."""
     from PySide6.QtCore import QRectF
     from PySide6.QtGui import QPainter
 

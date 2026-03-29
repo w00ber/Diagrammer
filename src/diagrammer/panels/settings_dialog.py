@@ -60,6 +60,9 @@ class AppSettings:
         self.hidden_libraries: set[str] = set()
         self.library_view_mode = "tree"  # "tree" or "grid"
 
+        # Session
+        self.last_opened_file: str = ""
+
     def save(self) -> None:
         """Persist settings to disk."""
         try:
@@ -79,6 +82,7 @@ class AppSettings:
                 "discrete_angle_routing": self.discrete_angle_routing,
                 "hidden_libraries": sorted(self.hidden_libraries),
                 "library_view_mode": self.library_view_mode,
+                "last_opened_file": self.last_opened_file,
             }
             import json
             _SETTINGS_FILE.write_text(json.dumps(data, indent=2))
@@ -109,6 +113,7 @@ class AppSettings:
                 self.discrete_angle_routing = data.get("discrete_angle_routing", self.discrete_angle_routing)
                 self.hidden_libraries = set(data.get("hidden_libraries", []))
                 self.library_view_mode = data.get("library_view_mode", self.library_view_mode)
+                self.last_opened_file = data.get("last_opened_file", "")
         except Exception:
             pass
 

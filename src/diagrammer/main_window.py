@@ -57,6 +57,9 @@ class MainWindow(QMainWindow):
         # -- Clipboard for copy/paste --
         self._clipboard: list = []
 
+        # -- Current file path --
+        self._current_file: str | None = None
+
         # -- Status bar --
         self._pos_label = QLabel("X: 0.0  Y: 0.0")
         self._mode_label = QLabel("Mode: Select")
@@ -88,30 +91,43 @@ class MainWindow(QMainWindow):
 
         new_act = QAction("&New", self)
         new_act.setShortcut(QKeySequence.StandardKey.New)
+        new_act.triggered.connect(self._file_new)
         file_menu.addAction(new_act)
 
         open_act = QAction("&Open...", self)
         open_act.setShortcut(QKeySequence.StandardKey.Open)
+        open_act.triggered.connect(self._file_open)
         file_menu.addAction(open_act)
 
         save_act = QAction("&Save", self)
         save_act.setShortcut(QKeySequence.StandardKey.Save)
+        save_act.triggered.connect(self._file_save)
         file_menu.addAction(save_act)
 
         save_as_act = QAction("Save &As...", self)
         save_as_act.setShortcut(QKeySequence.StandardKey.SaveAs)
+        save_as_act.triggered.connect(self._file_save_as)
         file_menu.addAction(save_as_act)
 
         file_menu.addSeparator()
 
         export_svg_act = QAction("Export as SV&G...", self)
+        export_svg_act.triggered.connect(self._export_svg)
         file_menu.addAction(export_svg_act)
 
         export_png_act = QAction("Export as &PNG...", self)
+        export_png_act.triggered.connect(self._export_png)
         file_menu.addAction(export_png_act)
 
         export_pdf_act = QAction("Export as P&DF...", self)
+        export_pdf_act.triggered.connect(self._export_pdf)
         file_menu.addAction(export_pdf_act)
+
+        file_menu.addSeparator()
+
+        restore_act = QAction("&Restore Previous Session", self)
+        restore_act.triggered.connect(self._restore_session)
+        file_menu.addAction(restore_act)
 
         file_menu.addSeparator()
 
@@ -199,14 +215,36 @@ class MainWindow(QMainWindow):
 
         # -- Alignment --
         align_h_act = QAction("Align Hori&zontally", self)
-        align_h_act.setShortcut(QKeySequence(Qt.Key.Key_H))
+        align_h_act.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_H))
         align_h_act.triggered.connect(lambda: self._align_selected("horizontal"))
         edit_menu.addAction(align_h_act)
 
         align_v_act = QAction("Align Vert&ically", self)
-        align_v_act.setShortcut(QKeySequence(Qt.Key.Key_V))
+        align_v_act.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_V))
         align_v_act.triggered.connect(lambda: self._align_selected("vertical"))
         edit_menu.addAction(align_v_act)
+
+        edit_menu.addSeparator()
+
+        hide_layer_act = QAction("&Hide Active Layer", self)
+        hide_layer_act.setShortcut(QKeySequence(Qt.Key.Key_H))
+        hide_layer_act.triggered.connect(self._hide_active_layer)
+        edit_menu.addAction(hide_layer_act)
+
+        show_layer_act = QAction("S&how Active Layer", self)
+        show_layer_act.setShortcut(QKeySequence(Qt.Modifier.SHIFT | Qt.Key.Key_H))
+        show_layer_act.triggered.connect(self._show_active_layer)
+        edit_menu.addAction(show_layer_act)
+
+        lock_layer_act = QAction("&Lock Active Layer", self)
+        lock_layer_act.setShortcut(QKeySequence(Qt.Key.Key_L))
+        lock_layer_act.triggered.connect(self._lock_active_layer)
+        edit_menu.addAction(lock_layer_act)
+
+        unlock_layer_act = QAction("&Unlock Active Layer", self)
+        unlock_layer_act.setShortcut(QKeySequence(Qt.Modifier.SHIFT | Qt.Key.Key_L))
+        unlock_layer_act.triggered.connect(self._unlock_active_layer)
+        edit_menu.addAction(unlock_layer_act)
 
         edit_menu.addSeparator()
 
@@ -318,6 +356,14 @@ class MainWindow(QMainWindow):
         draw_line_act.triggered.connect(lambda: self._add_shape("line"))
         draw_menu.addAction(draw_line_act)
 
+        # ---- Help ----
+        help_menu = menu_bar.addMenu("&Help")
+
+        help_act = QAction("&Help", self)
+        help_act.setShortcut(QKeySequence.StandardKey.HelpContents)
+        help_act.triggered.connect(self._show_help)
+        help_menu.addAction(help_act)
+
     # ---------------------------------------------------------------- Toolbar
 
     def _create_toolbar(self) -> None:
@@ -355,13 +401,12 @@ class MainWindow(QMainWindow):
         )
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, props_dock)
 
-        layers_dock = QDockWidget("Layers", self)
-        layers_dock.setWidget(QLabel("  Layers panel \u2014 coming soon  "))
-        layers_dock.setAllowedAreas(
-            Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
-        )
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, layers_dock)
-        self.tabifyDockWidget(props_dock, layers_dock)
+        from diagrammer.panels.layers_panel import LayersPanel
+        self._layers_panel = LayersPanel(self._scene.layer_manager, self)
+        self._layers_panel.layers_changed.connect(self._on_layers_changed)
+        self._layers_panel.active_layer_switched.connect(self._on_layer_switched)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._layers_panel)
+        self.tabifyDockWidget(props_dock, self._layers_panel)
 
     # ------------------------------------------------------------------ Slots
 
@@ -429,6 +474,38 @@ class MainWindow(QMainWindow):
                     visible._by_key[f"{cat}/{d.name}"] = d
         self._library_panel._tree.populate(visible, self._library_panel._favorites, self._library_panel._recents)
         self._library_panel._grid.populate(visible)
+
+    def _on_layers_changed(self) -> None:
+        """Apply layer visibility/lock state to all scene items."""
+        self._scene.apply_layer_state()
+
+    def _on_layer_switched(self, layer_index: int) -> None:
+        """Flash items on the newly selected layer."""
+        self._scene.flash_layer(layer_index)
+
+    def _hide_active_layer(self) -> None:
+        lm = self._scene.layer_manager
+        lm.active_layer.visible = False
+        self._layers_panel.refresh()
+        self._scene.apply_layer_state()
+
+    def _show_active_layer(self) -> None:
+        lm = self._scene.layer_manager
+        lm.active_layer.visible = True
+        self._layers_panel.refresh()
+        self._scene.apply_layer_state()
+
+    def _lock_active_layer(self) -> None:
+        lm = self._scene.layer_manager
+        lm.active_layer.locked = True
+        self._layers_panel.refresh()
+        self._scene.apply_layer_state()
+
+    def _unlock_active_layer(self) -> None:
+        lm = self._scene.layer_manager
+        lm.active_layer.locked = False
+        self._layers_panel.refresh()
+        self._scene.apply_layer_state()
 
     def _toggle_zoom_window(self, enabled: bool) -> None:
         self._view.zoom_window_mode = enabled
@@ -752,3 +829,103 @@ class MainWindow(QMainWindow):
 
         cmd = AddShapeCommand(self._scene, item, snapped)
         self._scene.undo_stack.push(cmd)
+
+    # --------------------------------------------------------- File operations
+
+    def _restore_session(self) -> None:
+        last = app_settings.last_opened_file
+        if last and Path(last).exists():
+            from diagrammer.io.serializer import DiagramSerializer
+            self._scene.clear()
+            self._scene.undo_stack.clear()
+            DiagramSerializer.load(self._scene, last, library=self._library)
+            self._layers_panel._manager = self._scene._layer_manager
+            self._layers_panel.refresh()
+            self._scene.apply_layer_state()
+            self._current_file = last
+            self._update_title()
+        else:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "No Previous Session",
+                                   "No previous session file found.")
+
+    def _show_help(self) -> None:
+        from diagrammer.panels.help_window import HelpWindow
+        HelpWindow.show_help(self)
+
+    def _update_title(self) -> None:
+        name = Path(self._current_file).name if self._current_file else "Untitled"
+        self.setWindowTitle(f"{name} \u2014 Diagrammer")
+
+    def _file_new(self) -> None:
+        self._scene.clear()
+        self._scene.undo_stack.clear()
+        from diagrammer.panels.layers_panel import LayerManager
+        self._scene._layer_manager = LayerManager()
+        self._layers_panel._manager = self._scene._layer_manager
+        self._layers_panel.refresh()
+        self._current_file = None
+        self._update_title()
+
+    def _file_open(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open Diagram", "", "Diagrammer Files (*.dgm);;All Files (*)"
+        )
+        if path:
+            from diagrammer.io.serializer import DiagramSerializer
+            self._scene.clear()
+            self._scene.undo_stack.clear()
+            DiagramSerializer.load(self._scene, path, library=self._library)
+            self._layers_panel._manager = self._scene._layer_manager
+            self._layers_panel.refresh()
+            self._scene.apply_layer_state()
+            self._current_file = path
+            self._update_title()
+
+    def _file_save(self) -> None:
+        if self._current_file:
+            from diagrammer.io.serializer import DiagramSerializer
+            DiagramSerializer.save(self._scene, self._current_file)
+        else:
+            self._file_save_as()
+
+    def _file_save_as(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Diagram", "", "Diagrammer Files (*.dgm);;All Files (*)"
+        )
+        if path:
+            if not path.endswith(".dgm"):
+                path += ".dgm"
+            from diagrammer.io.serializer import DiagramSerializer
+            DiagramSerializer.save(self._scene, path)
+            self._current_file = path
+            self._update_title()
+
+    def _export_svg(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export SVG", "", "SVG Files (*.svg);;All Files (*)"
+        )
+        if path:
+            from diagrammer.io.exporter import DiagramExporter
+            DiagramExporter.export_svg(self._scene, path)
+
+    def _export_png(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export PNG", "", "PNG Files (*.png);;All Files (*)"
+        )
+        if path:
+            from diagrammer.io.exporter import DiagramExporter
+            DiagramExporter.export_png(self._scene, path)
+
+    def _export_pdf(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export PDF", "", "PDF Files (*.pdf);;All Files (*)"
+        )
+        if path:
+            from diagrammer.io.exporter import DiagramExporter
+            DiagramExporter.export_pdf(self._scene, path)
