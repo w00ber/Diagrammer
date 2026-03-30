@@ -35,25 +35,29 @@ DEFAULT_TEXT_COLOR = QColor(0, 0, 0)
 # Regex to detect $...$ math (non-greedy)
 _MATH_RE = re.compile(r"\$(.+?)\$")
 
-# Common font families grouped by category
-FONT_FAMILIES = [
-    # Scientific / CM-like
-    "STIX Two Text",
-    "CMU Serif",
-    "CMU Sans Serif",
-    # Sans-serif
-    "Helvetica",
-    "Arial",
-    "Verdana",
-    # Serif
-    "Times New Roman",
-    "Georgia",
-    "Palatino",
-    # Monospace
-    "Courier New",
-    "Menlo",
-    "Monaco",
-]
+import sys as _sys
+
+# Common font families grouped by category, with platform-appropriate choices
+if _sys.platform == "darwin":
+    FONT_FAMILIES = [
+        "STIX Two Text", "CMU Serif", "CMU Sans Serif",
+        "Helvetica", "Arial", "Verdana",
+        "Times New Roman", "Georgia", "Palatino",
+        "Courier New", "Menlo", "Monaco",
+    ]
+elif _sys.platform == "win32":
+    FONT_FAMILIES = [
+        "Cambria Math", "Times New Roman", "Calibri",
+        "Arial", "Verdana", "Segoe UI",
+        "Georgia", "Palatino Linotype",
+        "Courier New", "Consolas", "Lucida Console",
+    ]
+else:  # Linux
+    FONT_FAMILIES = [
+        "STIX Two Text", "DejaVu Serif", "Liberation Serif",
+        "DejaVu Sans", "Liberation Sans", "Noto Sans",
+        "DejaVu Sans Mono", "Liberation Mono", "Noto Mono",
+    ]
 
 
 # Map user font families to matplotlib mathtext fontsets.

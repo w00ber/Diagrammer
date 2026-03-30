@@ -936,7 +936,8 @@ class DiagramView(QGraphicsView):
             self._enter_select_mode()
             event.accept()
             return
-        if event.key() == Qt.Key.Key_V:
+        if event.key() == Qt.Key.Key_V and not event.modifiers():
+            # V without modifiers = select mode (guards against Ctrl+V = Paste)
             editing = any(isinstance(i, AnnotationItem) and i.is_editing
                           for i in self._diagram_scene.selectedItems())
             if not editing:

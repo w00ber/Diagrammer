@@ -74,7 +74,27 @@ class HelpWindow(QWidget):
         {html}
         </body></html>
         """
+        # Append auto-generated keyboard shortcuts section
+        shortcuts_html = self._generate_shortcuts_html()
+        styled = styled.replace("</body>", f"{shortcuts_html}</body>")
+
         self._browser.setHtml(styled)
+
+    @staticmethod
+    def _generate_shortcuts_html() -> str:
+        """Generate an HTML keyboard shortcuts table from the shortcut registry."""
+        from diagrammer.shortcuts import shortcuts_by_category
+        html = "<hr><h2>Keyboard Shortcuts</h2>\n"
+        for cat, shortcuts in shortcuts_by_category().items():
+            html += f"<h3>{cat}</h3>\n"
+            html += "<table><tr><th>Shortcut</th><th>Action</th></tr>\n"
+            for s in shortcuts:
+                key = s.display_text
+                if not key:
+                    continue
+                html += f"<tr><td><kbd>{key}</kbd></td><td>{s.description}</td></tr>\n"
+            html += "</table>\n"
+        return html
 
     @staticmethod
     def _find_help_file() -> Path | None:

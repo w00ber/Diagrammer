@@ -23,6 +23,7 @@ from diagrammer.canvas.view import DiagramView
 from diagrammer.models.library import ComponentLibrary
 from diagrammer.panels.library_panel import LibraryPanel
 from diagrammer.panels.settings_dialog import AppSettings, SettingsDialog, app_settings
+from diagrammer.shortcuts import SHORTCUTS, get as get_shortcut
 
 
 def _find_builtin_components() -> Path:
@@ -90,22 +91,22 @@ class MainWindow(QMainWindow):
         file_menu = menu_bar.addMenu("&File")
 
         new_act = QAction("&New", self)
-        new_act.setShortcut(QKeySequence.StandardKey.New)
+        new_act.setShortcut(get_shortcut("file.new"))
         new_act.triggered.connect(self._file_new)
         file_menu.addAction(new_act)
 
         open_act = QAction("&Open...", self)
-        open_act.setShortcut(QKeySequence.StandardKey.Open)
+        open_act.setShortcut(get_shortcut("file.open"))
         open_act.triggered.connect(self._file_open)
         file_menu.addAction(open_act)
 
         save_act = QAction("&Save", self)
-        save_act.setShortcut(QKeySequence.StandardKey.Save)
+        save_act.setShortcut(get_shortcut("file.save"))
         save_act.triggered.connect(self._file_save)
         file_menu.addAction(save_act)
 
         save_as_act = QAction("Save &As...", self)
-        save_as_act.setShortcut(QKeySequence.StandardKey.SaveAs)
+        save_as_act.setShortcut(get_shortcut("file.save_as"))
         save_as_act.triggered.connect(self._file_save_as)
         file_menu.addAction(save_as_act)
 
@@ -143,7 +144,7 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
 
         quit_act = QAction("&Quit", self)
-        quit_act.setShortcut(QKeySequence.StandardKey.Quit)
+        quit_act.setShortcut(get_shortcut("file.quit"))
         quit_act.triggered.connect(self.close)
         file_menu.addAction(quit_act)
 
@@ -151,40 +152,40 @@ class MainWindow(QMainWindow):
         edit_menu = menu_bar.addMenu("&Edit")
 
         undo_act = self._scene.undo_stack.createUndoAction(self, "&Undo")
-        undo_act.setShortcut(QKeySequence.StandardKey.Undo)
+        undo_act.setShortcut(get_shortcut("edit.undo"))
         edit_menu.addAction(undo_act)
 
         redo_act = self._scene.undo_stack.createRedoAction(self, "&Redo")
-        redo_act.setShortcut(QKeySequence.StandardKey.Redo)
+        redo_act.setShortcut(get_shortcut("edit.redo"))
         edit_menu.addAction(redo_act)
 
         edit_menu.addSeparator()
 
         cut_act = QAction("Cu&t", self)
-        cut_act.setShortcut(QKeySequence.StandardKey.Cut)
+        cut_act.setShortcut(get_shortcut("edit.cut"))
         cut_act.triggered.connect(self._cut)
         edit_menu.addAction(cut_act)
 
         copy_act = QAction("&Copy", self)
-        copy_act.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_act.setShortcut(get_shortcut("edit.copy"))
         copy_act.triggered.connect(self._copy)
         edit_menu.addAction(copy_act)
 
         paste_act = QAction("&Paste", self)
-        paste_act.setShortcut(QKeySequence.StandardKey.Paste)
+        paste_act.setShortcut(get_shortcut("edit.paste"))
         paste_act.triggered.connect(self._paste)
         edit_menu.addAction(paste_act)
 
         edit_menu.addSeparator()
 
         select_all_act = QAction("Select &All", self)
-        select_all_act.setShortcut(QKeySequence.StandardKey.SelectAll)
+        select_all_act.setShortcut(get_shortcut("edit.select_all"))
         select_all_act.triggered.connect(self._select_all)
         edit_menu.addAction(select_all_act)
 
         delete_act = QAction("&Delete", self)
         delete_act.setShortcuts([
-            QKeySequence.StandardKey.Delete,
+            get_shortcut("edit.delete"),
             QKeySequence(Qt.Key.Key_Backspace),
         ])
         delete_act.triggered.connect(self._delete_selected)
@@ -194,34 +195,34 @@ class MainWindow(QMainWindow):
 
         # -- Rotation (90°, center) --
         rotate_ccw_act = QAction("Rotate CCW (&90\u00b0)", self)
-        rotate_ccw_act.setShortcut(QKeySequence(Qt.Key.Key_Space))
+        rotate_ccw_act.setShortcut(get_shortcut("edit.rotate_ccw"))
         rotate_ccw_act.triggered.connect(lambda: self._rotate_selected(90))
         edit_menu.addAction(rotate_ccw_act)
 
         rotate_cw_act = QAction("Rotate CW (9&0\u00b0)", self)
-        rotate_cw_act.setShortcut(QKeySequence(Qt.Modifier.SHIFT | Qt.Key.Key_Space))
+        rotate_cw_act.setShortcut(get_shortcut("edit.rotate_cw"))
         rotate_cw_act.triggered.connect(lambda: self._rotate_selected(-90))
         edit_menu.addAction(rotate_cw_act)
 
         # -- Fine rotation (15°, around first port) --
         fine_cw_act = QAction("Fine Rotate C&W (15\u00b0)", self)
-        fine_cw_act.setShortcut(QKeySequence(Qt.Key.Key_R))
+        fine_cw_act.setShortcut(get_shortcut("edit.fine_cw"))
         fine_cw_act.triggered.connect(lambda: self._fine_rotate_selected(-15))
         edit_menu.addAction(fine_cw_act)
 
         fine_ccw_act = QAction("Fine Rotate CC&W (15\u00b0)", self)
-        fine_ccw_act.setShortcut(QKeySequence(Qt.Modifier.SHIFT | Qt.Key.Key_R))
+        fine_ccw_act.setShortcut(get_shortcut("edit.fine_ccw"))
         fine_ccw_act.triggered.connect(lambda: self._fine_rotate_selected(15))
         edit_menu.addAction(fine_ccw_act)
 
         # -- Flip --
         flip_h_act = QAction("Flip &Horizontal", self)
-        flip_h_act.setShortcut(QKeySequence(Qt.Key.Key_F))
+        flip_h_act.setShortcut(get_shortcut("edit.flip_h"))
         flip_h_act.triggered.connect(lambda: self._flip_selected(horizontal=True))
         edit_menu.addAction(flip_h_act)
 
         flip_v_act = QAction("Flip &Vertical", self)
-        flip_v_act.setShortcut(QKeySequence(Qt.Modifier.SHIFT | Qt.Key.Key_F))
+        flip_v_act.setShortcut(get_shortcut("edit.flip_v"))
         flip_v_act.triggered.connect(lambda: self._flip_selected(horizontal=False))
         edit_menu.addAction(flip_v_act)
 
@@ -231,75 +232,75 @@ class MainWindow(QMainWindow):
 
         # -- Alignment --
         align_h_act = QAction("Align Hori&zontally", self)
-        align_h_act.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_H))
+        align_h_act.setShortcut(get_shortcut("edit.align_h"))
         align_h_act.triggered.connect(lambda: self._align_selected("horizontal"))
         edit_menu.addAction(align_h_act)
 
         align_v_act = QAction("Align Vert&ically", self)
-        align_v_act.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_V))
+        align_v_act.setShortcut(get_shortcut("edit.align_v"))
         align_v_act.triggered.connect(lambda: self._align_selected("vertical"))
         edit_menu.addAction(align_v_act)
 
         edit_menu.addSeparator()
 
         hide_layer_act = QAction("&Hide Active Layer", self)
-        hide_layer_act.setShortcut(QKeySequence(Qt.Key.Key_H))
+        hide_layer_act.setShortcut(get_shortcut("edit.hide_layer"))
         hide_layer_act.triggered.connect(self._hide_active_layer)
         edit_menu.addAction(hide_layer_act)
 
         show_layer_act = QAction("S&how Active Layer", self)
-        show_layer_act.setShortcut(QKeySequence(Qt.Modifier.SHIFT | Qt.Key.Key_H))
+        show_layer_act.setShortcut(get_shortcut("edit.show_layer"))
         show_layer_act.triggered.connect(self._show_active_layer)
         edit_menu.addAction(show_layer_act)
 
         lock_layer_act = QAction("&Lock Active Layer", self)
-        lock_layer_act.setShortcut(QKeySequence(Qt.Key.Key_L))
+        lock_layer_act.setShortcut(get_shortcut("edit.lock_layer"))
         lock_layer_act.triggered.connect(self._lock_active_layer)
         edit_menu.addAction(lock_layer_act)
 
         unlock_layer_act = QAction("&Unlock Active Layer", self)
-        unlock_layer_act.setShortcut(QKeySequence(Qt.Modifier.SHIFT | Qt.Key.Key_L))
+        unlock_layer_act.setShortcut(get_shortcut("edit.unlock_layer"))
         unlock_layer_act.triggered.connect(self._unlock_active_layer)
         edit_menu.addAction(unlock_layer_act)
 
         edit_menu.addSeparator()
 
         bring_fwd_act = QAction("Bring For&ward", self)
-        bring_fwd_act.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Key.Key_BracketRight))
+        bring_fwd_act.setShortcut(get_shortcut("edit.bring_fwd"))
         bring_fwd_act.triggered.connect(self._bring_forward)
         edit_menu.addAction(bring_fwd_act)
 
         send_bwd_act = QAction("Send Back&ward", self)
-        send_bwd_act.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Key.Key_BracketLeft))
+        send_bwd_act.setShortcut(get_shortcut("edit.send_bwd"))
         send_bwd_act.triggered.connect(self._send_backward)
         edit_menu.addAction(send_bwd_act)
 
         bring_front_act = QAction("Bring to &Front", self)
-        bring_front_act.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_BracketRight))
+        bring_front_act.setShortcut(get_shortcut("edit.bring_front"))
         bring_front_act.triggered.connect(self._bring_to_front)
         edit_menu.addAction(bring_front_act)
 
         send_back_act = QAction("Send to &Back", self)
-        send_back_act.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_BracketLeft))
+        send_back_act.setShortcut(get_shortcut("edit.send_back"))
         send_back_act.triggered.connect(self._send_to_back)
         edit_menu.addAction(send_back_act)
 
         edit_menu.addSeparator()
 
         group_act = QAction("&Group", self)
-        group_act.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Key.Key_G))
+        group_act.setShortcut(get_shortcut("edit.group"))
         group_act.triggered.connect(self._group_selected)
         edit_menu.addAction(group_act)
 
         ungroup_act = QAction("U&ngroup", self)
-        ungroup_act.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Modifier.SHIFT | Qt.Key.Key_G))
+        ungroup_act.setShortcut(get_shortcut("edit.ungroup"))
         ungroup_act.triggered.connect(self._ungroup_selected)
         edit_menu.addAction(ungroup_act)
 
         edit_menu.addSeparator()
 
         settings_act = QAction("Se&ttings\u2026", self)
-        settings_act.setShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Key.Key_Comma))
+        settings_act.setShortcut(get_shortcut("edit.settings"))
         settings_act.triggered.connect(self._open_settings)
         edit_menu.addAction(settings_act)
 
@@ -307,19 +308,19 @@ class MainWindow(QMainWindow):
         view_menu = menu_bar.addMenu("&View")
 
         zoom_in_act = QAction("Zoom &In", self)
-        zoom_in_act.setShortcut(QKeySequence.StandardKey.ZoomIn)
+        zoom_in_act.setShortcut(get_shortcut("view.zoom_in"))
         zoom_in_act.triggered.connect(lambda: self._view.zoom_centered(1.25))
         view_menu.addAction(zoom_in_act)
 
         zoom_out_act = QAction("Zoom &Out", self)
-        zoom_out_act.setShortcut(QKeySequence.StandardKey.ZoomOut)
+        zoom_out_act.setShortcut(get_shortcut("view.zoom_out"))
         zoom_out_act.triggered.connect(lambda: self._view.zoom_centered(0.8))
         view_menu.addAction(zoom_out_act)
 
         fit_act = QAction("Zoom &All / Fit", self)
         fit_act.setShortcuts([
-            QKeySequence(Qt.Key.Key_A),
-            QKeySequence(Qt.Modifier.CTRL | Qt.Key.Key_0),
+            get_shortcut("view.fit_all"),
+            get_shortcut("view.fit_all2"),
         ])
         fit_act.triggered.connect(self._view.fit_all)
         view_menu.addAction(fit_act)
@@ -336,7 +337,7 @@ class MainWindow(QMainWindow):
 
         self._zoom_window_act = QAction("&Zoom Window", self)
         self._zoom_window_act.setCheckable(True)
-        self._zoom_window_act.setShortcut(QKeySequence(Qt.Key.Key_Z))
+        self._zoom_window_act.setShortcut(get_shortcut("view.zoom_window"))
         self._zoom_window_act.toggled.connect(self._toggle_zoom_window)
         view_menu.addAction(self._zoom_window_act)
 
@@ -345,7 +346,7 @@ class MainWindow(QMainWindow):
 
         self._trace_mode_act = QAction("&Trace Routing Mode", self)
         self._trace_mode_act.setCheckable(True)
-        self._trace_mode_act.setShortcut(QKeySequence(Qt.Key.Key_W))
+        self._trace_mode_act.setShortcut(get_shortcut("routing.trace"))
         self._trace_mode_act.toggled.connect(self._toggle_trace_mode)
         routing_menu.addAction(self._trace_mode_act)
 
@@ -409,7 +410,7 @@ class MainWindow(QMainWindow):
         draw_menu.addSeparator()
 
         draw_text_act = QAction("&Text", self)
-        draw_text_act.setShortcut(QKeySequence("T"))
+        draw_text_act.setShortcut(get_shortcut("draw.text"))
         draw_text_act.triggered.connect(self._add_annotation)
         draw_menu.addAction(draw_text_act)
 
@@ -417,7 +418,7 @@ class MainWindow(QMainWindow):
         help_menu = menu_bar.addMenu("&Help")
 
         help_act = QAction("&Help", self)
-        help_act.setShortcut(QKeySequence.StandardKey.HelpContents)
+        help_act.setShortcut(get_shortcut("help.help"))
         help_act.triggered.connect(self._show_help)
         help_menu.addAction(help_act)
 
