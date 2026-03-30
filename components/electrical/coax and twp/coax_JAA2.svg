@@ -22,17 +22,21 @@
         stroke-width: 3px;
       }
 
-      .st2, .st4, .st3 {
+      .st2, .st4, .st3, .st5 {
         stroke: #231f20;
         stroke-linejoin: round;
       }
 
       .st4 {
+        stroke-width: 1.9px;
+      }
+
+      .st4, .st5 {
         fill: #cccbcb;
       }
 
-      .st4, .st3 {
-        stroke-width: 1.9px;
+      .st3, .st5 {
+        stroke-width: 1.6px;
       }
     </style>
   </defs>
@@ -43,19 +47,18 @@
   <g id="stretch">
     <line id="stretch:v" class="st1" x1="60" x2="60" y2="40"/>
   </g>
-  <g id="leads">
-    <line class="st2" x1="10.2" y1="20" y2="20"/>
-    <line class="st2" x1="120" y1="20" x2="107.2" y2="20"/>
-  </g>
   <g id="artwork">
     <g>
-      <path class="st2" d="M10.2,20"/>
-      <path class="st4" d="M107.5,33.6c-3.8,0-7-6.1-7-13.6s3.1-13.6,7-13.6H15.5c-3.8,0-7,6.1-7,13.6s3.1,13.6,7,13.6h92Z"/>
+      <path class="st5" d="M107.5,33.6c-3.8,0-7-6.1-7-13.6s3.1-13.6,7-13.6H15.5c-3.8,0-7,6.1-7,13.6s3.1,13.6,7,13.6h92Z"/>
       <g>
         <path class="st3" d="M114.1,24.1c-.9,5.5-3.5,9.5-6.6,9.5s-7-6.1-7-13.6,3.1-13.6,7-13.6,5.8,4,6.6,9.5"/>
         <path class="st4" d="M114.1,24.1"/>
       </g>
       <path class="st2" d="M108.3,20"/>
     </g>
+  </g>
+  <g id="leads">
+    <line class="st2" x1="7.5" y1="20" y2="20"/>
+    <line class="st2" x1="120" y1="20" x2="107.2" y2="20"/>
   </g>
 </svg>

@@ -73,6 +73,7 @@ All layers are `<g>` elements with specific `id` attributes, placed as **direct 
 | `ports` | No (hidden) | Defines connection port positions |
 | `labels` | No (hidden) | Defines label placeholder positions |
 | `stretch` | No (hidden) | Defines stretch break axes |
+| `tile` | Yes (cloned) | Tile unit for repeating stretch (inside artwork) |
 | `decorative` | No (hidden) | Marks component as freely resizable |
 | `snap` | No (hidden) | Defines grid snap anchor point |
 
@@ -175,12 +176,50 @@ Defines break lines for stretchable components. A break line indicates where the
 </g>
 ```
 
-**How stretching works:**
+**Gap stretch (single break line):**
 - A vertical break line (`stretch:v`) at X=B means: everything with X > B shifts right when the component is stretched horizontally.
 - A horizontal break line (`stretch:h`) at Y=B means: everything with Y > B shifts down when stretched vertically.
 - SVG element coordinates beyond the break line are modified at render time.
 - Port positions beyond the break also shift accordingly.
 - The SVG content at the break line is extended to fill the gap (vector stretch, not raster).
+
+**Repeating stretch (two break lines):**
+
+Defines a tile region between two break lines. When stretched, the content between the breaks is repeated (tiled) to fill the new length. Content outside the region stays intact; content beyond the second break shifts.
+
+```xml
+<g id="stretch">
+  <!-- Horizontal repeating: tile content between X=20 and X=40 -->
+  <line id="stretch:v1" x1="20" y1="0" x2="20" y2="20"/>
+  <line id="stretch:v2" x1="40" y1="0" x2="40" y2="20"/>
+
+  <!-- Vertical repeating: tile content between Y=10 and Y=30 -->
+  <line id="stretch:h1" x1="0" y1="10" x2="100" y2="10"/>
+  <line id="stretch:h2" x1="0" y1="30" x2="100" y2="30"/>
+</g>
+```
+
+- The stretch amount snaps to integer multiples of the tile width (break2 - break1)
+- **Design tip:** Make the tile width an integer multiple of the grid spacing (20pt) so ports still align to the grid after stretching
+- Elements beyond the second break line shift by the total growth amount
+- **Tile content must be in a `<g id="tile">` group** within the artwork layer. Only this group is cloned and repeated. If no tile group is found, the entire artwork is cloned with clipPath clipping (less reliable).
+
+```xml
+<g id="artwork">
+  <!-- Left end cap (not repeated) -->
+  <path d="..."/>
+
+  <!-- Tile unit: this group is cloned and repeated -->
+  <g id="tile">
+    <path d="..."/>  <!-- one period of the repeating pattern -->
+  </g>
+
+  <!-- Right end cap (not repeated, shifts right) -->
+  <path d="..."/>
+</g>
+```
+
+**Important:** The tile group should contain ONLY the geometry between the two break lines. Paths should not extend beyond the break boundaries.
 
 ### `decorative` — Decorative Component Marker
 
@@ -376,3 +415,19 @@ Each subdirectory becomes a **category** in the library panel. File names (witho
 ```
 
 This component has no ports or leads. The `<g id="decorative"/>` marker enables free resize on all edges. The snap point at `(0, 0)` means the top-left corner aligns to the grid when dragged.
+
+## Compound Components (Create from Selection)
+
+You can create a new reusable component from a selection of existing components, connections, and annotations using **File > Create Component from Selection** or the right-click context menu.
+
+**How it works:**
+
+- The selected circuit is rendered as flat SVG artwork — all visual state (including stretched components) is captured at their current dimensions
+- Unterminated ports (ports with no connection or connected outside the selection) become the new component's port markers
+- The result is a standard SVG component file with `<g id="artwork">` and `<g id="ports">` layers
+
+**Important notes:**
+
+- Compound components are **not stretchable** — the exported SVG contains flat geometry with no break lines. Any stretchable sub-components are baked at their current stretched length.
+- Connections are rendered as artwork — they become part of the visual body, not interactive wires.
+- To modify a compound component, edit the original circuit and re-export.

@@ -718,9 +718,26 @@ class DiagramView(QGraphicsView):
             event.accept()
             return
 
-        # If we're handling drag ourselves, skip Qt's move (which would fight us)
-        if not self._dragging_components:
+        # Check if a stretch drag is in progress on any dragged component
+        _stretch_active = False
+        if self._dragging_components:
+            for comp in self._dragging_components:
+                if (getattr(comp, '_dragging_stretch_h', False) or
+                        getattr(comp, '_dragging_stretch_v', False)):
+                    _stretch_active = True
+                    break
+
+        # If we're handling a position drag ourselves, skip Qt's move.
+        # But always call super for stretch drags (handled by ComponentItem)
+        # and when not dragging at all (rubber-band, etc.).
+        if _stretch_active or not self._dragging_components:
             super().mouseMoveEvent(event)
+
+        # Skip position drag code when a stretch drag is active
+        if _stretch_active:
+            # Just update connections for the stretch
+            self._diagram_scene.update_connections()
+            return
 
         # Update connections if components are being dragged
         if self._dragging_components:
@@ -737,18 +754,21 @@ class DiagramView(QGraphicsView):
                 anchor = self._drag_anchor_item
                 anchor_start = self._drag_anchor_start_pos
                 tentative_pos = anchor_start + raw_delta
-                if hasattr(anchor, '_skip_snap'):
-                    # Temporarily enable snap on anchor to get snapped position
-                    old_skip = anchor._skip_snap
-                    anchor._skip_snap = False
-                    # Use itemChange to compute snapped position
-                    from diagrammer.canvas.grid import snap_to_grid
-                    views = self._diagram_scene.views()
-                    if views and getattr(views[0], '_snap_enabled', True):
-                        snapped_pos = snap_to_grid(tentative_pos, views[0].grid_spacing)
+
+                # Snap: use the anchor's port-based snap offset if available,
+                # so the PORT lands on grid (not the item's origin)
+                from diagrammer.canvas.grid import snap_to_grid
+                views = self._diagram_scene.views()
+                if views and getattr(views[0], '_snap_enabled', True):
+                    spacing = views[0].grid_spacing
+                    snap_offset = getattr(anchor, '_snap_anchor_offset', None)
+                    if snap_offset is not None:
+                        # Snap the port position, then derive item position
+                        port_pos = tentative_pos + snap_offset
+                        snapped_port = snap_to_grid(port_pos, spacing)
+                        snapped_pos = tentative_pos + (snapped_port - port_pos)
                     else:
-                        snapped_pos = tentative_pos
-                    anchor._skip_snap = old_skip
+                        snapped_pos = snap_to_grid(tentative_pos, spacing)
                 else:
                     snapped_pos = tentative_pos
                 delta = snapped_pos - anchor_start
@@ -903,6 +923,10 @@ class DiagramView(QGraphicsView):
             self._trace_vertices.clear()
             self._diagram_scene._cancel_connection()
             self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
+        # Exit any component isolation modes
+        for item in self._diagram_scene.items():
+            if isinstance(item, ComponentItem) and getattr(item, '_isolation_mode', False):
+                item.isolation_mode = False
         self._diagram_scene.clear_rotation_pivot()
         self._diagram_scene.clear_alignment_ports()
 
@@ -1322,6 +1346,13 @@ class DiagramView(QGraphicsView):
             if len(selected) >= 2:
                 group_act = menu.addAction("Group")
                 group_act.triggered.connect(main_win._group_selected)
+
+        # Create Component from Selection
+        if selected and len(selected) >= 2:
+            if menu.actions():
+                menu.addSeparator()
+            create_comp_act = menu.addAction("Create Component from Selection...")
+            create_comp_act.triggered.connect(main_win._create_component_from_selection)
 
         # Delete
         if selected:

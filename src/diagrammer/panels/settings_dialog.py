@@ -61,6 +61,8 @@ class AppSettings:
         self.default_annotation_font = "STIX Two Text"
         self.default_annotation_size = 12.0
         self.default_annotation_color = QColor(0, 0, 0)
+        self.default_annotation_bold = False
+        self.default_annotation_italic = False
 
         # Library
         self.hidden_libraries: set[str] = set()
@@ -96,6 +98,8 @@ class AppSettings:
                 "default_annotation_font": self.default_annotation_font,
                 "default_annotation_size": self.default_annotation_size,
                 "default_annotation_color": self.default_annotation_color.name(),
+                "default_annotation_bold": self.default_annotation_bold,
+                "default_annotation_italic": self.default_annotation_italic,
             }
             import json
             _SETTINGS_FILE.write_text(json.dumps(data, indent=2))
@@ -134,6 +138,8 @@ class AppSettings:
                 ac = data.get("default_annotation_color")
                 if ac:
                     self.default_annotation_color = QColor(ac)
+                self.default_annotation_bold = data.get("default_annotation_bold", self.default_annotation_bold)
+                self.default_annotation_italic = data.get("default_annotation_italic", self.default_annotation_italic)
         except Exception:
             pass
 

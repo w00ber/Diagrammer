@@ -10,6 +10,75 @@ from diagrammer.items.connection_item import ConnectionItem
 from diagrammer.items.port_item import PortItem
 
 
+def _get_lead_stroke_width(port: PortItem) -> float | None:
+    """Extract the stroke width of the lead connected to this port from the SVG.
+
+    Parses the component's SVG file, finds the leads layer, and reads
+    the stroke-width from CSS classes or inline styles. Returns None
+    if no leads layer exists or no stroke width is found.
+    """
+    import re
+    import xml.etree.ElementTree as ET
+
+    comp = port.component
+    if not hasattr(comp, 'component_def'):
+        return None
+
+    cdef = comp.component_def
+    try:
+        tree = ET.parse(str(cdef.svg_path))
+        root = tree.getroot()
+    except Exception:
+        return None
+
+    def _strip_ns(tag):
+        return tag.split("}", 1)[1] if "}" in tag else tag
+
+    # Parse CSS classes
+    css_classes: dict[str, dict[str, str]] = {}
+    for elem in root.iter():
+        if _strip_ns(elem.tag) == "style" and elem.text:
+            for m in re.finditer(r'([^{}]+)\{([^}]+)\}', elem.text):
+                props = {}
+                for pm in re.finditer(r'([\w-]+)\s*:\s*([^;]+)', m.group(2)):
+                    props[pm.group(1).strip()] = pm.group(2).strip()
+                for cm in re.finditer(r'\.(\w+)', m.group(1)):
+                    css_classes.setdefault(cm.group(1), {}).update(props)
+
+    # Find leads layer
+    leads = None
+    for elem in root.iter():
+        if _strip_ns(elem.tag) == "g" and elem.get("id") == "leads":
+            leads = elem
+            break
+
+    if leads is None:
+        return None
+
+    # Check the first leaf element in leads for stroke-width
+    for elem in leads.iter():
+        tag = _strip_ns(elem.tag)
+        if tag in ("line", "path", "polyline"):
+            # Check inline style first
+            style = elem.get("style", "")
+            if style:
+                m = re.search(r'stroke-width\s*:\s*([\d.]+)', style)
+                if m:
+                    return float(m.group(1))
+            # Check direct attribute
+            sw = elem.get("stroke-width")
+            if sw:
+                return float(sw.replace("px", "").replace("pt", "").strip())
+            # Check CSS class
+            for cls in elem.get("class", "").split():
+                if cls in css_classes:
+                    sw_val = css_classes[cls].get("stroke-width")
+                    if sw_val:
+                        return float(sw_val.replace("px", "").replace("pt", "").strip())
+
+    return None
+
+
 class CreateConnectionCommand(QUndoCommand):
     """Create a connection between two ports (undoable)."""
 
@@ -45,7 +114,9 @@ class CreateConnectionCommand(QUndoCommand):
                 self._connection.routing_mode = self._scene.default_routing_mode
             # Apply style defaults from app settings
             from diagrammer.panels.settings_dialog import app_settings
-            self._connection.line_width = app_settings.default_line_width
+            # Try to match the lead stroke width from the source port's component
+            lead_width = _get_lead_stroke_width(self._source_port)
+            self._connection.line_width = lead_width if lead_width else app_settings.default_line_width
             self._connection.line_color = app_settings.default_line_color
             self._connection.corner_radius = app_settings.default_corner_radius
             # Assign to active layer

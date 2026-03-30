@@ -125,6 +125,12 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
 
+        create_comp_act = QAction("Create &Component from Selection...", self)
+        create_comp_act.triggered.connect(self._create_component_from_selection)
+        file_menu.addAction(create_comp_act)
+
+        file_menu.addSeparator()
+
         restore_act = QAction("&Restore Previous Session", self)
         restore_act.triggered.connect(self._restore_session)
         file_menu.addAction(restore_act)
@@ -443,7 +449,15 @@ class MainWindow(QMainWindow):
 
     def _create_panels(self) -> None:
         self._library_panel = LibraryPanel(self._library, self)
+        self._library_panel.setObjectName("LibraryPanel")
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._library_panel)
+
+        # Annotations tool palette below library
+        from diagrammer.panels.annotations_panel import AnnotationsPanel
+        self._annotations_panel = AnnotationsPanel(self)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._annotations_panel)
+        self.splitDockWidget(self._library_panel, self._annotations_panel, Qt.Orientation.Vertical)
+        self._annotations_panel.tool_activated.connect(self._on_annotation_tool)
 
         from diagrammer.panels.properties_panel import PropertiesPanel
         self._props_panel = PropertiesPanel(self)
@@ -526,15 +540,7 @@ class MainWindow(QMainWindow):
 
     def _apply_library_visibility(self) -> None:
         """Rebuild library panel with only visible categories."""
-        from diagrammer.models.library import ComponentLibrary
-        visible = ComponentLibrary()
-        for cat, defs in self._library.categories.items():
-            if cat not in app_settings.hidden_libraries:
-                visible._categories[cat] = defs
-                for d in defs:
-                    visible._by_key[f"{cat}/{d.name}"] = d
-        self._library_panel._tree.populate(visible, self._library_panel._favorites, self._library_panel._recents)
-        self._library_panel._grid.populate(visible)
+        self._library_panel._refresh_views()
 
     def _group_selected(self) -> None:
         """Group all selected items so they act as a single unit.
@@ -783,6 +789,11 @@ class MainWindow(QMainWindow):
             # Single component: rotate around its own center
             cmd = RotateComponentCommand(comp_targets[0], degrees)
             self._scene.undo_stack.push(cmd)
+        elif len(movable) == 1 and isinstance(movable[0], (AnnotationItem, ShapeItem)):
+            # Single annotation/shape: rotate around its own center
+            from diagrammer.commands.transform_command import RotateItemCommand
+            cmd = RotateItemCommand(movable[0], degrees)
+            self._scene.undo_stack.push(cmd)
         else:
             # Group rotation: rigid-body
             # Compute scene center for each item
@@ -812,29 +823,27 @@ class MainWindow(QMainWindow):
                     gcy + dx * sin_a + dy * cos_a,
                 ))
 
+            from diagrammer.commands.transform_command import RotateItemCommand
+
             for i, item in enumerate(movable):
                 if isinstance(item, ComponentItem):
                     # Rotate internally AND orbit
                     cmd = RotateComponentCommand(item, degrees)
                     self._scene.undo_stack.push(cmd)
-                    cur_sc = _scene_center(item)
-                    offset = target_centers[i] - cur_sc
-                    new_pos = item.pos() + offset
+                elif isinstance(item, (AnnotationItem, ShapeItem)):
+                    # Rotate internally (Qt rotation) AND orbit
+                    cmd = RotateItemCommand(item, degrees)
+                    self._scene.undo_stack.push(cmd)
+                # All items: orbit position around group center
+                cur_sc = _scene_center(item)
+                offset = target_centers[i] - cur_sc
+                new_pos = item.pos() + offset
+                if hasattr(item, '_skip_snap'):
                     item._skip_snap = True
-                    move_cmd = MoveComponentCommand(item, item.pos(), new_pos)
-                    self._scene.undo_stack.push(move_cmd)
+                move_cmd = MoveComponentCommand(item, item.pos(), new_pos)
+                self._scene.undo_stack.push(move_cmd)
+                if hasattr(item, '_skip_snap'):
                     item._skip_snap = False
-                else:
-                    # Annotations, junctions, shapes: orbit only (no internal rotation)
-                    cur_sc = _scene_center(item)
-                    offset = target_centers[i] - cur_sc
-                    new_pos = item.pos() + offset
-                    if hasattr(item, '_skip_snap'):
-                        item._skip_snap = True
-                    move_cmd = MoveComponentCommand(item, item.pos(), new_pos)
-                    self._scene.undo_stack.push(move_cmd)
-                    if hasattr(item, '_skip_snap'):
-                        item._skip_snap = False
 
             # Rotate internal connection waypoints around group center
             # and switch to direct routing to preserve the rotated shape.
@@ -948,10 +957,15 @@ class MainWindow(QMainWindow):
         cos_a, sin_a = math.cos(rad), math.sin(rad)
         px, py = pivot_scene.x(), pivot_scene.y()
 
+        from diagrammer.commands.transform_command import RotateItemCommand
+
         for item in movable:
             if isinstance(item, ComponentItem):
                 # Rotate internally
                 cmd = RotateComponentCommand(item, degrees)
+                self._scene.undo_stack.push(cmd)
+            elif isinstance(item, (AnnotationItem, ShapeItem)):
+                cmd = RotateItemCommand(item, degrees)
                 self._scene.undo_stack.push(cmd)
 
             # Orbit around pivot (all item types)
@@ -1021,6 +1035,10 @@ class MainWindow(QMainWindow):
             for item in selected_comps:
                 cmd = FlipComponentCommand(item, horizontal)
                 self._scene.undo_stack.push(cmd)
+            from diagrammer.commands.transform_command import FlipItemCommand
+            for item in selected_annots + selected_shapes:
+                cmd = FlipItemCommand(item, horizontal)
+                self._scene.undo_stack.push(cmd)
             self._scene.undo_stack.endMacro()
             self._scene.update_connections()
             return
@@ -1056,6 +1074,12 @@ class MainWindow(QMainWindow):
             move_cmd = MoveComponentCommand(comp, old_pos, new_pos)
             self._scene.undo_stack.push(move_cmd)
             comp._skip_snap = False
+
+        # Flip annotations and shapes internally
+        from diagrammer.commands.transform_command import FlipItemCommand
+        for item in selected_annots + selected_shapes:
+            cmd = FlipItemCommand(item, horizontal)
+            self._scene.undo_stack.push(cmd)
 
         # Mirror non-component items (junctions, annotations, shapes)
         for item in selected_juncs + selected_annots + selected_shapes:
@@ -1456,6 +1480,30 @@ class MainWindow(QMainWindow):
         for item in pasted_annotations:
             item.setSelected(True)
 
+    # ----------------------------------------------------------- Annotation tools
+
+    def _on_annotation_tool(self, tool_id: str) -> None:
+        """Handle click from the Annotations panel."""
+        if tool_id == "text":
+            self._add_annotation()
+        elif tool_id == "arrow":
+            self._add_arrow()
+        elif tool_id in ("rectangle", "ellipse", "line"):
+            self._add_shape(tool_id)
+
+    def _add_arrow(self) -> None:
+        """Add a line with a forward arrowhead."""
+        from diagrammer.commands.shape_command import AddShapeCommand
+        from diagrammer.items.shape_item import ARROW_FORWARD, LineItem
+
+        center = self._view.mapToScene(self._view.viewport().rect().center())
+        snapped = self._view.snap(center)
+        item = LineItem(start=QPointF(0, 0), end=QPointF(100, 0))
+        item.arrow_style = ARROW_FORWARD
+
+        cmd = AddShapeCommand(self._scene, item, snapped)
+        self._scene.undo_stack.push(cmd)
+
     # ----------------------------------------------------------- Shape drawing
 
     def _add_shape(self, shape_type: str) -> None:
@@ -1494,6 +1542,8 @@ class MainWindow(QMainWindow):
         item.font_family = app_settings.default_annotation_font
         item.font_size = app_settings.default_annotation_size
         item.text_color = app_settings.default_annotation_color
+        item.font_bold = app_settings.default_annotation_bold
+        item.font_italic = app_settings.default_annotation_italic
         item.setPos(snapped)
 
         # Undoable add: push a command that adds/removes the item
@@ -1724,3 +1774,52 @@ class MainWindow(QMainWindow):
             DiagramExporter.export_pdf(self._scene, path)
             app_settings.last_directory = str(Path(path).parent)
             app_settings.save()
+
+    def _create_component_from_selection(self) -> None:
+        """Export selected items as a reusable SVG component in the library."""
+        from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
+
+        selected = self._scene.selectedItems()
+        if not selected:
+            QMessageBox.information(self, "No Selection",
+                                   "Select components and connections first.")
+            return
+
+        # Ask for component name
+        name, ok = QInputDialog.getText(self, "Create Component",
+                                        "Component name:")
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+
+        # Ask for save location within components directory
+        from diagrammer.models.library import ComponentLibrary
+        comp_dir = Path(__file__).resolve().parent.parent.parent / "components"
+        if not comp_dir.is_dir():
+            comp_dir = Path.home() / ".diagrammer" / "components"
+            comp_dir.mkdir(parents=True, exist_ok=True)
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Component", str(comp_dir / f"{name}.svg"),
+            "SVG Files (*.svg);;All Files (*)"
+        )
+        if not path:
+            return
+        if not path.endswith(".svg"):
+            path += ".svg"
+
+        from diagrammer.io.compound_export import export_compound_component
+        success = export_compound_component(
+            self._scene, selected, Path(path), name
+        )
+        if success:
+            # Rescan library to pick up the new component
+            builtin_path = Path(__file__).resolve().parent.parent.parent / "components"
+            if builtin_path.is_dir():
+                self._library.scan(builtin_path)
+            self._library_panel._refresh_views()
+            QMessageBox.information(self, "Component Created",
+                                   f"'{name}' saved to:\n{path}")
+        else:
+            QMessageBox.warning(self, "Export Failed",
+                                "Could not create component from selection.")

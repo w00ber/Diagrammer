@@ -137,6 +137,10 @@ class DiagramSerializer:
                 item.set_flip_v(True)
             if cd.get("stretch_dx", 0) or cd.get("stretch_dy", 0):
                 item.set_stretch(cd.get("stretch_dx", 0), cd.get("stretch_dy", 0))
+            # Restore per-instance style overrides
+            if "style_overrides" in cd:
+                from diagrammer.models.svg_style_override import ComponentStyleOverrides
+                item.set_style_overrides(ComponentStyleOverrides.from_dict(cd["style_overrides"]))
             item._layer_index = cd.get("layer", 0)
             scene.addItem(item)
             if "z" in cd:
@@ -280,7 +284,7 @@ class DiagramSerializer:
 # -- Serialization helpers --
 
 def _serialize_component(item) -> dict:
-    return {
+    d = {
         "id": item.instance_id,
         "def_key": item.library_key,
         "pos": [item.pos().x(), item.pos().y()],
@@ -293,6 +297,10 @@ def _serialize_component(item) -> dict:
         "z": item.zValue(),
         "group": getattr(item, '_group_ids', []) or [],
     }
+    # Only serialize style overrides if non-empty
+    if hasattr(item, '_style_overrides') and not item.style_overrides.is_empty():
+        d["style_overrides"] = item.style_overrides.to_dict()
+    return d
 
 
 def _serialize_junction(item) -> dict:

@@ -54,6 +54,8 @@ class ComponentLibrary:
             try:
                 comp_def = ComponentDef.from_svg(svg_file, category=category)
                 key = f"{category}/{comp_def.name}"
+                if key in self._by_key:
+                    continue  # already loaded — skip duplicate
                 self._by_key[key] = comp_def
                 if category not in self._categories:
                     self._categories[category] = []

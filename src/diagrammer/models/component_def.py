@@ -62,6 +62,9 @@ class ComponentDef:
     stretch_v: bool = False
     stretch_h_pos: float | None = None  # Y position of the horizontal break line
     stretch_v_pos: float | None = None  # X position of the vertical break line
+    # Repeating stretch: two break lines define a tile region
+    stretch_h_repeat: tuple[float, float] | None = None  # (y1, y2) repeat region
+    stretch_v_repeat: tuple[float, float] | None = None  # (x1, x2) repeat region
     min_width: float = 0.0
     min_height: float = 0.0
     decorative: bool = False  # freely resizable, no ports/leads
@@ -111,12 +114,12 @@ class ComponentDef:
         stretch_h, stretch_v, min_width, min_height = _parse_metadata(root)
 
         # Parse stretch layer for break-line positions
-        stretch_h_pos, stretch_v_pos = _parse_stretch_layer(root)
+        stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat = _parse_stretch_layer(root)
 
         # If the stretch layer defines axes, ensure the booleans are set
-        if stretch_h_pos is not None:
+        if stretch_h_pos is not None or stretch_h_repeat is not None:
             stretch_h = True
-        if stretch_v_pos is not None:
+        if stretch_v_pos is not None or stretch_v_repeat is not None:
             stretch_v = True
 
         # Parse snap point layer (for decorative components)
@@ -139,6 +142,8 @@ class ComponentDef:
             stretch_v=stretch_v,
             stretch_h_pos=stretch_h_pos,
             stretch_v_pos=stretch_v_pos,
+            stretch_h_repeat=stretch_h_repeat,
+            stretch_v_repeat=stretch_v_repeat,
             min_width=min_width,
             min_height=min_height,
             decorative=decorative,
@@ -248,24 +253,34 @@ def _parse_metadata(root: ET.Element) -> tuple[bool, bool, float, float]:
     return stretch_h, stretch_v, min_width, min_height
 
 
-def _parse_stretch_layer(root: ET.Element) -> tuple[float | None, float | None]:
+def _parse_stretch_layer(root: ET.Element) -> tuple[
+    float | None, float | None,
+    tuple[float, float] | None, tuple[float, float] | None,
+]:
     """Parse the ``<g id="stretch">`` layer for stretch axis break lines.
 
-    Looks for child ``<line>`` elements with specific ids:
-    - ``stretch:h`` — a horizontal line whose Y position defines the horizontal
-      stretch break point (content above/below the line stays put; the gap grows).
-    - ``stretch:v`` — a vertical line whose X position defines the vertical
-      stretch break point.
+    Supports two modes per axis:
 
-    Returns (stretch_h_pos, stretch_v_pos).  Either value is ``None`` if the
-    corresponding line is not present.
+    **Gap stretch (single break line):**
+    - ``stretch:h`` — Y position; content below shifts down
+    - ``stretch:v`` — X position; content to the right shifts right
+
+    **Repeating stretch (two break lines):**
+    - ``stretch:h1`` + ``stretch:h2`` — Y range; content between is tiled
+    - ``stretch:v1`` + ``stretch:v2`` — X range; content between is tiled
+
+    Returns ``(stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat)``.
     """
     stretch_group = _find_group_by_id(root, "stretch")
     if stretch_group is None:
-        return None, None
+        return None, None, None, None
 
     stretch_h_pos: float | None = None
     stretch_v_pos: float | None = None
+    h1: float | None = None
+    h2: float | None = None
+    v1: float | None = None
+    v2: float | None = None
 
     for elem in stretch_group:
         tag = _strip_ns(elem.tag)
@@ -273,15 +288,22 @@ def _parse_stretch_layer(root: ET.Element) -> tuple[float | None, float | None]:
 
         if tag == "line":
             if elem_id == "stretch:h":
-                # Horizontal stretch — the break is at the Y position of the line.
-                # For a horizontal line y1 == y2; use y1.
                 stretch_h_pos = float(elem.get("y1", "0"))
             elif elem_id == "stretch:v":
-                # Vertical stretch — the break is at the X position of the line.
-                # For a vertical line x1 == x2; use x1.
                 stretch_v_pos = float(elem.get("x1", "0"))
+            elif elem_id == "stretch:h1":
+                h1 = float(elem.get("y1", "0"))
+            elif elem_id == "stretch:h2":
+                h2 = float(elem.get("y1", "0"))
+            elif elem_id == "stretch:v1":
+                v1 = float(elem.get("x1", "0"))
+            elif elem_id == "stretch:v2":
+                v2 = float(elem.get("x1", "0"))
 
-    return stretch_h_pos, stretch_v_pos
+    stretch_h_repeat = (min(h1, h2), max(h1, h2)) if h1 is not None and h2 is not None else None
+    stretch_v_repeat = (min(v1, v2), max(v1, v2)) if v1 is not None and v2 is not None else None
+
+    return stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat
 
 
 def _parse_snap_point(root: ET.Element) -> tuple[float, float] | None:

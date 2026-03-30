@@ -85,6 +85,15 @@ class ComponentItem(QGraphicsItem):
         # Set transform origin to center
         self.setTransformOriginPoint(self._width / 2, self._height / 2)
 
+        # Per-instance SVG style overrides
+        from diagrammer.models.svg_style_override import ComponentStyleOverrides
+        self._style_overrides = ComponentStyleOverrides()
+
+        # Isolation mode (double-click sub-element editing)
+        self._isolation_mode = False
+        self._selected_element_paths: set[str] = set()
+        self._element_infos_cache: list | None = None  # cached SvgElementInfo list
+
         # SVG renderer — hide non-rendered groups (NO lead shortening at init;
         # leads are shortened dynamically based on actual connections)
         self._renderer = QSvgRenderer(self._prepare_svg_bytes(component_def.svg_path))
@@ -130,6 +139,72 @@ class ComponentItem(QGraphicsItem):
         """The component definition key, e.g. 'flowchart/process'."""
         return f"{self._def.category}/{self._def.name}"
 
+    # -- Style override API --
+
+    @property
+    def style_overrides(self):
+        """The per-instance SVG style overrides."""
+        return self._style_overrides
+
+    def set_style_overrides(self, overrides) -> None:
+        """Set all style overrides at once (e.g. from serializer load)."""
+        self._style_overrides = overrides
+        self._invalidate_renderers()
+
+    def set_element_style(self, element_path: str, prop_name: str, value) -> None:
+        """Set a single style property on an SVG sub-element."""
+        from diagrammer.models.svg_style_override import SvgElementStyleOverride
+        ovr = self._style_overrides.get(element_path)
+        if ovr is None:
+            ovr = SvgElementStyleOverride()
+        setattr(ovr, prop_name, value)
+        self._style_overrides.set(element_path, ovr)
+        self._invalidate_renderers()
+
+    def get_element_style(self, element_path: str, prop_name: str):
+        """Get a style property value for an SVG sub-element (None = default)."""
+        ovr = self._style_overrides.get(element_path)
+        if ovr is None:
+            return None
+        return getattr(ovr, prop_name, None)
+
+    def clear_element_style(self, element_path: str) -> None:
+        """Remove all style overrides from a sub-element."""
+        self._style_overrides.clear(element_path)
+        self._invalidate_renderers()
+
+    def _invalidate_renderers(self) -> None:
+        """Force all cached renderers to be rebuilt with current style overrides."""
+        self._renderer = QSvgRenderer(
+            self._prepare_svg_bytes(self._def.svg_path,
+                                    style_overrides=self._style_overrides)
+        )
+        self._lead_renderer = None
+        self._cached_lead_shortening = {}
+        if hasattr(self, '_stretched_cache_key'):
+            del self._stretched_cache_key
+        if hasattr(self, '_stretched_renderer_cache'):
+            del self._stretched_renderer_cache
+        self.update()
+
+    @property
+    def isolation_mode(self) -> bool:
+        return self._isolation_mode
+
+    @isolation_mode.setter
+    def isolation_mode(self, value: bool) -> None:
+        self._isolation_mode = value
+        if not value:
+            self._selected_element_paths.clear()
+        self.update()
+
+    def get_element_infos(self) -> list:
+        """Return cached list of SvgElementInfo for this component's SVG."""
+        if self._element_infos_cache is None:
+            from diagrammer.models.svg_element_info import enumerate_svg_elements
+            self._element_infos_cache = enumerate_svg_elements(self._def.svg_path)
+        return self._element_infos_cache
+
     # -- Stretch API --
 
     @property
@@ -155,14 +230,24 @@ class ComponentItem(QGraphicsItem):
             dx = max(dx, 10.0 - cdef.width)
             dy = max(dy, 10.0 - cdef.height)
         else:
-            # Clamp so stretched size doesn't go below min_width/min_height
-            if cdef.stretch_v_pos is not None:
+            # Repeating stretch: snap to tile multiples
+            if cdef.stretch_v_repeat is not None:
+                tile_w = cdef.stretch_v_repeat[1] - cdef.stretch_v_repeat[0]
+                if tile_w > 0:
+                    n = max(0, round(dx / tile_w))
+                    dx = n * tile_w
+            elif cdef.stretch_v_pos is not None:
                 if cdef.min_width > 0:
                     min_dx = cdef.min_width - cdef.width
                     dx = max(dx, min_dx)
                 dx = max(dx, -(cdef.width - cdef.stretch_v_pos) + 1.0)
 
-            if cdef.stretch_h_pos is not None:
+            if cdef.stretch_h_repeat is not None:
+                tile_h = cdef.stretch_h_repeat[1] - cdef.stretch_h_repeat[0]
+                if tile_h > 0:
+                    n = max(0, round(dy / tile_h))
+                    dy = n * tile_h
+            elif cdef.stretch_h_pos is not None:
                 if cdef.min_height > 0:
                     min_dy = cdef.min_height - cdef.height
                     dy = max(dy, min_dy)
@@ -323,14 +408,15 @@ class ComponentItem(QGraphicsItem):
 
     @staticmethod
     def _prepare_svg_bytes(svg_path, lead_shortening: dict[str, float] | None = None,
-                           port_positions: list | None = None) -> bytes:
-        """Load SVG, hide non-rendered groups, and optionally shorten leads.
+                           port_positions: list | None = None,
+                           style_overrides=None) -> bytes:
+        """Load SVG, hide non-rendered groups, optionally shorten leads, and apply style overrides.
 
         Args:
             svg_path: Path to the SVG file.
             lead_shortening: Dict mapping port names to shortening amounts.
-                           Only ports with non-zero values get their leads shortened.
             port_positions: List of (name, x, y) tuples for port positions.
+            style_overrides: ComponentStyleOverrides instance (or None).
         """
         import xml.etree.ElementTree as ET
         tree = ET.parse(str(svg_path))
@@ -347,7 +433,119 @@ class ComponentItem(QGraphicsItem):
             name_map = {(round(x, 1), round(y, 1)): name for name, x, y in port_positions}
             ComponentItem._shorten_leads_in_svg(root, lead_shortening, xy_map, name_map)
 
+        # Apply per-instance style overrides
+        if style_overrides is not None and not style_overrides.is_empty():
+            ComponentItem._apply_style_overrides(root, style_overrides)
+
         return ET.tostring(root, encoding="unicode").encode("utf-8")
+
+    @staticmethod
+    def _apply_style_overrides(root, style_overrides) -> None:
+        """Apply per-element inline style overrides to the SVG tree.
+
+        Parses CSS classes from ``<defs><style>`` to extract original
+        property values, then merges overrides on top — producing a
+        complete inline ``style=`` attribute that doesn't rely on CSS
+        class fallback (which Qt's SVG renderer may not handle correctly).
+        """
+        import re
+        from diagrammer.models.svg_element_info import _LEAF_TAGS
+
+        def _strip_ns(tag: str) -> str:
+            return tag.split("}", 1)[1] if "}" in tag else tag
+
+        # Parse CSS classes from <defs><style>
+        # Handles comma-separated selectors like ".st1, .st2 { ... }"
+        css_classes: dict[str, dict[str, str]] = {}
+        for elem in root.iter():
+            tag = _strip_ns(elem.tag)
+            if tag == "style" and elem.text:
+                # Match selector block { properties }
+                for m in re.finditer(r'([^{}]+)\{([^}]+)\}', elem.text):
+                    selectors_str = m.group(1)
+                    props_str = m.group(2)
+                    props = {}
+                    for prop_match in re.finditer(r'([\w-]+)\s*:\s*([^;]+)', props_str):
+                        props[prop_match.group(1).strip()] = prop_match.group(2).strip()
+                    # Apply to each .className in the selector list
+                    for cls_match in re.finditer(r'\.(\w+)', selectors_str):
+                        cls_name = cls_match.group(1)
+                        if cls_name not in css_classes:
+                            css_classes[cls_name] = {}
+                        css_classes[cls_name].update(props)
+
+        def _get_original_styles(child) -> dict[str, str]:
+            """Extract original CSS properties from class, attributes, and inline style."""
+            result: dict[str, str] = {}
+            # 1) Class-based styles (lowest priority)
+            cls_attr = child.get("class", "")
+            for cls in cls_attr.split():
+                if cls in css_classes:
+                    result.update(css_classes[cls])
+            # 2) Direct SVG attributes (override class)
+            for attr in ("stroke", "fill", "stroke-width", "stroke-linecap",
+                         "stroke-linejoin", "stroke-dasharray", "stroke-miterlimit",
+                         "opacity", "fill-opacity", "stroke-opacity"):
+                val = child.get(attr)
+                if val is not None:
+                    result[attr] = val
+            # 3) Inline style (highest priority)
+            existing = child.get("style", "")
+            if existing:
+                for prop_match in re.finditer(r'([\w-]+)\s*:\s*([^;]+)', existing):
+                    result[prop_match.group(1).strip()] = prop_match.group(2).strip()
+            return result
+
+        # Map override property names to CSS property names
+        _PROP_TO_CSS = {
+            'stroke_color': 'stroke',
+            'fill_color': 'fill',
+            'stroke_width': 'stroke-width',
+            'stroke_dasharray': 'stroke-dasharray',
+            'stroke_linecap': 'stroke-linecap',
+            'opacity': 'opacity',
+        }
+
+        def _walk(elem, path_prefix, overrides_dict):
+            child_idx = 0
+            for child in elem:
+                tag = _strip_ns(child.tag)
+                child_path = f"{path_prefix}/{child_idx}"
+                if tag == "g":
+                    _walk(child, child_path, overrides_dict)
+                elif tag in _LEAF_TAGS:
+                    ovr = overrides_dict.get(child_path)
+                    if ovr is not None and not ovr.is_empty():
+                        # Start with original class-based styles
+                        merged = _get_original_styles(child)
+                        # Apply overrides on top
+                        if ovr.stroke_color is not None:
+                            merged['stroke'] = ovr.stroke_color
+                        if ovr.fill_color is not None:
+                            merged['fill'] = ovr.fill_color
+                        if ovr.stroke_width is not None:
+                            merged['stroke-width'] = f"{ovr.stroke_width}px"
+                        if ovr.stroke_dasharray is not None:
+                            merged['stroke-dasharray'] = ovr.stroke_dasharray
+                        if ovr.stroke_linecap is not None:
+                            merged['stroke-linecap'] = ovr.stroke_linecap
+                        if ovr.opacity is not None:
+                            merged['opacity'] = str(ovr.opacity)
+                        # Build complete inline style
+                        inline = ";".join(f"{k}:{v}" for k, v in merged.items())
+                        child.set("style", inline)
+                child_idx += 1
+
+        ovr_dict = style_overrides.overrides
+        if not ovr_dict:
+            return
+
+        for layer_id in ("artwork", "leads"):
+            for elem in root.iter():
+                tag = _strip_ns(elem.tag)
+                if tag == "g" and elem.get("id") == layer_id:
+                    _walk(elem, layer_id, ovr_dict)
+                    break
 
     @staticmethod
     def _shorten_leads_in_svg(root, lead_shortening: dict[str, float],
@@ -481,7 +679,8 @@ class ComponentItem(QGraphicsItem):
 
         side: 'right' or 'left'
         """
-        if self._def.stretch_v_pos is None and not self._def.decorative:
+        if (self._def.stretch_v_pos is None and self._def.stretch_v_repeat is None
+                and not self._def.decorative):
             return None
         s = STRETCH_HANDLE_SIZE
         y = self._height / 2 - s / 2
@@ -496,7 +695,8 @@ class ComponentItem(QGraphicsItem):
 
         side: 'bottom' or 'top'
         """
-        if self._def.stretch_h_pos is None and not self._def.decorative:
+        if (self._def.stretch_h_pos is None and self._def.stretch_h_repeat is None
+                and not self._def.decorative):
             return None
         s = STRETCH_HANDLE_SIZE
         x = self._width / 2 - s / 2
@@ -646,6 +846,7 @@ class ComponentItem(QGraphicsItem):
                     self._def.svg_path,
                     lead_shortening=shortening,
                     port_positions=port_positions,
+                    style_overrides=self._style_overrides,
                 ))
             else:
                 self._lead_renderer = None
@@ -662,8 +863,8 @@ class ComponentItem(QGraphicsItem):
         if cdef.decorative:
             # Decorative: just scale the SVG to fit the current size
             self._renderer.render(painter, target_rect)
-        elif (cdef.stretch_v_pos is not None and self._stretch_dx != 0.0) or \
-             (cdef.stretch_h_pos is not None and self._stretch_dy != 0.0):
+        elif ((cdef.stretch_v_pos is not None or cdef.stretch_v_repeat is not None) and self._stretch_dx != 0.0) or \
+             ((cdef.stretch_h_pos is not None or cdef.stretch_h_repeat is not None) and self._stretch_dy != 0.0):
             renderer = self._get_stretched_renderer()
             renderer.render(painter, target_rect)
         else:
@@ -683,6 +884,31 @@ class ComponentItem(QGraphicsItem):
             # Draw stretch/resize handles
             self._paint_stretch_handles(painter)
 
+        # Isolation mode: show orange border to indicate editing mode
+        if self._isolation_mode:
+            pen = QPen(QColor(255, 140, 0), 2.0)
+            pen.setDashPattern([4, 2])
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(target_rect)
+            # Element flashing is done via style overrides — no bbox drawing needed
+
+    def _element_bbox_in_local(self, info) -> QRectF:
+        """Map an SvgElementInfo bbox from viewBox coords to local item coords.
+
+        For non-stretched components, viewBox coords == local coords.
+        For stretched components, elements past the break are shifted.
+        """
+        bbox = info.bbox
+        cdef = self._def
+        x, y, w, h = bbox.x(), bbox.y(), bbox.width(), bbox.height()
+        # Apply stretch offset if element is past the break line
+        if cdef.stretch_v_pos is not None and x > cdef.stretch_v_pos:
+            x += self._stretch_dx
+        if cdef.stretch_h_pos is not None and y > cdef.stretch_h_pos:
+            y += self._stretch_dy
+        return QRectF(x, y, w, h)
+
     def _get_stretched_renderer(self) -> QSvgRenderer:
         """Create a QSvgRenderer from SVG with coordinates shifted past the break.
 
@@ -690,7 +916,7 @@ class ComponentItem(QGraphicsItem):
         beyond the break line by the stretch amount — producing pure vector output.
         The result is cached and only rebuilt when the stretch amount changes.
         """
-        cache_key = (self._stretch_dx, self._stretch_dy)
+        cache_key = (self._stretch_dx, self._stretch_dy, hash(self._style_overrides))
         if (hasattr(self, '_stretched_cache_key')
                 and self._stretched_cache_key == cache_key
                 and hasattr(self, '_stretched_renderer_cache')):
@@ -716,37 +942,186 @@ class ComponentItem(QGraphicsItem):
             if tag == "g" and elem.get("id") in ("ports", "labels", "stretch", "snap", "decorative"):
                 elem.set("display", "none")
 
-        # Shift coordinates in artwork elements
-        bx = cdef.stretch_v_pos  # vertical break line X (for horizontal stretch)
-        by = cdef.stretch_h_pos  # horizontal break line Y (for vertical stretch)
+        # Determine stretch mode: gap (single break) or repeat (two breaks)
+        v_repeat = cdef.stretch_v_repeat  # (x1, x2) or None
+        h_repeat = cdef.stretch_h_repeat  # (y1, y2) or None
+        bx = cdef.stretch_v_pos
+        by = cdef.stretch_h_pos
         dx = self._stretch_dx
         dy = self._stretch_dy
 
-        artwork = None
-        for elem in root.iter():
-            tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-            if tag == "g" and elem.get("id") == "artwork":
-                artwork = elem
-                break
+        def _find_layer(layer_id):
+            for e in root.iter():
+                t = e.tag.split("}")[-1] if "}" in e.tag else e.tag
+                if t == "g" and e.get("id") == layer_id:
+                    return e
+            return None
 
-        if artwork is not None:
-            self._shift_svg_element(artwork, bx, by, dx, dy)
+        artwork = _find_layer("artwork")
+        leads = _find_layer("leads")
 
-        # Also shift the leads layer
-        leads = None
-        for elem in root.iter():
-            tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-            if tag == "g" and elem.get("id") == "leads":
-                leads = elem
-                break
-        if leads is not None:
-            self._shift_svg_element(leads, bx, by, dx, dy)
+        if v_repeat and dx != 0:
+            import copy
+            tile_w = v_repeat[1] - v_repeat[0]
+            if tile_w > 0:
+                n_extra = max(0, int(round(dx / tile_w)))
+                total_growth = n_extra * tile_w
+                # Snapshot ORIGINAL children BEFORE shift (for clean tile cloning)
+                orig_snapshots = {}
+                for layer in (artwork, leads):
+                    if layer is not None:
+                        orig_snapshots[layer] = [copy.deepcopy(c) for c in layer]
+                # Shift elements past break2 to make room for tiles
+                for layer in (artwork, leads):
+                    if layer is not None:
+                        self._shift_svg_element(layer, v_repeat[1], None, total_growth, 0)
+                # Insert tiles using the pre-shift snapshot
+                for layer in (artwork, leads):
+                    if layer is not None:
+                        self._tile_layer_elements(root, layer, "x",
+                                                  v_repeat[0], v_repeat[1],
+                                                  n_extra, total_growth,
+                                                  orig_snapshots.get(layer))
+        elif bx is not None and dx != 0:
+            for layer in (artwork, leads):
+                if layer is not None:
+                    self._shift_svg_element(layer, bx, None, dx, 0)
+
+        if h_repeat and dy != 0:
+            import copy
+            tile_h = h_repeat[1] - h_repeat[0]
+            if tile_h > 0:
+                n_extra = max(0, int(round(dy / tile_h)))
+                total_growth = n_extra * tile_h
+                orig_snapshots = {}
+                for layer in (artwork, leads):
+                    if layer is not None:
+                        orig_snapshots[layer] = [copy.deepcopy(c) for c in layer]
+                for layer in (artwork, leads):
+                    if layer is not None:
+                        self._shift_svg_element(layer, None, h_repeat[1], 0, total_growth)
+                for layer in (artwork, leads):
+                    if layer is not None:
+                        self._tile_layer_elements(root, layer, "y",
+                                                  h_repeat[0], h_repeat[1],
+                                                  n_extra, total_growth,
+                                                  orig_snapshots.get(layer))
+        elif by is not None and dy != 0:
+            for layer in (artwork, leads):
+                if layer is not None:
+                    self._shift_svg_element(layer, None, by, 0, dy)
+
+        # Apply per-instance style overrides
+        if not self._style_overrides.is_empty():
+            self._apply_style_overrides(root, self._style_overrides)
 
         svg_bytes = ET.tostring(root, encoding="unicode").encode("utf-8")
         renderer = QSvgRenderer(svg_bytes)
         self._stretched_cache_key = cache_key
         self._stretched_renderer_cache = renderer
         return renderer
+
+    @classmethod
+    def _tile_layer_elements(cls, root, layer_elem, axis: str,
+                              break1: float, break2: float,
+                              n_extra: int, total_growth: float,
+                              original_children: list | None = None) -> None:
+        """Tile the repeat region by cloning ``<g id="tile">`` groups.
+
+        Looks for child groups with ``id="tile"`` within the layer.
+        These contain the geometry that should be repeated. Each clone
+        is translated by one tile width into the gap.
+
+        If no ``<g id="tile">`` is found, falls back to cloning all
+        layer children with clipPath clipping.
+
+        Args:
+            root: The SVG root element.
+            layer_elem: The <g> element (artwork or leads layer).
+            axis: 'x' for horizontal tiling, 'y' for vertical tiling.
+            break1, break2: The repeat region boundaries.
+            n_extra: Number of additional copies to insert.
+            total_growth: Total stretch amount.
+            original_children: Pre-shift deep copies of layer children.
+        """
+        import copy
+        import xml.etree.ElementTree as ET
+
+        if n_extra <= 0:
+            return
+
+        tile_size = break2 - break1
+
+        def _strip_ns(tag):
+            return tag.split("}", 1)[1] if "}" in tag else tag
+
+        ns = ""
+        if "}" in root.tag:
+            ns = root.tag.split("}")[0] + "}"
+
+        # Find <g id="tile"> groups in the pre-shift snapshot
+        source = original_children if original_children else list(layer_elem)
+        tile_groups = []
+        for child in source:
+            if _strip_ns(child.tag) == "g" and child.get("id") == "tile":
+                tile_groups.append(child)
+            # Also search one level deeper
+            for sub in child:
+                if _strip_ns(sub.tag) == "g" and sub.get("id") == "tile":
+                    tile_groups.append(sub)
+
+        if tile_groups:
+            # Clone only the tile groups, translated into each slot
+            for i in range(1, n_extra + 1):
+                offset = tile_size * i
+                for tg in tile_groups:
+                    clone = copy.deepcopy(tg)
+                    # Wrap in a translated group
+                    wrapper = ET.SubElement(layer_elem, f"{ns}g")
+                    if axis == "x":
+                        wrapper.set("transform", f"translate({offset},0)")
+                    else:
+                        wrapper.set("transform", f"translate(0,{offset})")
+                    wrapper.append(clone)
+        else:
+            # Fallback: clone all children with clipPath
+            defs = None
+            for child in root:
+                if _strip_ns(child.tag) == "defs":
+                    defs = child
+                    break
+            if defs is None:
+                defs = ET.SubElement(root, f"{ns}defs")
+
+            layer_id = layer_elem.get("id", "layer")
+            for i in range(1, n_extra + 1):
+                offset = break2 - break1 + (i - 1) * tile_size
+                clip_id = f"_tile_{layer_id}_{i}"
+                clip_elem = ET.SubElement(defs, f"{ns}clipPath")
+                clip_elem.set("id", clip_id)
+                clip_rect = ET.SubElement(clip_elem, f"{ns}rect")
+                slot_pos = break2 + (i - 1) * tile_size
+                big = 5000.0
+                if axis == "x":
+                    clip_rect.set("x", f"{slot_pos}")
+                    clip_rect.set("y", f"-{big}")
+                    clip_rect.set("width", f"{tile_size}")
+                    clip_rect.set("height", f"{2 * big}")
+                else:
+                    clip_rect.set("x", f"-{big}")
+                    clip_rect.set("y", f"{slot_pos}")
+                    clip_rect.set("width", f"{2 * big}")
+                    clip_rect.set("height", f"{tile_size}")
+
+                wrapper = ET.SubElement(layer_elem, f"{ns}g")
+                if axis == "x":
+                    wrapper.set("transform", f"translate({offset},0)")
+                else:
+                    wrapper.set("transform", f"translate(0,{offset})")
+                wrapper.set("clip-path", f"url(#{clip_id})")
+                for orig in source:
+                    clone = copy.deepcopy(orig)
+                    wrapper.append(clone)
 
     @classmethod
     def _shift_svg_element(cls, elem, bx, by, dx, dy) -> None:
@@ -916,7 +1291,60 @@ class ComponentItem(QGraphicsItem):
         spacing = view.grid_spacing
         return round(value / spacing) * spacing
 
+    def mouseDoubleClickEvent(self, event) -> None:
+        """Double-click enters isolation mode for sub-element editing."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.isolation_mode = True
+            # Hit-test to select the clicked sub-element
+            local_pos = event.pos()
+            hit = self._hit_test_element(local_pos)
+            if hit:
+                self._selected_element_paths = {hit}
+            else:
+                self._selected_element_paths.clear()
+            self.update()
+            # Notify the properties panel
+            scene = self.scene()
+            if scene:
+                scene.selectionChanged.emit()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+    def _hit_test_element(self, local_pos: QPointF) -> str | None:
+        """Find the topmost SVG element at the given local position."""
+        hit = None
+        for info in self.get_element_infos():
+            bbox = self._element_bbox_in_local(info)
+            if bbox.contains(local_pos):
+                hit = info.element_path  # last match = topmost
+        return hit
+
     def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self._isolation_mode:
+            # In isolation mode: click to select sub-elements
+            local_pos = event.pos()
+            hit = self._hit_test_element(local_pos)
+            shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+            if hit:
+                if shift:
+                    # Toggle selection
+                    if hit in self._selected_element_paths:
+                        self._selected_element_paths.discard(hit)
+                    else:
+                        self._selected_element_paths.add(hit)
+                else:
+                    self._selected_element_paths = {hit}
+            elif not shift:
+                self._selected_element_paths.clear()
+            self.update()
+            # Notify properties panel
+            scene = self.scene()
+            if scene:
+                scene.selectionChanged.emit()
+            event.accept()
+            return
+
         if event.button() == Qt.MouseButton.LeftButton and self.isSelected():
             local_pos = event.pos()
 

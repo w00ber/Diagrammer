@@ -64,6 +64,67 @@ class RotateAroundPortCommand(QUndoCommand):
         self._item.setPos(self._old_pos)
 
 
+class RotateItemCommand(QUndoCommand):
+    """Rotate any QGraphicsItem by a given angle about its center (undoable).
+
+    Works with AnnotationItem, ShapeItem, LineItem, etc. — any item
+    that supports Qt's built-in setRotation(). Sets the transform origin
+    to the bounding rect center before rotating.
+    """
+
+    def __init__(self, item, degrees: float, parent: QUndoCommand | None = None) -> None:
+        super().__init__(parent)
+        self._item = item
+        self._degrees = degrees
+        self.setText(f"Rotate {type(item).__name__} {degrees:.0f}\u00b0")
+
+    def _ensure_center_origin(self) -> None:
+        br = self._item.boundingRect()
+        self._item.setTransformOriginPoint(br.center())
+
+    def redo(self) -> None:
+        self._ensure_center_origin()
+        self._item.setRotation(self._item.rotation() + self._degrees)
+
+    def undo(self) -> None:
+        self._ensure_center_origin()
+        self._item.setRotation(self._item.rotation() - self._degrees)
+
+
+class FlipItemCommand(QUndoCommand):
+    """Flip any QGraphicsItem horizontally or vertically (undoable).
+
+    Uses QGraphicsItem.setTransform() to apply a scale(-1, 1) or (1, -1).
+    """
+
+    def __init__(self, item, horizontal: bool, parent: QUndoCommand | None = None) -> None:
+        super().__init__(parent)
+        self._item = item
+        self._horizontal = horizontal
+        axis = "H" if horizontal else "V"
+        self.setText(f"Flip {type(item).__name__} {axis}")
+
+    def redo(self) -> None:
+        self._apply()
+
+    def undo(self) -> None:
+        self._apply()  # flip is its own inverse
+
+    def _apply(self) -> None:
+        from PySide6.QtGui import QTransform
+        t = self._item.transform()
+        br = self._item.boundingRect()
+        cx, cy = br.center().x(), br.center().y()
+        flip = QTransform()
+        flip.translate(cx, cy)
+        if self._horizontal:
+            flip.scale(-1, 1)
+        else:
+            flip.scale(1, -1)
+        flip.translate(-cx, -cy)
+        self._item.setTransform(t * flip)
+
+
 class FlipComponentCommand(QUndoCommand):
     """Flip a component horizontally or vertically (undoable)."""
 
