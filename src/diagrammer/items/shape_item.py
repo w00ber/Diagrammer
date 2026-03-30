@@ -1,11 +1,19 @@
-"""ShapeItem — simple geometric shapes (rectangle, ellipse, line) with resize handles."""
+"""ShapeItem — simple geometric shapes (rectangle, ellipse, line) with resize handles.
+
+All shapes support:
+- Stroke: color (with alpha), width, dash pattern (solid/dashed/dotted), cap style
+- Fill: color with alpha (rectangle, ellipse only)
+- Corner radius (rectangle only)
+- Arrowheads (line only): none, forward, backward, both
+"""
 
 from __future__ import annotations
 
+import math
 import uuid
 
 from PySide6.QtCore import QLineF, QPointF, QRectF, Qt
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
 # Default style
@@ -19,14 +27,23 @@ HANDLE_SIZE = 8.0
 HANDLE_COLOR = QColor(0, 120, 215)
 HANDLE_FILL = QColor(255, 255, 255)
 
+# Dash pattern presets (in multiples of stroke width)
+DASH_PATTERNS = {
+    "solid": [],
+    "dashed": [5, 3],
+    "dotted": [1, 2],
+    "dash-dot": [5, 2, 1, 2],
+}
+
+# Arrowhead presets
+ARROW_NONE = "none"
+ARROW_FORWARD = "forward"    # arrowhead at end
+ARROW_BACKWARD = "backward"  # arrowhead at start
+ARROW_BOTH = "both"          # arrowheads at both ends
+
 
 class ShapeItem(QGraphicsItem):
-    """Base class for simple shape items with customizable stroke, fill, and resize handles.
-
-    Resize handles appear at the 8 bounding-box positions when selected.
-    Drag a handle to resize the shape (Illustrator-style).
-    Double-click to open a properties dialog.
-    """
+    """Base class for simple shape items with customizable stroke, fill, and resize handles."""
 
     def __init__(
         self,
@@ -37,14 +54,18 @@ class ShapeItem(QGraphicsItem):
     ) -> None:
         super().__init__(parent)
         self._id = instance_id or uuid.uuid4().hex[:12]
+        self._group_id: str | None = None
+        self._group_ids: list[str] = []
         self._width = width
         self._height = height
         self._stroke_color = QColor(DEFAULT_STROKE_COLOR)
         self._fill_color = QColor(DEFAULT_FILL_COLOR)
         self._stroke_width = DEFAULT_STROKE_WIDTH
+        self._dash_style = "solid"
+        self._corner_radius = 0.0
 
         # Resize handle dragging state
-        self._resizing_handle: int | None = None  # handle index 0-7
+        self._resizing_handle: int | None = None
         self._resize_start_rect: QRectF | None = None
         self._resize_start_mouse: QPointF | None = None
 
@@ -53,6 +74,10 @@ class ShapeItem(QGraphicsItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setAcceptHoverEvents(True)
         self.setZValue(3)
+
+    # =====================================================================
+    # Properties
+    # =====================================================================
 
     @property
     def instance_id(self) -> str:
@@ -86,6 +111,24 @@ class ShapeItem(QGraphicsItem):
         self.update()
 
     @property
+    def dash_style(self) -> str:
+        return self._dash_style
+
+    @dash_style.setter
+    def dash_style(self, style: str) -> None:
+        self._dash_style = style
+        self.update()
+
+    @property
+    def corner_radius(self) -> float:
+        return self._corner_radius
+
+    @corner_radius.setter
+    def corner_radius(self, radius: float) -> None:
+        self._corner_radius = radius
+        self.update()
+
+    @property
     def shape_width(self) -> float:
         return self._width
 
@@ -99,6 +142,16 @@ class ShapeItem(QGraphicsItem):
         self._height = max(10, height)
         self.update()
 
+    def _make_pen(self) -> QPen:
+        """Create a QPen with current stroke settings (color, width, dash, cap)."""
+        pen = QPen(self._stroke_color, self._stroke_width)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        pattern = DASH_PATTERNS.get(self._dash_style, [])
+        if pattern:
+            pen.setDashPattern(pattern)
+        return pen
+
     def boundingRect(self) -> QRectF:
         m = max(self._stroke_width, SELECTION_PEN_WIDTH, HANDLE_SIZE) / 2 + 2
         return QRectF(-m, -m, self._width + 2 * m, self._height + 2 * m)
@@ -109,18 +162,12 @@ class ShapeItem(QGraphicsItem):
     def _handle_positions(self) -> list[QPointF]:
         w, h = self._width, self._height
         return [
-            QPointF(0, 0),       # 0: top-left
-            QPointF(w / 2, 0),   # 1: top-center
-            QPointF(w, 0),       # 2: top-right
-            QPointF(0, h / 2),   # 3: mid-left
-            QPointF(w, h / 2),   # 4: mid-right
-            QPointF(0, h),       # 5: bottom-left
-            QPointF(w / 2, h),   # 6: bottom-center
-            QPointF(w, h),       # 7: bottom-right
+            QPointF(0, 0), QPointF(w / 2, 0), QPointF(w, 0),
+            QPointF(0, h / 2), QPointF(w, h / 2),
+            QPointF(0, h), QPointF(w / 2, h), QPointF(w, h),
         ]
 
     def _handle_at(self, local_pos: QPointF) -> int | None:
-        """Return the handle index at the given local position, or None."""
         hs = HANDLE_SIZE
         for i, hp in enumerate(self._handle_positions()):
             if abs(local_pos.x() - hp.x()) < hs and abs(local_pos.y() - hp.y()) < hs:
@@ -128,9 +175,8 @@ class ShapeItem(QGraphicsItem):
         return None
 
     def _draw_selection(self, painter: QPainter) -> None:
-        if not self.isSelected():
+        if not self.isSelected() or self._group_id:
             return
-        # Dashed selection rect
         pen = QPen(SELECTION_PEN_COLOR, SELECTION_PEN_WIDTH)
         pen.setDashPattern(SELECTION_DASH_PATTERN)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -165,22 +211,20 @@ class ShapeItem(QGraphicsItem):
             new_x, new_y = self.pos().x(), self.pos().y()
             new_w, new_h = r.width(), r.height()
 
-            # Adjust based on which handle is being dragged
-            if hi in (0, 3, 5):  # left handles
+            if hi in (0, 3, 5):
                 new_w = max(10, r.width() - delta.x())
                 new_x = self.pos().x() + (r.width() - new_w)
-            if hi in (2, 4, 7):  # right handles
+            if hi in (2, 4, 7):
                 new_w = max(10, r.width() + delta.x())
-            if hi in (0, 1, 2):  # top handles
+            if hi in (0, 1, 2):
                 new_h = max(10, r.height() - delta.y())
                 new_y = self.pos().y() + (r.height() - new_h)
-            if hi in (5, 6, 7):  # bottom handles
+            if hi in (5, 6, 7):
                 new_h = max(10, r.height() + delta.y())
 
             self.prepareGeometryChange()
             self._width = new_w
             self._height = new_h
-            # Move position to account for top/left handle drags
             self._skip_snap_once = True
             self.setPos(new_x, new_y)
             self.update()
@@ -197,23 +241,14 @@ class ShapeItem(QGraphicsItem):
             return
         super().mouseReleaseEvent(event)
 
-    def mouseDoubleClickEvent(self, event) -> None:
-        """Open properties dialog on double-click."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            from diagrammer.panels.shape_dialog import ShapePropertiesDialog
-            dlg = ShapePropertiesDialog(self)
-            if dlg.exec() == ShapePropertiesDialog.DialogCode.Accepted:
-                dlg.apply()
-            event.accept()
-            return
-        super().mouseDoubleClickEvent(event)
-
     _skip_snap_once = False
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
             if self._skip_snap_once:
                 self._skip_snap_once = False
+                return value
+            if getattr(self, '_skip_snap', False):
                 return value
             from diagrammer.canvas.grid import snap_to_grid
             views = self.scene().views()
@@ -223,12 +258,17 @@ class ShapeItem(QGraphicsItem):
 
 
 class RectangleItem(ShapeItem):
-    """A simple rectangle shape."""
+    """A rectangle with optional corner radius."""
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None) -> None:
-        painter.setPen(QPen(self._stroke_color, self._stroke_width))
+        painter.setPen(self._make_pen())
         painter.setBrush(QBrush(self._fill_color))
-        painter.drawRect(QRectF(0, 0, self._width, self._height))
+        r = self._corner_radius
+        rect = QRectF(0, 0, self._width, self._height)
+        if r > 0:
+            painter.drawRoundedRect(rect, r, r)
+        else:
+            painter.drawRect(rect)
         self._draw_selection(painter)
 
 
@@ -236,14 +276,14 @@ class EllipseItem(ShapeItem):
     """A simple ellipse shape."""
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None) -> None:
-        painter.setPen(QPen(self._stroke_color, self._stroke_width))
+        painter.setPen(self._make_pen())
         painter.setBrush(QBrush(self._fill_color))
         painter.drawEllipse(QRectF(0, 0, self._width, self._height))
         self._draw_selection(painter)
 
 
 class LineItem(QGraphicsItem):
-    """A simple straight line with customizable stroke. Double-click to edit properties."""
+    """A straight line with optional arrowheads and dash patterns."""
 
     def __init__(
         self,
@@ -254,14 +294,20 @@ class LineItem(QGraphicsItem):
     ) -> None:
         super().__init__(parent)
         self._id = instance_id or uuid.uuid4().hex[:12]
+        self._group_id: str | None = None
+        self._group_ids: list[str] = []
         self._start = start or QPointF(0, 0)
         self._end = end or QPointF(100, 0)
         self._stroke_color = QColor(DEFAULT_STROKE_COLOR)
         self._stroke_width = DEFAULT_STROKE_WIDTH
+        self._dash_style = "solid"
+        self._cap_style = "round"   # "round" or "square"
+        self._arrow_style = ARROW_NONE
 
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
+        self._skip_snap = False
         self.setZValue(3)
 
     @property
@@ -287,6 +333,33 @@ class LineItem(QGraphicsItem):
         self.update()
 
     @property
+    def dash_style(self) -> str:
+        return self._dash_style
+
+    @dash_style.setter
+    def dash_style(self, style: str) -> None:
+        self._dash_style = style
+        self.update()
+
+    @property
+    def cap_style(self) -> str:
+        return self._cap_style
+
+    @cap_style.setter
+    def cap_style(self, style: str) -> None:
+        self._cap_style = style
+        self.update()
+
+    @property
+    def arrow_style(self) -> str:
+        return self._arrow_style
+
+    @arrow_style.setter
+    def arrow_style(self, style: str) -> None:
+        self._arrow_style = style
+        self.update()
+
+    @property
     def line_start(self) -> QPointF:
         return self._start
 
@@ -300,8 +373,17 @@ class LineItem(QGraphicsItem):
         self._end = QPointF(end)
         self.update()
 
+    def _make_pen(self) -> QPen:
+        cap = (Qt.PenCapStyle.SquareCap if self._cap_style == "square"
+               else Qt.PenCapStyle.RoundCap)
+        pen = QPen(self._stroke_color, self._stroke_width, Qt.PenStyle.SolidLine, cap)
+        pattern = DASH_PATTERNS.get(self._dash_style, [])
+        if pattern:
+            pen.setDashPattern(pattern)
+        return pen
+
     def boundingRect(self) -> QRectF:
-        m = max(self._stroke_width, HANDLE_SIZE) / 2 + 2
+        m = max(self._stroke_width, HANDLE_SIZE) / 2 + 10  # extra for arrowheads
         x1, y1 = self._start.x(), self._start.y()
         x2, y2 = self._end.x(), self._end.y()
         return QRectF(
@@ -310,23 +392,43 @@ class LineItem(QGraphicsItem):
         )
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None) -> None:
-        color = SELECTION_PEN_COLOR if self.isSelected() else self._stroke_color
-        painter.setPen(QPen(color, self._stroke_width, Qt.PenStyle.SolidLine,
-                            Qt.PenCapStyle.RoundCap))
+        color = (SELECTION_PEN_COLOR if (self.isSelected() and not self._group_id)
+                 else self._stroke_color)
+        pen = self._make_pen()
+        pen.setColor(color)
+        painter.setPen(pen)
         painter.drawLine(QLineF(self._start, self._end))
 
-    def mouseDoubleClickEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            from diagrammer.panels.shape_dialog import ShapePropertiesDialog
-            dlg = ShapePropertiesDialog(self)
-            if dlg.exec() == ShapePropertiesDialog.DialogCode.Accepted:
-                dlg.apply()
-            event.accept()
-            return
-        super().mouseDoubleClickEvent(event)
+        # Arrowheads
+        if self._arrow_style != ARROW_NONE:
+            painter.setBrush(QBrush(color))
+            painter.setPen(QPen(color, 1.0))
+            if self._arrow_style in (ARROW_FORWARD, ARROW_BOTH):
+                self._draw_arrowhead(painter, self._start, self._end)
+            if self._arrow_style in (ARROW_BACKWARD, ARROW_BOTH):
+                self._draw_arrowhead(painter, self._end, self._start)
+
+    def _draw_arrowhead(self, painter: QPainter, tail: QPointF, tip: QPointF) -> None:
+        """Draw a filled arrowhead at tip, pointing from tail to tip."""
+        dx = tip.x() - tail.x()
+        dy = tip.y() - tail.y()
+        length = max(math.hypot(dx, dy), 1e-9)
+        ux, uy = dx / length, dy / length  # unit vector along line
+
+        arrow_size = max(self._stroke_width * 3, 8.0)
+        # Perpendicular
+        px, py = -uy, ux
+
+        base = QPointF(tip.x() - ux * arrow_size, tip.y() - uy * arrow_size)
+        left = QPointF(base.x() + px * arrow_size * 0.4, base.y() + py * arrow_size * 0.4)
+        right = QPointF(base.x() - px * arrow_size * 0.4, base.y() - py * arrow_size * 0.4)
+
+        painter.drawPolygon(QPolygonF([tip, left, right]))
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
+            if getattr(self, '_skip_snap', False):
+                return value
             from diagrammer.canvas.grid import snap_to_grid
             views = self.scene().views()
             if views and getattr(views[0], '_snap_enabled', True):

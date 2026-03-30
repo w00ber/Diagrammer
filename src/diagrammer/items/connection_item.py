@@ -89,6 +89,8 @@ class ConnectionItem(QGraphicsPathItem):
     ) -> None:
         super().__init__(parent)
         self._id = instance_id or uuid.uuid4().hex[:12]
+        self._group_id: str | None = None
+        self._group_ids: list[str] = []
         self._source_port = source_port
         self._target_port = target_port
 
@@ -382,7 +384,7 @@ class ConnectionItem(QGraphicsPathItem):
         widget: QWidget | None = None,
     ) -> None:
         pen = QPen(
-            SELECTION_COLOR if self.isSelected() else self._line_color,
+            SELECTION_COLOR if (self.isSelected() and not self._group_id) else self._line_color,
             self._line_width,
         )
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -574,6 +576,10 @@ class ConnectionItem(QGraphicsPathItem):
     # =====================================================================
 
     def mousePressEvent(self, event) -> None:  # noqa: ANN001
+        # Don't allow individual wire manipulation when in a group
+        if self._group_id:
+            super().mousePressEvent(event)
+            return
         if event.button() == Qt.MouseButton.LeftButton and self.isSelected():
             pos = event.scenePos()
             shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)

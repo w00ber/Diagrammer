@@ -5,7 +5,22 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PySide6.QtCore import QPointF
+from PySide6.QtCore import QPointF, Qt
+
+
+def _restore_group(item, data: dict) -> None:
+    """Restore group stack from saved data (supports old and new format)."""
+    raw = data.get("group")
+    if isinstance(raw, list):
+        item._group_ids = raw
+        item._group_id = raw[-1] if raw else None
+    elif isinstance(raw, str):
+        # Legacy single group_id
+        item._group_ids = [raw]
+        item._group_id = raw
+    else:
+        item._group_ids = []
+        item._group_id = None
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QGraphicsScene
 
@@ -23,6 +38,16 @@ class DiagramSerializer:
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.items.junction_item import JunctionItem
         from diagrammer.items.shape_item import EllipseItem, LineItem, RectangleItem, ShapeItem
+
+        # Normalize z-values before saving to capture actual stacking order.
+        # scene.items() returns descending stacking order (topmost first).
+        # Items with equal z-values are ordered by insertion order in Qt,
+        # which is lost on reload — so we assign unique z-values now.
+        all_items = scene.items(Qt.SortOrder.AscendingOrder)  # bottom to top
+        for i, item in enumerate(all_items):
+            if isinstance(item, (ComponentItem, ConnectionItem, JunctionItem,
+                                 RectangleItem, EllipseItem, LineItem, AnnotationItem)):
+                item.setZValue(float(i))
 
         # Save layers
         from diagrammer.canvas.scene import DiagramScene
@@ -114,6 +139,9 @@ class DiagramSerializer:
                 item.set_stretch(cd.get("stretch_dx", 0), cd.get("stretch_dy", 0))
             item._layer_index = cd.get("layer", 0)
             scene.addItem(item)
+            if "z" in cd:
+                item.setZValue(cd["z"])
+            _restore_group(item, cd)
             id_map[item.instance_id] = item
 
         # Load junctions
@@ -122,6 +150,9 @@ class DiagramSerializer:
             item.setPos(QPointF(jd["pos"][0], jd["pos"][1]))
             item._layer_index = jd.get("layer", 0)
             scene.addItem(item)
+            if "z" in jd:
+                item.setZValue(jd["z"])
+            _restore_group(item, jd)
             id_map[item.instance_id] = item
 
         # Load connections
@@ -161,6 +192,9 @@ class DiagramSerializer:
                 conn.vertices = [QPointF(w[0], w[1]) for w in cd["waypoints"]]
             conn._layer_index = cd.get("layer", 0)
             scene.addItem(conn)
+            if "z" in cd:
+                conn.setZValue(cd["z"])
+            _restore_group(conn, cd)
             id_map[conn.instance_id] = conn
 
         # Load shapes
@@ -193,9 +227,21 @@ class DiagramSerializer:
                 item.stroke_color = QColor(sd["stroke_color"])
             if "stroke_width" in sd:
                 item.stroke_width = sd["stroke_width"]
+            if "dash_style" in sd:
+                item.dash_style = sd["dash_style"]
             if hasattr(item, 'fill_color') and "fill_color" in sd:
                 item.fill_color = QColor(sd["fill_color"])
+            if hasattr(item, 'corner_radius') and "corner_radius" in sd:
+                item.corner_radius = sd["corner_radius"]
+            # Line-specific properties
+            if hasattr(item, 'cap_style') and "cap_style" in sd:
+                item.cap_style = sd["cap_style"]
+            if hasattr(item, 'arrow_style') and "arrow_style" in sd:
+                item.arrow_style = sd["arrow_style"]
             scene.addItem(item)
+            if "z" in sd:
+                item.setZValue(sd["z"])
+            _restore_group(item, sd)
 
         # Load annotations
         for ad in data.get("annotations", []):
@@ -221,6 +267,9 @@ class DiagramSerializer:
             item.setPos(QPointF(ad["pos"][0], ad["pos"][1]))
             item._layer_index = ad.get("layer", 0)
             scene.addItem(item)
+            if "z" in ad:
+                item.setZValue(ad["z"])
+            _restore_group(item, ad)
 
         # Update all connection routes
         from diagrammer.canvas.scene import DiagramScene
@@ -241,6 +290,8 @@ def _serialize_component(item) -> dict:
         "stretch_dx": item.stretch_dx,
         "stretch_dy": item.stretch_dy,
         "layer": getattr(item, '_layer_index', 0),
+        "z": item.zValue(),
+        "group": getattr(item, '_group_ids', []) or [],
     }
 
 
@@ -249,6 +300,8 @@ def _serialize_junction(item) -> dict:
         "id": item.instance_id,
         "pos": [item.pos().x(), item.pos().y()],
         "layer": getattr(item, '_layer_index', 0),
+        "z": item.zValue(),
+        "group": getattr(item, '_group_ids', []) or [],
     }
 
 
@@ -272,6 +325,8 @@ def _serialize_connection(item) -> dict:
         "corner_radius": item.corner_radius,
         "routing_mode": item.routing_mode,
         "layer": getattr(item, '_layer_index', 0),
+        "z": item.zValue(),
+        "group": getattr(item, '_group_ids', []) or [],
     }
 
 
@@ -282,12 +337,17 @@ def _serialize_shape(item, shape_type: str) -> dict:
         "pos": [item.pos().x(), item.pos().y()],
         "width": item.shape_width,
         "height": item.shape_height,
-        "stroke_color": item.stroke_color.name(),
+        "stroke_color": item.stroke_color.name(QColor.NameFormat.HexArgb),
         "stroke_width": item.stroke_width,
+        "dash_style": item.dash_style,
     }
     if hasattr(item, 'fill_color'):
         d["fill_color"] = item.fill_color.name(QColor.NameFormat.HexArgb)
+    if hasattr(item, 'corner_radius'):
+        d["corner_radius"] = item.corner_radius
     d["layer"] = getattr(item, '_layer_index', 0)
+    d["z"] = item.zValue()
+    d["group"] = getattr(item, '_group_ids', []) or []
     return d
 
 
@@ -298,9 +358,14 @@ def _serialize_line(item) -> dict:
         "pos": [item.pos().x(), item.pos().y()],
         "start": [item.line_start.x(), item.line_start.y()],
         "end": [item.line_end.x(), item.line_end.y()],
-        "stroke_color": item.stroke_color.name(),
+        "stroke_color": item.stroke_color.name(QColor.NameFormat.HexArgb),
         "stroke_width": item.stroke_width,
+        "dash_style": item.dash_style,
+        "cap_style": item.cap_style,
+        "arrow_style": item.arrow_style,
         "layer": getattr(item, '_layer_index', 0),
+        "z": item.zValue(),
+        "group": getattr(item, '_group_ids', []) or [],
     }
 
 
@@ -316,4 +381,6 @@ def _serialize_annotation(item) -> dict:
         "font_italic": item.font_italic,
         "text_color": item.text_color.name(),
         "layer": getattr(item, '_layer_index', 0),
+        "z": item.zValue(),
+        "group": getattr(item, '_group_ids', []) or [],
     }

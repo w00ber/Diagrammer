@@ -64,6 +64,8 @@ class ComponentDef:
     stretch_v_pos: float | None = None  # X position of the vertical break line
     min_width: float = 0.0
     min_height: float = 0.0
+    decorative: bool = False  # freely resizable, no ports/leads
+    snap_point: tuple[float, float] | None = None  # optional snap anchor (from <g id="snap">)
     category: str = ""
 
     @property
@@ -117,6 +119,15 @@ class ComponentDef:
         if stretch_v_pos is not None:
             stretch_v = True
 
+        # Parse snap point layer (for decorative components)
+        snap_point = _parse_snap_point(root)
+
+        # Decorative: has a <g id="decorative"> marker, or has no ports
+        # and has a snap point defined
+        decorative = _find_group_by_id(root, "decorative") is not None
+        if not decorative and not ports and snap_point is not None:
+            decorative = True
+
         return cls(
             name=path.stem,
             svg_path=path,
@@ -130,6 +141,8 @@ class ComponentDef:
             stretch_v_pos=stretch_v_pos,
             min_width=min_width,
             min_height=min_height,
+            decorative=decorative,
+            snap_point=snap_point,
             category=category,
         )
 
@@ -269,6 +282,29 @@ def _parse_stretch_layer(root: ET.Element) -> tuple[float | None, float | None]:
                 stretch_v_pos = float(elem.get("x1", "0"))
 
     return stretch_h_pos, stretch_v_pos
+
+
+def _parse_snap_point(root: ET.Element) -> tuple[float, float] | None:
+    """Parse the ``<g id="snap">`` layer for a single snap anchor point.
+
+    Looks for a ``<circle>`` element inside the snap group whose center
+    (cx, cy) defines the snap point. Used by decorative components to
+    define where the component snaps to grid.
+
+    Returns ``(x, y)`` or ``None`` if no snap layer is present.
+    """
+    snap_group = _find_group_by_id(root, "snap")
+    if snap_group is None:
+        return None
+
+    for elem in snap_group.iter():
+        tag = _strip_ns(elem.tag)
+        if tag == "circle":
+            cx = float(elem.get("cx", "0"))
+            cy = float(elem.get("cy", "0"))
+            return (cx, cy)
+
+    return None
 
 
 def _assign_approach_directions(

@@ -34,6 +34,8 @@ class JunctionItem(QGraphicsItem):
     ) -> None:
         super().__init__(parent)
         self._id = instance_id or uuid.uuid4().hex[:12]
+        self._group_id: str | None = None
+        self._group_ids: list[str] = []
         self._skip_snap = False
 
         # Create the single center port

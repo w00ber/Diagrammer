@@ -73,8 +73,10 @@ All layers are `<g>` elements with specific `id` attributes, placed as **direct 
 | `ports` | No (hidden) | Defines connection port positions |
 | `labels` | No (hidden) | Defines label placeholder positions |
 | `stretch` | No (hidden) | Defines stretch break axes |
+| `decorative` | No (hidden) | Marks component as freely resizable |
+| `snap` | No (hidden) | Defines grid snap anchor point |
 
-Diagrammer sets `display="none"` on `ports`, `labels`, and `stretch` layers before rendering. The `artwork` and `leads` layers are always rendered, but `leads` elements may be modified (shortened) based on connected wire properties.
+Diagrammer sets `display="none"` on `ports`, `labels`, `stretch`, `snap`, and `decorative` layers before rendering. The `artwork` and `leads` layers are always rendered, but `leads` elements may be modified (shortened) based on connected wire properties.
 
 ## Layer Details
 
@@ -179,6 +181,40 @@ Defines break lines for stretchable components. A break line indicates where the
 - SVG element coordinates beyond the break line are modified at render time.
 - Port positions beyond the break also shift accordingly.
 - The SVG content at the break line is extended to fill the gap (vector stretch, not raster).
+
+### `decorative` — Decorative Component Marker
+
+An empty `<g id="decorative"/>` element marks the component as **decorative** — freely resizable in both width and height with no ports or leads. These are intended for visual elements like borders, shaded regions, title blocks, and other non-electrical decorations.
+
+```xml
+<g id="decorative"/>
+```
+
+Decorative components:
+
+- Show resize handles on all 4 edges when selected (like shape items)
+- Scale the entire SVG to fit the current size (no break-line stretching)
+- Have no ports, leads, or connection behavior
+- Can define a **snap point** for grid alignment (see below)
+
+**Auto-detection:** A component is also treated as decorative if it has no ports and has a snap point defined (even without the explicit `<g id="decorative"/>` marker).
+
+### `snap` — Snap Anchor Point
+
+Defines a single point used for grid snapping when the component is dragged. Most useful for decorative components that have no ports.
+
+```xml
+<g id="snap">
+  <circle cx="0" cy="0" r="2"/>
+</g>
+```
+
+The `cx`/`cy` attributes define the snap anchor in viewBox coordinates. Common choices:
+
+- `(0, 0)` — top-left corner (useful for shaded regions placed behind circuits)
+- `(width/2, height/2)` — center (default behavior for regular components)
+
+If no snap layer is defined, the component center is used for grid snapping.
 
 ### `metadata` — Component Properties
 
@@ -315,3 +351,28 @@ Each subdirectory becomes a **category** in the library panel. File names (witho
   </metadata>
 </svg>
 ```
+
+## Example: Decorative Shaded Region
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80">
+  <defs>
+    <style>
+      .bg { fill: #e8f0ff; stroke: #b0c4de; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <g id="decorative"/>
+
+  <g id="artwork">
+    <rect class="bg" x="0.5" y="0.5" width="119" height="79" rx="6" ry="6"/>
+  </g>
+
+  <g id="snap">
+    <circle cx="0" cy="0" r="2"/>
+  </g>
+</svg>
+```
+
+This component has no ports or leads. The `<g id="decorative"/>` marker enables free resize on all edges. The snap point at `(0, 0)` means the top-left corner aligns to the grid when dragged.

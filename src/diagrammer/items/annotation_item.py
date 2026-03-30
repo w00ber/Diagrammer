@@ -138,6 +138,8 @@ class AnnotationItem(QGraphicsTextItem):
     ) -> None:
         super().__init__(parent)
         self._id = instance_id or uuid.uuid4().hex[:12]
+        self._group_id: str | None = None
+        self._group_ids: list[str] = []
         self._editing = False
         self._skip_snap = False
         self._source_text: str = text  # plain-text source (with $..$ math)
@@ -400,8 +402,8 @@ class AnnotationItem(QGraphicsTextItem):
         if self._math_renderer:
             # Render vector math SVG
             self._math_renderer.render(painter, self._math_rect)
-            # Selection highlight
-            if self.isSelected():
+            # Selection highlight (suppressed for grouped items)
+            if self.isSelected() and not self._group_id:
                 pen = QPen(SELECTION_PEN_COLOR, SELECTION_PEN_WIDTH)
                 pen.setDashPattern(SELECTION_DASH_PATTERN)
                 pen.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -410,8 +412,8 @@ class AnnotationItem(QGraphicsTextItem):
                 painter.drawRect(self._math_rect.adjusted(-2, -2, 2, 2))
             return
 
-        # Draw selection highlight for regular text
-        if self.isSelected() and not self._editing:
+        # Draw selection highlight for regular text (suppressed for grouped items)
+        if self.isSelected() and not self._editing and not self._group_id:
             pen = QPen(SELECTION_PEN_COLOR, SELECTION_PEN_WIDTH)
             pen.setDashPattern(SELECTION_DASH_PATTERN)
             pen.setCapStyle(Qt.PenCapStyle.RoundCap)

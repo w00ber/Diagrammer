@@ -68,6 +68,8 @@ class AppSettings:
 
         # Session
         self.last_opened_file: str = ""
+        self.last_directory: str = ""
+        self.recent_files: list[str] = []
 
     def save(self) -> None:
         """Persist settings to disk."""
@@ -89,6 +91,8 @@ class AppSettings:
                 "hidden_libraries": sorted(self.hidden_libraries),
                 "library_view_mode": self.library_view_mode,
                 "last_opened_file": self.last_opened_file,
+                "last_directory": self.last_directory,
+                "recent_files": self.recent_files[:10],
                 "default_annotation_font": self.default_annotation_font,
                 "default_annotation_size": self.default_annotation_size,
                 "default_annotation_color": self.default_annotation_color.name(),
@@ -123,6 +127,8 @@ class AppSettings:
                 self.hidden_libraries = set(data.get("hidden_libraries", []))
                 self.library_view_mode = data.get("library_view_mode", self.library_view_mode)
                 self.last_opened_file = data.get("last_opened_file", "")
+                self.last_directory = data.get("last_directory", "")
+                self.recent_files = data.get("recent_files", [])[:10]
                 self.default_annotation_font = data.get("default_annotation_font", self.default_annotation_font)
                 self.default_annotation_size = data.get("default_annotation_size", self.default_annotation_size)
                 ac = data.get("default_annotation_color")

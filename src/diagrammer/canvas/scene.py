@@ -42,6 +42,7 @@ class DiagramScene(QGraphicsScene):
         self._undo_stack = QUndoStack(self)
         # Rebuild routes after any undo/redo so waypoints and positions stay in sync
         self._undo_stack.indexChanged.connect(self._on_undo_redo)
+        self._suppress_undo_updates = False  # set True during macros to skip route rebuilds
         self._library = library or ComponentLibrary()
 
         # Drag-tracking for move undo support
@@ -538,7 +539,8 @@ class DiagramScene(QGraphicsScene):
 
     def _on_undo_redo(self, index: int) -> None:
         """Called after undo/redo to rebuild routes with final state."""
-        self.update_connections()
+        if not self._suppress_undo_updates:
+            self.update_connections()
 
     def update_connections(self) -> None:
         """Rebuild routes for all connections and refresh component lead rendering."""
@@ -630,6 +632,14 @@ class DiagramScene(QGraphicsScene):
         self._alignment_ports.clear()
 
     # -- Auto-join overlapping ports --
+
+    def get_group_members(self, group_id: str) -> list:
+        """Return all scene items whose top-level group matches group_id."""
+        if not group_id:
+            return []
+        from diagrammer.commands.group_command import get_top_group
+        return [item for item in self.items()
+                if get_top_group(item) == group_id]
 
     def auto_join_overlapping_ports(self, moved_item) -> None:
         """After a component is moved, auto-create connections if its ports overlap other ports."""

@@ -205,9 +205,13 @@ class PropertiesPanel(QDockWidget):
     # -- Shape form --
 
     def _build_shape_form(self, item) -> None:
-        from diagrammer.items.shape_item import ShapeItem
+        from diagrammer.items.shape_item import (
+            ARROW_BACKWARD, ARROW_BOTH, ARROW_FORWARD, ARROW_NONE,
+            DASH_PATTERNS, LineItem, RectangleItem, ShapeItem,
+        )
         self._form.addRow(QLabel(f"<b>{type(item).__name__}</b>"))
 
+        # Stroke width
         width_spin = QDoubleSpinBox()
         width_spin.setRange(0.5, 20.0)
         width_spin.setValue(item.stroke_width)
@@ -218,13 +222,25 @@ class PropertiesPanel(QDockWidget):
         )
         self._form.addRow("Stroke:", width_spin)
 
+        # Stroke color (with alpha)
         color_btn = self._make_color_button(
             item.stroke_color,
             lambda c, it=item: self._push_style(it, 'stroke_color', it.stroke_color, c),
+            alpha=True,
         )
         self._form.addRow("Stroke color:", color_btn)
 
+        # Dash style
+        dash_combo = QComboBox()
+        dash_combo.addItems(list(DASH_PATTERNS.keys()))
+        dash_combo.setCurrentText(item.dash_style)
+        dash_combo.currentTextChanged.connect(
+            lambda v, it=item: self._push_style(it, 'dash_style', it.dash_style, v)
+        )
+        self._form.addRow("Dash:", dash_combo)
+
         if isinstance(item, ShapeItem):
+            # Fill color
             fill_btn = self._make_color_button(
                 item.fill_color,
                 lambda c, it=item: self._push_style(it, 'fill_color', it.fill_color, c),
@@ -232,6 +248,19 @@ class PropertiesPanel(QDockWidget):
             )
             self._form.addRow("Fill:", fill_btn)
 
+            # Corner radius (rectangle only)
+            if isinstance(item, RectangleItem):
+                radius_spin = QDoubleSpinBox()
+                radius_spin.setRange(0.0, 100.0)
+                radius_spin.setValue(item.corner_radius)
+                radius_spin.setSuffix(" pt")
+                radius_spin.setSingleStep(1.0)
+                radius_spin.valueChanged.connect(
+                    lambda v, it=item: self._push_style(it, 'corner_radius', it.corner_radius, v)
+                )
+                self._form.addRow("Corner radius:", radius_spin)
+
+            # Dimensions
             w_spin = QDoubleSpinBox()
             w_spin.setRange(10, 2000)
             w_spin.setValue(item.shape_width)
@@ -245,6 +274,25 @@ class PropertiesPanel(QDockWidget):
             h_spin.setSuffix(" pt")
             h_spin.valueChanged.connect(lambda v: item.resize(item.shape_width, v))
             self._form.addRow("Height:", h_spin)
+
+        elif isinstance(item, LineItem):
+            # Cap style
+            cap_combo = QComboBox()
+            cap_combo.addItems(["round", "square"])
+            cap_combo.setCurrentText(item.cap_style)
+            cap_combo.currentTextChanged.connect(
+                lambda v, it=item: self._push_style(it, 'cap_style', it.cap_style, v)
+            )
+            self._form.addRow("End caps:", cap_combo)
+
+            # Arrowheads
+            arrow_combo = QComboBox()
+            arrow_combo.addItems([ARROW_NONE, ARROW_FORWARD, ARROW_BACKWARD, ARROW_BOTH])
+            arrow_combo.setCurrentText(item.arrow_style)
+            arrow_combo.currentTextChanged.connect(
+                lambda v, it=item: self._push_style(it, 'arrow_style', it.arrow_style, v)
+            )
+            self._form.addRow("Arrows:", arrow_combo)
 
     # -- Annotation form --
 

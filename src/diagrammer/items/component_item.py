@@ -52,6 +52,8 @@ class ComponentItem(QGraphicsItem):
         super().__init__(parent)
         self._def = component_def
         self._id = instance_id or uuid.uuid4().hex[:12]
+        self._group_id: str | None = None
+        self._group_ids: list[str] = []
 
         # Render at native viewBox size — 1 viewBox unit = 1 scene unit.
         # This preserves stroke weights exactly as the SVG designer intended.
@@ -141,24 +143,30 @@ class ComponentItem(QGraphicsItem):
     def set_stretch(self, dx: float, dy: float) -> None:
         """Set the stretch amounts and update geometry accordingly.
 
-        dx: horizontal stretch amount (applied when a vertical break line exists)
-        dy: vertical stretch amount (applied when a horizontal break line exists)
+        dx: horizontal stretch amount (applied when a vertical break line exists,
+            or free resize for decorative components)
+        dy: vertical stretch amount (applied when a horizontal break line exists,
+            or free resize for decorative components)
         """
         cdef = self._def
 
-        # Clamp so stretched size doesn't go below min_width/min_height
-        if cdef.stretch_v_pos is not None:
-            if cdef.min_width > 0:
-                min_dx = cdef.min_width - cdef.width
-                dx = max(dx, min_dx)
-            # Don't allow negative stretch that would collapse the component
-            dx = max(dx, -(cdef.width - cdef.stretch_v_pos) + 1.0)
+        if cdef.decorative:
+            # Decorative: free resize, just clamp to minimum 10pt
+            dx = max(dx, 10.0 - cdef.width)
+            dy = max(dy, 10.0 - cdef.height)
+        else:
+            # Clamp so stretched size doesn't go below min_width/min_height
+            if cdef.stretch_v_pos is not None:
+                if cdef.min_width > 0:
+                    min_dx = cdef.min_width - cdef.width
+                    dx = max(dx, min_dx)
+                dx = max(dx, -(cdef.width - cdef.stretch_v_pos) + 1.0)
 
-        if cdef.stretch_h_pos is not None:
-            if cdef.min_height > 0:
-                min_dy = cdef.min_height - cdef.height
-                dy = max(dy, min_dy)
-            dy = max(dy, -(cdef.height - cdef.stretch_h_pos) + 1.0)
+            if cdef.stretch_h_pos is not None:
+                if cdef.min_height > 0:
+                    min_dy = cdef.min_height - cdef.height
+                    dy = max(dy, min_dy)
+                dy = max(dy, -(cdef.height - cdef.stretch_h_pos) + 1.0)
 
         if dx == self._stretch_dx and dy == self._stretch_dy:
             return
@@ -177,7 +185,8 @@ class ComponentItem(QGraphicsItem):
         # bounding rect, rendering, and port positions.
 
         # Reposition ports that are on the "far side" of the break
-        self._update_port_positions_for_stretch()
+        if not cdef.decorative:
+            self._update_port_positions_for_stretch()
 
         self.update()
 
@@ -212,12 +221,17 @@ class ComponentItem(QGraphicsItem):
     def set_snap_anchor_closest_to(self, scene_pos: QPointF) -> None:
         """Set the snap anchor to the port closest to the given scene position.
 
+        For decorative components with a snap point, uses that point.
         If no ports, uses the component center.
         """
         if not self._ports:
-            # Use component center
-            center = self.mapToScene(QPointF(self._width / 2, self._height / 2))
-            self._snap_anchor_offset = center - self.pos()
+            # For decorative components with a defined snap point, use it
+            if self._def.snap_point is not None:
+                sp = self.mapToScene(QPointF(self._def.snap_point[0], self._def.snap_point[1]))
+                self._snap_anchor_offset = sp - self.pos()
+            else:
+                center = self.mapToScene(QPointF(self._width / 2, self._height / 2))
+                self._snap_anchor_offset = center - self.pos()
             return
 
         best_port = None
@@ -324,7 +338,7 @@ class ComponentItem(QGraphicsItem):
 
         for elem in root.iter():
             tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-            if tag == "g" and elem.get("id") in ("ports", "labels", "stretch"):
+            if tag == "g" and elem.get("id") in ("ports", "labels", "stretch", "snap", "decorative"):
                 elem.set("display", "none")
 
         # Shorten specific leads based on actual connections
@@ -467,7 +481,7 @@ class ComponentItem(QGraphicsItem):
 
         side: 'right' or 'left'
         """
-        if self._def.stretch_v_pos is None:
+        if self._def.stretch_v_pos is None and not self._def.decorative:
             return None
         s = STRETCH_HANDLE_SIZE
         y = self._height / 2 - s / 2
@@ -482,7 +496,7 @@ class ComponentItem(QGraphicsItem):
 
         side: 'bottom' or 'top'
         """
-        if self._def.stretch_h_pos is None:
+        if self._def.stretch_h_pos is None and not self._def.decorative:
             return None
         s = STRETCH_HANDLE_SIZE
         x = self._width / 2 - s / 2
@@ -643,31 +657,30 @@ class ComponentItem(QGraphicsItem):
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None) -> None:
         cdef = self._def
-        is_stretched = (
-            (cdef.stretch_v_pos is not None and self._stretch_dx != 0.0)
-            or (cdef.stretch_h_pos is not None and self._stretch_dy != 0.0)
-        )
+        target_rect = QRectF(0, 0, self._width, self._height)
 
-        if is_stretched:
+        if cdef.decorative:
+            # Decorative: just scale the SVG to fit the current size
+            self._renderer.render(painter, target_rect)
+        elif (cdef.stretch_v_pos is not None and self._stretch_dx != 0.0) or \
+             (cdef.stretch_h_pos is not None and self._stretch_dy != 0.0):
             renderer = self._get_stretched_renderer()
-            target_rect = QRectF(0, 0, self._width, self._height)
             renderer.render(painter, target_rect)
         else:
             # Use dynamically shortened leads based on actual connections
             renderer = self._get_lead_renderer()
-            target_rect = QRectF(0, 0, self._width, self._height)
             renderer.render(painter, target_rect)
 
-        # Selection highlight
-        if self.isSelected():
+        # Selection highlight (suppressed for grouped items — group box is drawn by the view)
+        if self.isSelected() and not self._group_id:
             pen = QPen(SELECTION_PEN_COLOR, SELECTION_PEN_WIDTH)
             pen.setDashPattern(SELECTION_DASH_PATTERN)
             pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             painter.setPen(pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRect(QRectF(0, 0, self._width, self._height))
+            painter.drawRect(target_rect)
 
-            # Draw stretch handles
+            # Draw stretch/resize handles
             self._paint_stretch_handles(painter)
 
     def _get_stretched_renderer(self) -> QSvgRenderer:
@@ -700,7 +713,7 @@ class ComponentItem(QGraphicsItem):
         # Hide ports/labels/stretch layers
         for elem in root.iter():
             tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-            if tag == "g" and elem.get("id") in ("ports", "labels", "stretch"):
+            if tag == "g" and elem.get("id") in ("ports", "labels", "stretch", "snap", "decorative"):
                 elem.set("display", "none")
 
         # Shift coordinates in artwork elements
