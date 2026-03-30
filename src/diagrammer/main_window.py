@@ -1493,7 +1493,7 @@ class MainWindow(QMainWindow):
             self._add_shape(tool_id)
 
     def _add_arrow(self) -> None:
-        """Add a line with a forward arrowhead."""
+        """Add a line with a forward arrowhead, using saved defaults."""
         from diagrammer.commands.shape_command import AddShapeCommand
         from diagrammer.items.shape_item import ARROW_FORWARD, LineItem
 
@@ -1501,6 +1501,13 @@ class MainWindow(QMainWindow):
         snapped = self._view.snap(center)
         item = LineItem(start=QPointF(0, 0), end=QPointF(100, 0))
         item.arrow_style = ARROW_FORWARD
+        item.stroke_color = app_settings.default_shape_stroke_color
+        item.stroke_width = app_settings.default_shape_stroke_width
+        item.dash_style = app_settings.default_shape_dash_style
+        item.cap_style = app_settings.default_shape_cap_style
+        item.arrow_type = app_settings.default_shape_arrow_type
+        item.arrow_scale = app_settings.default_shape_arrow_scale
+        item.arrow_extend = app_settings.default_shape_arrow_extend
 
         cmd = AddShapeCommand(self._scene, item, snapped)
         self._scene.undo_stack.push(cmd)
@@ -1520,12 +1527,21 @@ class MainWindow(QMainWindow):
 
         if shape_type == "rectangle":
             item = RectangleItem(width=100, height=60)
+            item.corner_radius = app_settings.default_shape_corner_radius
         elif shape_type == "ellipse":
             item = EllipseItem(width=80, height=80)
         elif shape_type == "line":
             item = LineItem(start=QPointF(0, 0), end=QPointF(100, 0))
+            item.cap_style = app_settings.default_shape_cap_style
         else:
             return
+
+        # Apply saved shape defaults
+        item.stroke_color = app_settings.default_shape_stroke_color
+        item.stroke_width = app_settings.default_shape_stroke_width
+        item.dash_style = app_settings.default_shape_dash_style
+        if hasattr(item, 'fill_color'):
+            item.fill_color = app_settings.default_shape_fill_color
 
         cmd = AddShapeCommand(self._scene, item, snapped)
         self._scene.undo_stack.push(cmd)

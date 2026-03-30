@@ -288,7 +288,7 @@ class PropertiesPanel(QDockWidget):
             )
             self._form.addRow("End caps:", cap_combo)
 
-            # Arrowheads
+            # Arrowhead direction
             arrow_combo = QComboBox()
             arrow_combo.addItems([ARROW_NONE, ARROW_FORWARD, ARROW_BACKWARD, ARROW_BOTH])
             arrow_combo.setCurrentText(item.arrow_style)
@@ -296,6 +296,63 @@ class PropertiesPanel(QDockWidget):
                 lambda v, it=item: self._push_style(it, 'arrow_style', it.arrow_style, v)
             )
             self._form.addRow("Arrows:", arrow_combo)
+
+            # Arrowhead type
+            from diagrammer.items.shape_item import ARROW_TYPES
+            type_combo = QComboBox()
+            type_combo.addItems(ARROW_TYPES)
+            type_combo.setCurrentText(item.arrow_type)
+            type_combo.currentTextChanged.connect(
+                lambda v, it=item: self._push_style(it, 'arrow_type', it.arrow_type, v)
+            )
+            self._form.addRow("Arrow type:", type_combo)
+
+            # Arrowhead scale
+            scale_spin = QDoubleSpinBox()
+            scale_spin.setRange(0.1, 5.0)
+            scale_spin.setValue(item.arrow_scale)
+            scale_spin.setSingleStep(0.1)
+            scale_spin.setDecimals(1)
+            scale_spin.setSuffix("x")
+            scale_spin.valueChanged.connect(
+                lambda v, it=item: self._push_style(it, 'arrow_scale', it.arrow_scale, v)
+            )
+            self._form.addRow("Arrow size:", scale_spin)
+
+            # Arrowhead extend
+            extend_spin = QDoubleSpinBox()
+            extend_spin.setRange(0.0, 50.0)
+            extend_spin.setValue(item.arrow_extend)
+            extend_spin.setSingleStep(1.0)
+            extend_spin.setSuffix(" pt")
+            extend_spin.valueChanged.connect(
+                lambda v, it=item: self._push_style(it, 'arrow_extend', it.arrow_extend, v)
+            )
+            self._form.addRow("Arrow extend:", extend_spin)
+
+        # Set as Default button for all shape types
+        default_btn = QPushButton("Set as Default")
+        default_btn.setToolTip("Use this shape's style as the default for new shapes")
+        default_btn.clicked.connect(lambda checked=False, it=item: self._set_shape_defaults(it))
+        self._form.addRow("", default_btn)
+
+    def _set_shape_defaults(self, item) -> None:
+        """Copy this shape/line's style to app-wide defaults."""
+        from diagrammer.items.shape_item import LineItem, RectangleItem, ShapeItem
+        from diagrammer.panels.settings_dialog import app_settings
+        app_settings.default_shape_stroke_color = item.stroke_color
+        app_settings.default_shape_stroke_width = item.stroke_width
+        app_settings.default_shape_dash_style = item.dash_style
+        if isinstance(item, ShapeItem):
+            app_settings.default_shape_fill_color = item.fill_color
+            if isinstance(item, RectangleItem):
+                app_settings.default_shape_corner_radius = item.corner_radius
+        if isinstance(item, LineItem):
+            app_settings.default_shape_cap_style = item.cap_style
+            app_settings.default_shape_arrow_type = item.arrow_type
+            app_settings.default_shape_arrow_scale = item.arrow_scale
+            app_settings.default_shape_arrow_extend = item.arrow_extend
+        app_settings.save()
 
     # -- Annotation form --
 

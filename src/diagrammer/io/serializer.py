@@ -242,6 +242,12 @@ class DiagramSerializer:
                 item.cap_style = sd["cap_style"]
             if hasattr(item, 'arrow_style') and "arrow_style" in sd:
                 item.arrow_style = sd["arrow_style"]
+            if hasattr(item, 'arrow_type') and "arrow_type" in sd:
+                item.arrow_type = sd["arrow_type"]
+            if hasattr(item, 'arrow_scale') and "arrow_scale" in sd:
+                item.arrow_scale = sd["arrow_scale"]
+            if hasattr(item, 'arrow_extend') and "arrow_extend" in sd:
+                item.arrow_extend = sd["arrow_extend"]
             scene.addItem(item)
             if "z" in sd:
                 item.setZValue(sd["z"])
@@ -371,6 +377,9 @@ def _serialize_line(item) -> dict:
         "dash_style": item.dash_style,
         "cap_style": item.cap_style,
         "arrow_style": item.arrow_style,
+        "arrow_type": item.arrow_type,
+        "arrow_scale": item.arrow_scale,
+        "arrow_extend": item.arrow_extend,
         "layer": getattr(item, '_layer_index', 0),
         "z": item.zValue(),
         "group": getattr(item, '_group_ids', []) or [],

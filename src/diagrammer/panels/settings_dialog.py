@@ -34,35 +34,49 @@ class AppSettings:
         self.load()
 
     def reset_all(self) -> None:
-        # Line styles
-        self.default_line_width = 3.0
-        self.default_line_color = QColor(50, 50, 50)
-        self.default_corner_radius = 8.0
+        """Reset all settings to factory defaults from defaults.yaml."""
+        from diagrammer.defaults import get as _d
+
+        # Line styles (wiring)
+        self.default_line_width = _d("wiring", "line_width", 3.0)
+        self.default_line_color = QColor(_d("wiring", "line_color", "#323232"))
+        self.default_corner_radius = _d("wiring", "corner_radius", 8.0)
 
         # Snap behavior
-        self.snap_to_port = True
-        self.snap_to_angle = False
-        self.snap_to_grid = True
-        self.angle_snap_increment = 15.0  # degrees
+        self.snap_to_port = _d("snap", "snap_to_port", True)
+        self.snap_to_angle = _d("snap", "snap_to_angle", False)
+        self.snap_to_grid = _d("snap", "snap_to_grid", True)
+        self.angle_snap_increment = _d("snap", "angle_snap_increment", 15.0)
 
         # Junction appearance
-        self.show_junctions = True
-        self.junction_color = QColor(0, 0, 0)       # black fill
-        self.junction_outline = False                 # no outline by default
-        self.junction_radius = 5.0
+        self.show_junctions = _d("junction", "show", True)
+        self.junction_color = QColor(_d("junction", "color", "#000000"))
+        self.junction_outline = _d("junction", "outline", False)
+        self.junction_radius = _d("junction", "radius", 5.0)
 
         # Routing menu state
-        self.discrete_angle_routing = False
+        self.discrete_angle_routing = _d("routing", "discrete_angle", False)
 
         # Component styles
         self.default_component_fill = QColor(255, 255, 255, 0)
 
         # Annotation defaults
-        self.default_annotation_font = "STIX Two Text"
-        self.default_annotation_size = 12.0
-        self.default_annotation_color = QColor(0, 0, 0)
-        self.default_annotation_bold = False
-        self.default_annotation_italic = False
+        self.default_annotation_font = _d("annotation", "font_family", "STIX Two Text")
+        self.default_annotation_size = _d("annotation", "font_size", 12.0)
+        self.default_annotation_color = QColor(_d("annotation", "text_color", "#000000"))
+        self.default_annotation_bold = _d("annotation", "bold", False)
+        self.default_annotation_italic = _d("annotation", "italic", False)
+
+        # Shape/line annotation defaults
+        self.default_shape_stroke_color = QColor(_d("shape", "stroke_color", "#323232"))
+        self.default_shape_stroke_width = _d("shape", "stroke_width", 2.0)
+        self.default_shape_fill_color = QColor(_d("shape", "fill_color", "#00ffffff"))
+        self.default_shape_dash_style = _d("shape", "dash_style", "solid")
+        self.default_shape_corner_radius = _d("shape", "corner_radius", 0.0)
+        self.default_shape_cap_style = _d("shape", "cap_style", "round")
+        self.default_shape_arrow_type = _d("shape", "arrow_type", "triangle")
+        self.default_shape_arrow_scale = _d("shape", "arrow_scale", 1.0)
+        self.default_shape_arrow_extend = _d("shape", "arrow_extend", 0.0)
 
         # Library
         self.hidden_libraries: set[str] = set()
@@ -100,6 +114,15 @@ class AppSettings:
                 "default_annotation_color": self.default_annotation_color.name(),
                 "default_annotation_bold": self.default_annotation_bold,
                 "default_annotation_italic": self.default_annotation_italic,
+                "default_shape_stroke_color": self.default_shape_stroke_color.name(),
+                "default_shape_stroke_width": self.default_shape_stroke_width,
+                "default_shape_fill_color": self.default_shape_fill_color.name(QColor.NameFormat.HexArgb),
+                "default_shape_dash_style": self.default_shape_dash_style,
+                "default_shape_corner_radius": self.default_shape_corner_radius,
+                "default_shape_cap_style": self.default_shape_cap_style,
+                "default_shape_arrow_type": self.default_shape_arrow_type,
+                "default_shape_arrow_scale": self.default_shape_arrow_scale,
+                "default_shape_arrow_extend": self.default_shape_arrow_extend,
             }
             import json
             _SETTINGS_FILE.write_text(json.dumps(data, indent=2))
@@ -140,6 +163,19 @@ class AppSettings:
                     self.default_annotation_color = QColor(ac)
                 self.default_annotation_bold = data.get("default_annotation_bold", self.default_annotation_bold)
                 self.default_annotation_italic = data.get("default_annotation_italic", self.default_annotation_italic)
+                sc = data.get("default_shape_stroke_color")
+                if sc:
+                    self.default_shape_stroke_color = QColor(sc)
+                self.default_shape_stroke_width = data.get("default_shape_stroke_width", self.default_shape_stroke_width)
+                fc = data.get("default_shape_fill_color")
+                if fc:
+                    self.default_shape_fill_color = QColor(fc)
+                self.default_shape_dash_style = data.get("default_shape_dash_style", self.default_shape_dash_style)
+                self.default_shape_corner_radius = data.get("default_shape_corner_radius", self.default_shape_corner_radius)
+                self.default_shape_cap_style = data.get("default_shape_cap_style", self.default_shape_cap_style)
+                self.default_shape_arrow_type = data.get("default_shape_arrow_type", self.default_shape_arrow_type)
+                self.default_shape_arrow_scale = data.get("default_shape_arrow_scale", self.default_shape_arrow_scale)
+                self.default_shape_arrow_extend = data.get("default_shape_arrow_extend", self.default_shape_arrow_extend)
         except Exception:
             pass
 
@@ -375,6 +411,10 @@ class SettingsDialog(QDialog):
                             "TeX's Computer Modern style.")
         annot_hint.setStyleSheet("color: #666; font-size: 11px; margin-top: 8px;")
         annot_layout.addWidget(annot_hint)
+
+        reset_all_btn = QPushButton("Reset All to Original Defaults")
+        reset_all_btn.clicked.connect(self._reset_to_factory)
+        annot_layout.addWidget(reset_all_btn, alignment=Qt.AlignmentFlag.AlignRight)
         annot_layout.addStretch()
         tabs.addTab(annot_tab, "Annotations")
 
@@ -416,6 +456,28 @@ class SettingsDialog(QDialog):
             self._junc_color_btn.setStyleSheet(
                 f"background-color: {c.name()}; border: 1px solid #888;"
             )
+
+    def _reset_to_factory(self) -> None:
+        """Reset ALL settings to factory defaults from defaults.yaml."""
+        self._settings.reset_all()
+        self._settings.save()
+        # Update dialog controls to reflect reset values
+        self._line_width_spin.setValue(self._settings.default_line_width)
+        self._line_color = QColor(self._settings.default_line_color)
+        self._update_color_btn(self._line_color_btn, self._line_color)
+        self._corner_radius_spin.setValue(self._settings.default_corner_radius)
+        self._snap_to_port_cb.setChecked(self._settings.snap_to_port)
+        self._snap_to_angle_cb.setChecked(self._settings.snap_to_angle)
+        self._angle_increment_spin.setValue(self._settings.angle_snap_increment)
+        self._junc_color = QColor(self._settings.junction_color)
+        self._junc_color_btn.setStyleSheet(
+            f"background-color: {self._junc_color.name()}; border: 1px solid #888;")
+        self._junc_outline_cb.setChecked(self._settings.junction_outline)
+        self._junc_radius_spin.setValue(self._settings.junction_radius)
+        self._annot_font_combo.setCurrentText(self._settings.default_annotation_font)
+        self._annot_size_spin.setValue(self._settings.default_annotation_size)
+        self._annot_color = QColor(self._settings.default_annotation_color)
+        self._update_color_btn(self._annot_color_btn, self._annot_color)
 
     def _pick_annot_color(self) -> None:
         c = QColorDialog.getColor(self._annot_color, self, "Default Annotation Color")

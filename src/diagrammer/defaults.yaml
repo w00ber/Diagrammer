@@ -1,0 +1,53 @@
+# Diagrammer Factory Defaults
+#
+# All default parameter values for the application. These are loaded
+# when the app starts and used as the "Reset to Original Defaults"
+# baseline. Users can override these via Settings or "Set as Default"
+# buttons; this file defines what "original" means.
+#
+# To customize factory defaults for a deployment, edit this file.
+# User settings in ~/.diagrammer/settings.json always take priority.
+
+# --- Wiring / Connection defaults ---
+wiring:
+  line_width: 3.0           # pt
+  line_color: "#000000"      # dark gray
+  corner_radius: 3.0         # pt
+
+# --- Snap behavior ---
+snap:
+  snap_to_grid: true
+  snap_to_port: true
+  snap_to_angle: false
+  angle_snap_increment: 15.0  # degrees
+
+# --- Junction appearance ---
+junction:
+  show: false
+  color: "#000000"
+  outline: false
+  radius: 5.0               # pt
+
+# --- Text annotation defaults ---
+annotation:
+  font_family: "STIX Two Text"
+  font_size: 12.0            # pt
+  text_color: "#000000"
+  bold: false
+  italic: false
+
+# --- Shape / line annotation defaults ---
+shape:
+  stroke_color: "#323232"
+  stroke_width: 2.0          # pt
+  fill_color: "#00ffffff"    # transparent (ARGB hex)
+  dash_style: "solid"        # solid, dashed, dotted, dash-dot
+  corner_radius: 0.0         # pt (rectangles only)
+  cap_style: "round"         # round, square
+  arrow_type: "triangle"     # triangle, open, stealth, barbed
+  arrow_scale: 1.0           # size multiplier
+  arrow_extend: 0.0          # pt past line end
+
+# --- Routing ---
+routing:
+  discrete_angle: true

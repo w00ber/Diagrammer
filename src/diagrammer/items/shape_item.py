@@ -35,11 +35,19 @@ DASH_PATTERNS = {
     "dash-dot": [5, 2, 1, 2],
 }
 
-# Arrowhead presets
+# Arrowhead direction presets
 ARROW_NONE = "none"
 ARROW_FORWARD = "forward"    # arrowhead at end
 ARROW_BACKWARD = "backward"  # arrowhead at start
 ARROW_BOTH = "both"          # arrowheads at both ends
+
+# Arrowhead type presets
+ARROW_TYPE_TRIANGLE = "triangle"   # solid filled triangle (default)
+ARROW_TYPE_OPEN = "open"           # open/unfilled chevron
+ARROW_TYPE_STEALTH = "stealth"     # swept-back stealth shape
+ARROW_TYPE_BARBED = "barbed"       # curved barbed arrow
+
+ARROW_TYPES = [ARROW_TYPE_TRIANGLE, ARROW_TYPE_OPEN, ARROW_TYPE_STEALTH, ARROW_TYPE_BARBED]
 
 
 class ShapeItem(QGraphicsItem):
@@ -309,6 +317,9 @@ class LineItem(QGraphicsItem):
         self._dash_style = "solid"
         self._cap_style = "round"   # "round" or "square"
         self._arrow_style = ARROW_NONE
+        self._arrow_type = ARROW_TYPE_TRIANGLE
+        self._arrow_scale = 1.0    # size multiplier
+        self._arrow_extend = 0.0   # how far past line end the tip extends (pt)
 
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
@@ -363,6 +374,33 @@ class LineItem(QGraphicsItem):
     @arrow_style.setter
     def arrow_style(self, style: str) -> None:
         self._arrow_style = style
+        self.update()
+
+    @property
+    def arrow_type(self) -> str:
+        return self._arrow_type
+
+    @arrow_type.setter
+    def arrow_type(self, t: str) -> None:
+        self._arrow_type = t
+        self.update()
+
+    @property
+    def arrow_scale(self) -> float:
+        return self._arrow_scale
+
+    @arrow_scale.setter
+    def arrow_scale(self, scale: float) -> None:
+        self._arrow_scale = max(0.1, scale)
+        self.update()
+
+    @property
+    def arrow_extend(self) -> float:
+        return self._arrow_extend
+
+    @arrow_extend.setter
+    def arrow_extend(self, extend: float) -> None:
+        self._arrow_extend = max(0.0, extend)
         self.update()
 
     @property
@@ -484,21 +522,69 @@ class LineItem(QGraphicsItem):
         super().mouseReleaseEvent(event)
 
     def _draw_arrowhead(self, painter: QPainter, tail: QPointF, tip: QPointF) -> None:
-        """Draw a filled arrowhead at tip, pointing from tail to tip."""
+        """Draw an arrowhead at tip, pointing from tail to tip.
+
+        Supports multiple arrow types and an extend parameter that
+        pushes the point past the line end.
+        """
         dx = tip.x() - tail.x()
         dy = tip.y() - tail.y()
         length = max(math.hypot(dx, dy), 1e-9)
-        ux, uy = dx / length, dy / length  # unit vector along line
+        ux, uy = dx / length, dy / length
 
-        arrow_size = max(self._stroke_width * 3, 8.0)
-        # Perpendicular
-        px, py = -uy, ux
+        base_size = max(self._stroke_width * 3, 8.0) * self._arrow_scale
+        half_w = base_size * 0.4  # half-width of the arrowhead
+        px, py = -uy, ux  # perpendicular
 
-        base = QPointF(tip.x() - ux * arrow_size, tip.y() - uy * arrow_size)
-        left = QPointF(base.x() + px * arrow_size * 0.4, base.y() + py * arrow_size * 0.4)
-        right = QPointF(base.x() - px * arrow_size * 0.4, base.y() - py * arrow_size * 0.4)
+        # Extend the tip past the line end
+        ext_tip = QPointF(tip.x() + ux * self._arrow_extend,
+                          tip.y() + uy * self._arrow_extend)
+        base = QPointF(ext_tip.x() - ux * base_size,
+                       ext_tip.y() - uy * base_size)
+        left = QPointF(base.x() + px * half_w, base.y() + py * half_w)
+        right = QPointF(base.x() - px * half_w, base.y() - py * half_w)
 
-        painter.drawPolygon(QPolygonF([tip, left, right]))
+        arrow_type = self._arrow_type
+
+        if arrow_type == ARROW_TYPE_TRIANGLE:
+            # Solid filled triangle
+            painter.drawPolygon(QPolygonF([ext_tip, left, right]))
+
+        elif arrow_type == ARROW_TYPE_OPEN:
+            # Open chevron (unfilled, just lines)
+            old_brush = painter.brush()
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            pen = QPen(painter.pen().color(), self._stroke_width)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(pen)
+            painter.drawPolyline(QPolygonF([left, ext_tip, right]))
+            painter.setBrush(old_brush)
+
+        elif arrow_type == ARROW_TYPE_STEALTH:
+            # Swept-back stealth shape (like a kite)
+            notch = QPointF(ext_tip.x() - ux * base_size * 0.6,
+                            ext_tip.y() - uy * base_size * 0.6)
+            painter.drawPolygon(QPolygonF([ext_tip, left, notch, right]))
+
+        elif arrow_type == ARROW_TYPE_BARBED:
+            # Curved barbed arrow
+            from PySide6.QtGui import QPainterPath
+            path = QPainterPath()
+            path.moveTo(left)
+            # Curve through the tip
+            ctrl1 = QPointF(left.x() + ux * base_size * 0.5 + px * half_w * 0.3,
+                            left.y() + uy * base_size * 0.5 + py * half_w * 0.3)
+            path.quadTo(ctrl1, ext_tip)
+            ctrl2 = QPointF(right.x() + ux * base_size * 0.5 - px * half_w * 0.3,
+                            right.y() + uy * base_size * 0.5 - py * half_w * 0.3)
+            path.quadTo(ctrl2, right)
+            path.closeSubpath()
+            painter.drawPath(path)
+
+        else:
+            # Fallback: triangle
+            painter.drawPolygon(QPolygonF([ext_tip, left, right]))
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
