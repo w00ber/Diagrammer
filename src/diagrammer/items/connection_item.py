@@ -49,7 +49,7 @@ DEFAULT_LINE_COLOR = QColor(50, 50, 50)
 DEFAULT_LINE_WIDTH = 3.0  # match SVG component wiring stroke width
 DEFAULT_CORNER_RADIUS = 8.0
 SELECTION_COLOR = QColor(0, 120, 215)
-VERTEX_HANDLE_SIZE = 6.0
+VERTEX_HANDLE_SIZE = 8.0
 VERTEX_HANDLE_COLOR = QColor(0, 120, 215)
 SEGMENT_HOVER_COLOR = QColor(0, 120, 215, 80)
 HIT_TOLERANCE = 8.0
@@ -244,16 +244,24 @@ class ConnectionItem(QGraphicsPathItem):
                 result.extend(seg)
 
         # Add approach segments at ports to fill the gap left by shortened
-        # leads — but only when not in the middle of a drag operation,
+        # leads — but only when this connection's endpoints are being dragged,
         # to avoid route corruption during multi-item moves.
         ext = self._corner_radius
         scene = self.scene()
-        is_dragging = False
+        is_dragging_this = False
         if scene:
             views = scene.views()
             if views and hasattr(views[0], '_dragging_components'):
-                is_dragging = bool(views[0]._dragging_components)
-        if ext > 0 and len(result) >= 2 and not is_dragging:
+                dragging = views[0]._dragging_components
+                if dragging:
+                    drag_ids = set(id(c) for c in dragging)
+                    src_comp = self._source_port.component if self._source_port else None
+                    tgt_comp = self._target_port.component if self._target_port else None
+                    is_dragging_this = (
+                        (src_comp is not None and id(src_comp) in drag_ids)
+                        or (tgt_comp is not None and id(tgt_comp) in drag_ids)
+                    )
+        if ext > 0 and len(result) >= 2 and not is_dragging_this:
             self._add_lead_approach(result, self._source_port, at_start=True, ext=ext)
             self._add_lead_approach(result, self._target_port, at_start=False, ext=ext)
             # Wire-to-wire junction: extend into the other wire's direction

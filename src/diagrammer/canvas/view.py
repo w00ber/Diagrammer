@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QPainter, QPen
 from PySide6.QtWidgets import QGraphicsView
 
@@ -44,6 +44,7 @@ class DiagramView(QGraphicsView):
         self._trace_routing = False
         self._trace_vertices: list[QPointF] = []
         self._rubber_band_active = False
+        self._rubber_band_rect = QRectF()  # scene-coords rect of last rubber-band
         self._zoom_window_mode = False
         self._zoom_rect_start: QPointF | None = None
         self._zoom_rect_item = None  # QGraphicsRectItem for the zoom rectangle
@@ -61,10 +62,19 @@ class DiagramView(QGraphicsView):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # Enable rubber-band selection for group selection
         self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
+        self.rubberBandChanged.connect(self._on_rubber_band_changed)
         self.setAcceptDrops(True)
         # Accept native gestures (pinch-to-zoom on trackpad)
         self.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
         self.grabGesture(Qt.GestureType.PinchGesture)
+
+    # -- Rubber-band tracking --
+
+    def _on_rubber_band_changed(self, rubberBandRect, fromScenePoint, toScenePoint):  # noqa: ANN001, N803
+        """Track the rubber-band rect in scene coordinates."""
+        if not rubberBandRect.isNull():
+            self._rubber_band_rect = self.mapToScene(rubberBandRect).boundingRect()
+        # When the rect goes null, the drag has ended — keep the last valid rect
 
     # -- Properties --
 
@@ -464,9 +474,14 @@ class DiagramView(QGraphicsView):
                 return
 
             # -- Shift+click → toggle multi-select (group-aware) --
+            # Exception: if Shift+clicking an already-selected ConnectionItem,
+            # let the event pass through so the connection's own handler can
+            # do waypoint-level Shift+Click selection.
             if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                 from diagrammer.items.shape_item import LineItem, ShapeItem
-                if isinstance(item, (ComponentItem, ConnectionItem, ShapeItem, LineItem, JunctionItem, AnnotationItem)):
+                if isinstance(item, ConnectionItem) and item.isSelected():
+                    pass  # fall through to let ConnectionItem handle waypoint selection
+                elif isinstance(item, (ComponentItem, ConnectionItem, ShapeItem, LineItem, JunctionItem, AnnotationItem)):
                     if item.isSelected():
                         self._deselect_with_group(item)
                     else:
@@ -913,6 +928,21 @@ class DiagramView(QGraphicsView):
                 for m in self._diagram_scene.get_group_members(gid):
                     if not m.isSelected():
                         m.setSelected(True)
+
+        # After rubber-band selection, select waypoints within the rect
+        # if exactly one ConnectionItem is selected.
+        if not self._rubber_band_rect.isNull():
+            sel = self._diagram_scene.selectedItems()
+            conn_items = [i for i in sel if isinstance(i, ConnectionItem)]
+            if len(conn_items) == 1 and len(sel) == 1:
+                conn = conn_items[0]
+                rect = self._rubber_band_rect
+                conn._selected_waypoints.clear()
+                for idx, wp in enumerate(conn.vertices):
+                    if rect.contains(wp):
+                        conn._selected_waypoints.add(idx)
+                conn.update()
+            self._rubber_band_rect = QRectF()  # reset
 
         # Safety: always restore rubber-band drag mode after any mouse release,
         # in case an operation set NoDrag and didn't restore it.

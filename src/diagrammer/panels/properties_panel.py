@@ -169,6 +169,16 @@ class PropertiesPanel(QDockWidget):
         )
         self._form.addRow("Color:", color_btn)
 
+        # Routing mode
+        from diagrammer.items.connection_item import ROUTE_ORTHO, ROUTE_ORTHO_45, ROUTE_DIRECT
+        mode_combo = QComboBox()
+        mode_combo.addItems([ROUTE_ORTHO, ROUTE_ORTHO_45, ROUTE_DIRECT])
+        mode_combo.setCurrentText(item.routing_mode)
+        mode_combo.currentTextChanged.connect(
+            lambda v, it=item: self._push_style(it, 'routing_mode', it.routing_mode, v)
+        )
+        self._form.addRow("Routing:", mode_combo)
+
         # Set as Default button
         default_btn = QPushButton("Set as Default")
         default_btn.setToolTip("Use this wire's style as the default for new connections")
