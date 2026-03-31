@@ -147,7 +147,7 @@ _reg("view.zoom_window", _ks("Z"),                         description="Zoom Win
 _reg("routing.trace",  _ks("W"),                           description="Trace Routing Mode", category="Routing")
 
 # ----- Draw -----
-_reg("draw.text",      _ks("T"),                           description="Add Text",          category="Draw")
+_reg("draw.text",      _ks("Ctrl+Shift+T"),                 description="Add Text",          category="Draw")
 
 # ----- Help -----
 _reg("help.help",      QKeySequence.StandardKey.HelpContents, description="Help",           category="Help")

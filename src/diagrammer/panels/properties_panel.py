@@ -169,6 +169,20 @@ class PropertiesPanel(QDockWidget):
         )
         self._form.addRow("Color:", color_btn)
 
+        # Set as Default button
+        default_btn = QPushButton("Set as Default")
+        default_btn.setToolTip("Use this wire's style as the default for new connections")
+        default_btn.clicked.connect(lambda checked=False, it=item: self._set_wire_defaults(it))
+        self._form.addRow("", default_btn)
+
+    def _set_wire_defaults(self, item) -> None:
+        """Copy this connection's style to app-wide wiring defaults."""
+        from diagrammer.panels.settings_dialog import app_settings
+        app_settings.default_line_width = item.line_width
+        app_settings.default_line_color = item.line_color
+        app_settings.default_corner_radius = item.corner_radius
+        app_settings.save()
+
     # -- Component form --
 
     def _build_component_form(self, item) -> None:

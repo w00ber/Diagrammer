@@ -35,6 +35,17 @@ DEFAULT_TEXT_COLOR = QColor(0, 0, 0)
 # Regex to detect $...$ math (non-greedy)
 _MATH_RE = re.compile(r"\$(.+?)\$")
 
+# Track which font fallback warnings have been shown (avoid repeating)
+_font_warnings_shown: set[str] = set()
+
+
+def _warn_font_fallback(requested: str, actual: str) -> None:
+    """Print a one-time warning when a font isn't available."""
+    if requested in _font_warnings_shown:
+        return
+    _font_warnings_shown.add(requested)
+    print(f"Font '{requested}' not available — using '{actual}' as fallback.")
+
 import sys as _sys
 
 # Common font families grouped by category, with platform-appropriate choices
@@ -208,6 +219,10 @@ class AnnotationItem(QGraphicsTextItem):
         f = self.font()
         f.setFamily(family)
         self.setFont(f)
+        # Check if font is actually available; warn if fallback is used
+        actual = self.font().family()
+        if actual.lower() != family.lower() and family:
+            _warn_font_fallback(family, actual)
         if _MATH_RE.search(self._source_text):
             self._try_render_math()
 

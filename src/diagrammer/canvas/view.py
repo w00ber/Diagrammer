@@ -385,6 +385,28 @@ class DiagramView(QGraphicsView):
             item = self._item_at_pos(event.position())
             scene_pos = self.mapToScene(event.position().toPoint())
 
+            # -- Trace routing mode: start from empty space --
+            if self._trace_routing and not self._diagram_scene.is_connecting:
+                # Not currently connecting — start a new trace
+                if isinstance(item, PortItem):
+                    # Clicking a port starts normally
+                    pass  # fall through to the port handler below
+                elif item is None or not isinstance(item, (PortItem, ComponentItem)):
+                    # Clicking empty space: create a free junction and start from it
+                    snapped = self._snap_if_enabled(scene_pos)
+                    from diagrammer.items.junction_item import JunctionItem as _JI
+                    junc = _JI()
+                    junc.setPos(snapped)
+                    junc.setVisible(False)
+                    self._diagram_scene.addItem(junc)
+                    if hasattr(self._diagram_scene, 'assign_active_layer'):
+                        self._diagram_scene.assign_active_layer(junc)
+                    self._trace_vertices.clear()
+                    self._diagram_scene.begin_connection(junc.port)
+                    self.setDragMode(QGraphicsView.DragMode.NoDrag)
+                    event.accept()
+                    return
+
             # -- Trace routing mode: place waypoints or finish --
             if self._trace_routing and self._diagram_scene.is_connecting:
 

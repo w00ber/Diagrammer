@@ -81,6 +81,7 @@ class AppSettings:
         # Library
         self.hidden_libraries: set[str] = set()
         self.library_view_mode = "tree"  # "tree" or "grid"
+        self.custom_library_paths: list[str] = []  # additional library directories
 
         # Session
         self.last_opened_file: str = ""
@@ -106,6 +107,7 @@ class AppSettings:
                 "discrete_angle_routing": self.discrete_angle_routing,
                 "hidden_libraries": sorted(self.hidden_libraries),
                 "library_view_mode": self.library_view_mode,
+                "custom_library_paths": self.custom_library_paths,
                 "last_opened_file": self.last_opened_file,
                 "last_directory": self.last_directory,
                 "recent_files": self.recent_files[:10],
@@ -153,6 +155,7 @@ class AppSettings:
                 self.discrete_angle_routing = data.get("discrete_angle_routing", self.discrete_angle_routing)
                 self.hidden_libraries = set(data.get("hidden_libraries", []))
                 self.library_view_mode = data.get("library_view_mode", self.library_view_mode)
+                self.custom_library_paths = data.get("custom_library_paths", [])
                 self.last_opened_file = data.get("last_opened_file", "")
                 self.last_directory = data.get("last_directory", "")
                 self.recent_files = data.get("recent_files", [])[:10]
@@ -215,6 +218,7 @@ class SettingsDialog(QDialog):
         self._line_color = QColor(settings.default_line_color)
         self._line_color_btn = QPushButton()
         self._line_color_btn.setFixedSize(60, 24)
+        self._line_color_btn.setAutoDefault(False)
         self._update_color_btn(self._line_color_btn, self._line_color)
         self._line_color_btn.clicked.connect(self._pick_line_color)
         line_form.addRow("Line color:", self._line_color_btn)
@@ -230,6 +234,7 @@ class SettingsDialog(QDialog):
         line_layout.addWidget(line_group)
 
         line_reset = QPushButton("Reset to Default")
+        line_reset.setAutoDefault(False)
         line_reset.clicked.connect(self._reset_line_defaults)
         line_layout.addWidget(line_reset, alignment=Qt.AlignmentFlag.AlignRight)
         line_layout.addStretch()
@@ -262,6 +267,7 @@ class SettingsDialog(QDialog):
         snap_layout.addWidget(snap_group)
 
         snap_reset = QPushButton("Reset to Default")
+        snap_reset.setAutoDefault(False)
         snap_reset.clicked.connect(self._reset_snap_defaults)
         snap_layout.addWidget(snap_reset, alignment=Qt.AlignmentFlag.AlignRight)
         snap_layout.addStretch()
@@ -338,6 +344,30 @@ class SettingsDialog(QDialog):
             lib_form.addWidget(QLabel("No library loaded"))
         lib_group.setLayout(lib_form)
         lib_layout.addWidget(lib_group)
+
+        # Custom library paths
+        from PySide6.QtWidgets import QListWidget, QFileDialog as _FD
+        paths_group = QGroupBox("Additional Library Folders")
+        paths_layout = QVBoxLayout()
+        self._lib_paths_list = QListWidget()
+        self._lib_paths_list.setMaximumHeight(100)
+        for p in settings.custom_library_paths:
+            self._lib_paths_list.addItem(p)
+        paths_layout.addWidget(self._lib_paths_list)
+        paths_btn_row = QHBoxLayout()
+        add_path_btn = QPushButton("Add...")
+        add_path_btn.setAutoDefault(False)
+        add_path_btn.clicked.connect(self._add_library_path)
+        remove_path_btn = QPushButton("Remove")
+        remove_path_btn.setAutoDefault(False)
+        remove_path_btn.clicked.connect(self._remove_library_path)
+        paths_btn_row.addWidget(add_path_btn)
+        paths_btn_row.addWidget(remove_path_btn)
+        paths_btn_row.addStretch()
+        paths_layout.addLayout(paths_btn_row)
+        paths_group.setLayout(paths_layout)
+        lib_layout.addWidget(paths_group)
+
         lib_layout.addStretch()
         tabs.addTab(lib_tab, "Libraries")
 
@@ -350,6 +380,7 @@ class SettingsDialog(QDialog):
         self._junc_color = QColor(settings.junction_color)
         self._junc_color_btn = QPushButton()
         self._junc_color_btn.setFixedSize(60, 24)
+        self._junc_color_btn.setAutoDefault(False)
         self._junc_color_btn.setStyleSheet(
             f"background-color: {self._junc_color.name()}; border: 1px solid #888;"
         )
@@ -399,6 +430,7 @@ class SettingsDialog(QDialog):
         self._annot_color = QColor(settings.default_annotation_color)
         self._annot_color_btn = QPushButton()
         self._annot_color_btn.setFixedSize(60, 24)
+        self._annot_color_btn.setAutoDefault(False)
         self._update_color_btn(self._annot_color_btn, self._annot_color)
         self._annot_color_btn.clicked.connect(self._pick_annot_color)
         annot_form.addRow("Color:", self._annot_color_btn)
@@ -413,6 +445,7 @@ class SettingsDialog(QDialog):
         annot_layout.addWidget(annot_hint)
 
         reset_all_btn = QPushButton("Reset All to Original Defaults")
+        reset_all_btn.setAutoDefault(False)
         reset_all_btn.clicked.connect(self._reset_to_factory)
         annot_layout.addWidget(reset_all_btn, alignment=Qt.AlignmentFlag.AlignRight)
         annot_layout.addStretch()
@@ -421,8 +454,10 @@ class SettingsDialog(QDialog):
         # -- OK / Cancel --
         btn_row = QHBoxLayout()
         ok_btn = QPushButton("OK")
+        ok_btn.setAutoDefault(False)
         ok_btn.clicked.connect(self.accept)
         cancel_btn = QPushButton("Cancel")
+        cancel_btn.setAutoDefault(False)
         cancel_btn.clicked.connect(self.reject)
         btn_row.addStretch()
         btn_row.addWidget(ok_btn)
@@ -456,6 +491,21 @@ class SettingsDialog(QDialog):
             self._junc_color_btn.setStyleSheet(
                 f"background-color: {c.name()}; border: 1px solid #888;"
             )
+
+    def _add_library_path(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+        path = QFileDialog.getExistingDirectory(self, "Select Library Folder")
+        if path:
+            # Don't add duplicates
+            existing = [self._lib_paths_list.item(i).text()
+                        for i in range(self._lib_paths_list.count())]
+            if path not in existing:
+                self._lib_paths_list.addItem(path)
+
+    def _remove_library_path(self) -> None:
+        row = self._lib_paths_list.currentRow()
+        if row >= 0:
+            self._lib_paths_list.takeItem(row)
 
     def _reset_to_factory(self) -> None:
         """Reset ALL settings to factory defaults from defaults.yaml."""
@@ -508,6 +558,11 @@ class SettingsDialog(QDialog):
                 for cat in self._lib_checkboxes:
                     if cat.startswith(parent + "/"):
                         self._settings.hidden_libraries.add(cat)
+        # Custom library paths
+        self._settings.custom_library_paths = [
+            self._lib_paths_list.item(i).text()
+            for i in range(self._lib_paths_list.count())
+        ]
         # Annotation defaults
         self._settings.default_annotation_font = self._annot_font_combo.currentText()
         self._settings.default_annotation_size = self._annot_size_spin.value()

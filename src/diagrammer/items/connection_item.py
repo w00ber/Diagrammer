@@ -16,7 +16,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPainterPathStroker, QPen
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPainterPathStroker, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsPathItem,
@@ -256,6 +256,13 @@ class ConnectionItem(QGraphicsPathItem):
         if ext > 0 and len(result) >= 2 and not is_dragging:
             self._add_lead_approach(result, self._source_port, at_start=True, ext=ext)
             self._add_lead_approach(result, self._target_port, at_start=False, ext=ext)
+            # Wire-to-wire junction: extend into the other wire's direction
+            # for smooth corner rounding where two wires meet
+            if scene:
+                self._add_wire_junction_approach(result, self._source_port,
+                                                 at_start=True, ext=ext, scene=scene)
+                self._add_wire_junction_approach(result, self._target_port,
+                                                 at_start=False, ext=ext, scene=scene)
 
         return result
 
@@ -321,6 +328,86 @@ class ConnectionItem(QGraphicsPathItem):
             inner = QPointF(
                 points[-1].x() - adx * reach,
                 points[-1].y() - ady * reach,
+            )
+            points.append(inner)
+
+    def _add_wire_junction_approach(
+        self, points: list[QPointF], port, *, at_start: bool,
+        ext: float, scene,
+    ) -> None:
+        """Extend a wire endpoint along the other wire's direction at a junction.
+
+        When two wires meet at a JunctionItem, this adds a short segment
+        along the OTHER wire's terminal direction so that build_rounded_path
+        creates a smooth corner where the wires join.
+
+        Only applies when the port belongs to a JunctionItem and exactly
+        one other connection shares that port.
+        """
+        from diagrammer.items.junction_item import JunctionItem
+        comp = port.component
+        if not isinstance(comp, JunctionItem):
+            return
+
+        # Find the other connection on this junction
+        other_conn = None
+        count = 0
+        for item in scene.items():
+            if not isinstance(item, ConnectionItem) or item is self:
+                continue
+            if item.source_port is port or item.target_port is port:
+                other_conn = item
+                count += 1
+                if count > 1:
+                    return  # More than one other wire — T-junction, don't join
+
+        if other_conn is None:
+            return
+
+        # Get the other wire's direction at this shared port
+        other_kps = other_conn._key_points()
+        if len(other_kps) < 2:
+            return
+
+        if other_conn.source_port is port:
+            # Other wire starts at this port — its direction goes toward kps[1]
+            dx = other_kps[1].x() - other_kps[0].x()
+            dy = other_kps[1].y() - other_kps[0].y()
+        else:
+            # Other wire ends at this port — its direction comes from kps[-2]
+            dx = other_kps[-2].x() - other_kps[-1].x()
+            dy = other_kps[-2].y() - other_kps[-1].y()
+
+        length = max((dx * dx + dy * dy) ** 0.5, 1e-9)
+        ux, uy = dx / length, dy / length
+
+        # Check if this wire's terminal segment is perpendicular to the other wire
+        if at_start and len(points) >= 2:
+            seg_dx = points[1].x() - points[0].x()
+            seg_dy = points[1].y() - points[0].y()
+        elif not at_start and len(points) >= 2:
+            seg_dx = points[-1].x() - points[-2].x()
+            seg_dy = points[-1].y() - points[-2].y()
+        else:
+            return
+
+        seg_len = max((seg_dx ** 2 + seg_dy ** 2) ** 0.5, 1e-9)
+        dot = abs(ux * (seg_dx / seg_len) + uy * (seg_dy / seg_len))
+        if dot > 0.5:
+            return  # Already aligned — no corner needed
+
+        # Add a point along the other wire's direction to create a bend
+        reach = ext * 2.0
+        if at_start:
+            inner = QPointF(
+                points[0].x() + ux * reach,
+                points[0].y() + uy * reach,
+            )
+            points.insert(0, inner)
+        else:
+            inner = QPointF(
+                points[-1].x() + ux * reach,
+                points[-1].y() + uy * reach,
             )
             points.append(inner)
 
@@ -398,12 +485,19 @@ class ConnectionItem(QGraphicsPathItem):
             for i, w in enumerate(self._waypoints):
                 r = VERTEX_HANDLE_SIZE / 2
                 if i in self._selected_waypoints:
-                    # Selected waypoints: orange, slightly larger
-                    painter.setPen(QPen(QColor(255, 140, 0), 1.5))
-                    painter.setBrush(QColor(255, 140, 0))
-                    sr = r * 1.4
-                    painter.drawRect(QRectF(w.x() - sr, w.y() - sr, sr * 2, sr * 2))
+                    # Selected waypoints: bright orange filled diamond with border
+                    sr = r * 1.6
+                    painter.setPen(QPen(QColor(200, 80, 0), 2.0))
+                    painter.setBrush(QColor(255, 160, 0))
+                    diamond = QPolygonF([
+                        QPointF(w.x(), w.y() - sr),
+                        QPointF(w.x() + sr, w.y()),
+                        QPointF(w.x(), w.y() + sr),
+                        QPointF(w.x() - sr, w.y()),
+                    ])
+                    painter.drawPolygon(diamond)
                 else:
+                    # Unselected: small filled square
                     painter.setPen(QPen(VERTEX_HANDLE_COLOR, 1.0))
                     painter.setBrush(VERTEX_HANDLE_COLOR)
                     painter.drawRect(
@@ -583,8 +677,21 @@ class ConnectionItem(QGraphicsPathItem):
         if event.button() == Qt.MouseButton.LeftButton and self.isSelected():
             pos = event.scenePos()
             shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+            ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
 
             wi = self._find_waypoint_at(pos)
+
+            # Ctrl+Shift+click on waypoint → delete it
+            if wi is not None and ctrl and shift:
+                self._delete_waypoint(wi)
+                event.accept()
+                return
+
+            # Ctrl+click on segment → insert a new waypoint
+            if wi is None and ctrl and not shift:
+                self._insert_waypoint_at(pos)
+                event.accept()
+                return
 
             # Shift+click on waypoint → toggle its selection
             if wi is not None and shift:
@@ -606,14 +713,17 @@ class ConnectionItem(QGraphicsPathItem):
                 event.accept()
                 return
 
-            # Click on an unselected waypoint → clear group selection, drag single
+            # Click on an unselected waypoint → select it and start drag
             if wi is not None:
-                self._selected_waypoints.clear()
+                if not shift:
+                    self._selected_waypoints.clear()
+                self._selected_waypoints.add(wi)
                 self._dragging_waypoint = wi
-                self._dragging_group = False
+                self._dragging_group = len(self._selected_waypoints) > 1
                 self._drag_start_pos = QPointF(pos)
                 self._drag_start_expanded = [QPointF(p) for p in self._expanded]
                 self._drag_start_waypoints = [QPointF(w) for w in self._waypoints]
+                self.update()
                 event.accept()
                 return
 
@@ -726,54 +836,33 @@ class ConnectionItem(QGraphicsPathItem):
             self._waypoints.pop(index)
             self.update_route()
 
+    def _insert_waypoint_at(self, pos: QPointF) -> None:
+        """Insert a new waypoint at the closest point on the route to pos (Ctrl+Click)."""
+        pts = self._expanded
+        best_dist = float("inf")
+        best_idx = 0
+        best_proj = pos
+
+        for i in range(len(pts) - 1):
+            proj, dist = closest_point_on_segment(pos, pts[i], pts[i + 1])
+            if dist < best_dist:
+                best_dist = dist
+                best_idx = i
+                best_proj = proj
+
+        if best_dist < HIT_TOLERANCE * 3:
+            kps = self._key_points()
+            kp_exp_indices = self._key_point_expanded_indices(kps)
+            insert_wp_idx = self._wp_insert_index_for_expanded_segment(
+                best_idx, kp_exp_indices
+            )
+            self._waypoints.insert(insert_wp_idx, self._snap_to_grid(best_proj))
+            self.update_route()
+
     def mouseDoubleClickEvent(self, event) -> None:  # noqa: ANN001
-        """Double-click a waypoint to delete it, or double-click a segment to add one."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            pos = event.scenePos()
-
-            # Double-click on a waypoint handle → delete it
-            wi = self._find_waypoint_at(pos)
-            if wi is not None:
-                self._delete_waypoint(wi)
-                event.accept()
-                return
-
-            # Double-click on a segment → insert a new waypoint
-            pts = self._expanded
-            best_dist = float("inf")
-            best_idx = 0
-            best_proj = pos
-
-            for i in range(len(pts) - 1):
-                proj, dist = closest_point_on_segment(pos, pts[i], pts[i + 1])
-                if dist < best_dist:
-                    best_dist = dist
-                    best_idx = i
-                    best_proj = proj
-
-            if best_dist < HIT_TOLERANCE * 2:
-                # Determine which waypoint slot this maps to.
-                # The expanded route is built from key-points.  We need to
-                # figure out *between which waypoints* the clicked segment
-                # falls, so we can insert the new waypoint in the right
-                # position within self._waypoints.
-
-                # Build a map: for each key-point, which expanded-point
-                # index does it correspond to?
-                kps = self._key_points()
-                kp_exp_indices = self._key_point_expanded_indices(kps)
-
-                # Find the key-point span that contains segment best_idx.
-                insert_wp_idx = self._wp_insert_index_for_expanded_segment(
-                    best_idx, kp_exp_indices
-                )
-
-                # Snap the new waypoint to the grid.
-                self._waypoints.insert(insert_wp_idx, self._snap_to_grid(best_proj))
-                self.update_route()
-                event.accept()
-                return
-
+        """Double-click on a connection — no action (waypoint add/remove uses Ctrl+Click)."""
+        # Waypoint creation: Ctrl+Click (handled in mousePressEvent)
+        # Waypoint deletion: Ctrl+Shift+Click (handled in mousePressEvent)
         super().mouseDoubleClickEvent(event)
 
     # -- Helpers for double-click insertion --------------------------------

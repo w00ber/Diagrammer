@@ -27,12 +27,27 @@ from diagrammer.shortcuts import SHORTCUTS, get as get_shortcut
 
 
 def _find_builtin_components() -> Path:
-    """Locate the built-in components directory shipped with the package."""
+    """Locate the built-in components directory shipped with the package.
+
+    Searches several locations to handle both development mode
+    (running from source) and installed mode (pip install).
+    """
+    import sys
     here = Path(__file__).resolve().parent
+    # Development mode: components/ next to src/
     for ancestor in [here.parent.parent, here.parent.parent.parent]:
         candidate = ancestor / "components"
         if candidate.is_dir():
             return candidate
+    # Installed mode: check share/diagrammer/components
+    for prefix in [sys.prefix, Path.home() / ".local"]:
+        candidate = Path(prefix) / "share" / "diagrammer" / "components"
+        if candidate.is_dir():
+            return candidate
+    # User components directory
+    user_dir = Path.home() / ".diagrammer" / "components"
+    if user_dir.is_dir():
+        return user_dir
     return here / "components"
 
 
@@ -49,6 +64,11 @@ class MainWindow(QMainWindow):
         builtin_path = _find_builtin_components()
         if builtin_path.is_dir():
             self._library.scan(builtin_path)
+        # Scan custom library paths from settings
+        for custom_path in app_settings.custom_library_paths:
+            p = Path(custom_path)
+            if p.is_dir():
+                self._library.scan(p)
 
         # -- Scene and View --
         self._scene = DiagramScene(library=self._library, parent=self)
@@ -528,6 +548,11 @@ class MainWindow(QMainWindow):
         if dlg.exec() == SettingsDialog.DialogCode.Accepted:
             dlg.apply()
             self._apply_settings()
+            # Rescan custom library paths (may have changed)
+            for custom_path in app_settings.custom_library_paths:
+                p = Path(custom_path)
+                if p.is_dir():
+                    self._library.scan(p)
             self._apply_library_visibility()
 
     def _apply_settings(self) -> None:
