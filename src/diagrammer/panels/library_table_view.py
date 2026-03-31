@@ -58,7 +58,17 @@ class _TableComponentItem(QGraphicsItem):
 # ---------------------------------------------------------------------------
 
 class LibraryTableView(QGraphicsView):
-    """Read-only view for browsing a library table.  Supports zoom, pan, and zoom-window."""
+    """Read-only view for browsing a library table.
+
+    Zoom/pan interactions match the main diagram view:
+    - Two-finger scroll → pan
+    - Pinch gesture → zoom at centre of gesture
+    - Mouse scroll wheel → zoom at cursor
+    - Middle-click drag → pan
+    """
+
+    _ZOOM_FACTOR = 1.15
+    _ZOOM_MAX = 20.0
 
     def __init__(self, scene: QGraphicsScene, parent: QWidget | None = None):
         super().__init__(scene, parent)
@@ -66,29 +76,54 @@ class LibraryTableView(QGraphicsView):
             QPainter.RenderHint.Antialiasing
             | QPainter.RenderHint.SmoothPixmapTransform
         )
-        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setAcceptDrops(False)
         self.setBackgroundBrush(QColor(255, 255, 255))
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
+        # Accept native gestures (pinch-to-zoom on trackpad)
+        self.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
+        self.grabGesture(Qt.GestureType.PinchGesture)
 
         # Zoom-window state
         self._zoom_window_mode = False
         self._zoom_rect_start: QPointF | None = None
         self._zoom_rect_item: QGraphicsRectItem | None = None
+        self._min_scale: float = 0.01  # updated by fit_all
+        # Pan state (middle-click or in non-zoom mode)
+        self._panning = False
+        self._pan_start = QPointF()
 
-    # -- Zoom / pan --
+    # -- Zoom helpers --
 
-    def wheelEvent(self, event) -> None:  # noqa: ANN001
-        factor = 1.15 if event.angleDelta().y() > 0 else 1.0 / 1.15
-        # Zoom centred on cursor
-        old_pos = self.mapToScene(event.position().toPoint())
+    def _current_scale(self) -> float:
+        return self.transform().m11()
+
+    def _clamp_zoom(self) -> None:
+        """Enforce minimum zoom level (0.8x of fit-all scale)."""
+        if self._current_scale() < self._min_scale:
+            ratio = self._min_scale / self._current_scale()
+            self.scale(ratio, ratio)
+
+    def zoom_at(self, factor: float, scene_pos: QPointF) -> None:
+        """Zoom by *factor*, keeping *scene_pos* visually stationary."""
+        new_scale = self._current_scale() * factor
+        if new_scale > self._ZOOM_MAX:
+            return
+        if new_scale < self._min_scale:
+            factor = self._min_scale / self._current_scale()
+        view_point = self.mapFromScene(scene_pos)
         self.scale(factor, factor)
-        new_pos = self.mapToScene(event.position().toPoint())
-        delta = new_pos - old_pos
+        new_scene_pos = self.mapToScene(view_point)
+        delta = new_scene_pos - scene_pos
         self.translate(delta.x(), delta.y())
+
+    def zoom_centered(self, factor: float) -> None:
+        """Zoom around the viewport centre."""
+        center = self.mapToScene(self.viewport().rect().center())
+        self.zoom_at(factor, center)
 
     def fit_all(self) -> None:
         scene = self.scene()
@@ -99,14 +134,108 @@ class LibraryTableView(QGraphicsView):
             margin = max(rect.width(), rect.height()) * 0.05
             rect.adjust(-margin, -margin, margin, margin)
             self.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+            self._min_scale = self._current_scale() * 0.8
 
-    def zoom_centered(self, factor: float) -> None:
-        """Zoom around the viewport centre."""
-        center = self.mapToScene(self.viewport().rect().center())
-        self.scale(factor, factor)
-        new_center = self.mapToScene(self.viewport().rect().center())
-        delta = new_center - center
-        self.translate(delta.x(), delta.y())
+    # -- Gesture / wheel / pan events (match diagram view) --
+
+    def event(self, ev) -> bool:  # noqa: ANN001
+        from PySide6.QtCore import QEvent
+        if ev.type() == QEvent.Type.Gesture:
+            return self._handle_gesture(ev)
+        return super().event(ev)
+
+    def _handle_gesture(self, ev) -> bool:
+        from PySide6.QtWidgets import QPinchGesture
+        pinch = ev.gesture(Qt.GestureType.PinchGesture)
+        if pinch is not None:
+            flags = pinch.changeFlags()
+            if flags & QPinchGesture.ChangeFlag.ScaleFactorChanged:
+                factor = pinch.scaleFactor()
+                center = self.mapToScene(self.mapFromGlobal(pinch.centerPoint().toPoint()))
+                self.zoom_at(factor, center)
+            return True
+        return False
+
+    def wheelEvent(self, event) -> None:  # noqa: ANN001
+        # Discrete mouse wheel: zoom toward cursor
+        if event.phase() in (Qt.ScrollPhase.NoScrollPhase,):
+            angle = event.angleDelta().y()
+            if angle == 0:
+                return
+            factor = self._ZOOM_FACTOR if angle > 0 else 1.0 / self._ZOOM_FACTOR
+            cursor_pos = self.mapToScene(event.position().toPoint())
+            self.zoom_at(factor, cursor_pos)
+            return
+
+        # Trackpad two-finger scroll: pan
+        dx = event.pixelDelta().x()
+        dy = event.pixelDelta().y()
+        if dx == 0 and dy == 0:
+            dx = event.angleDelta().x()
+            dy = event.angleDelta().y()
+        if dx != 0 or dy != 0:
+            scale = self._current_scale()
+            self.translate(dx / scale, dy / scale)
+
+    def mousePressEvent(self, event) -> None:  # noqa: ANN001
+        # Middle-click pan
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self._panning = True
+            self._pan_start = event.position()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
+        if self._zoom_window_mode and event.button() == Qt.MouseButton.LeftButton:
+            self._zoom_rect_start = self.mapToScene(event.position().toPoint())
+            pen = QPen(QColor(0, 120, 212), 1.0, Qt.PenStyle.DashLine)
+            self._zoom_rect_item = QGraphicsRectItem()
+            self._zoom_rect_item.setPen(pen)
+            self._zoom_rect_item.setBrush(QColor(0, 120, 212, 30))
+            self.scene().addItem(self._zoom_rect_item)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: ANN001
+        if self._panning:
+            delta = event.position() - self._pan_start
+            self._pan_start = event.position()
+            scale = self._current_scale()
+            self.translate(delta.x() / scale, delta.y() / scale)
+            event.accept()
+            return
+        if self._zoom_window_mode and self._zoom_rect_item and self._zoom_rect_start:
+            current = self.mapToScene(event.position().toPoint())
+            rect = QRectF(self._zoom_rect_start, current).normalized()
+            self._zoom_rect_item.setRect(rect)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: ANN001
+        if event.button() == Qt.MouseButton.MiddleButton and self._panning:
+            self._panning = False
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            event.accept()
+            return
+        if self._zoom_window_mode and event.button() == Qt.MouseButton.LeftButton:
+            if self._zoom_rect_item and self._zoom_rect_start:
+                rect = self._zoom_rect_item.rect()
+                self.scene().removeItem(self._zoom_rect_item)
+                self._zoom_rect_item = None
+                click_pos = self._zoom_rect_start
+                self._zoom_rect_start = None
+                if rect.width() > 5 and rect.height() > 5:
+                    self.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+                    self._clamp_zoom()
+                else:
+                    if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                        self.zoom_centered(0.5)
+                    else:
+                        self.zoom_centered(2.0)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
     # -- Zoom window mode --
 
@@ -169,6 +298,7 @@ class LibraryTableView(QGraphicsView):
                 self._zoom_rect_start = None
                 if rect.width() > 5 and rect.height() > 5:
                     self.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+                    self._clamp_zoom()
                 else:
                     # Single click: zoom in (shift+click = zoom out)
                     if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:

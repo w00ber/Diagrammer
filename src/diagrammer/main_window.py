@@ -333,6 +333,11 @@ class MainWindow(QMainWindow):
         ungroup_act.triggered.connect(self._ungroup_selected)
         edit_menu.addAction(ungroup_act)
 
+        join_wires_act = QAction("&Join Wires", self)
+        join_wires_act.setShortcut(get_shortcut("edit.join_wires"))
+        join_wires_act.triggered.connect(self._join_wires)
+        edit_menu.addAction(join_wires_act)
+
         edit_menu.addSeparator()
 
         settings_act = QAction("Se&ttings\u2026", self)
@@ -746,6 +751,100 @@ class MainWindow(QMainWindow):
         cmd = UngroupCommand(all_members, top_gids.pop())
         self._scene.undo_stack.push(cmd)
 
+    def _join_wires(self) -> None:
+        """Join two or more selected wires that share overlapping endpoints (Ctrl+J)."""
+        from diagrammer.items.connection_item import ConnectionItem, ROUTE_DIRECT
+        from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.utils.geometry import point_distance
+
+        SNAP = 15.0  # endpoint overlap tolerance
+
+        # Gather selected connections
+        conns = [i for i in self._scene.selectedItems() if isinstance(i, ConnectionItem)]
+        if len(conns) < 2:
+            return
+
+        # Build a list of (connection, end, port, position) for all endpoints
+        endpoints = []
+        for conn in conns:
+            endpoints.append((conn, "source", conn.source_port, conn.source_port.scene_center()))
+            endpoints.append((conn, "target", conn.target_port, conn.target_port.scene_center()))
+
+        # Find a pair of endpoints from different wires that overlap
+        wire_a = wire_b = None
+        end_a = end_b = None
+        for i in range(len(endpoints)):
+            for j in range(i + 1, len(endpoints)):
+                ci, ei, pi, posi = endpoints[i]
+                cj, ej, pj, posj = endpoints[j]
+                if ci is cj:
+                    continue  # same wire
+                if point_distance(posi, posj) < SNAP:
+                    wire_a, end_a = ci, ei
+                    wire_b, end_b = cj, ej
+                    break
+            if wire_a is not None:
+                break
+
+        if wire_a is None:
+            return
+
+        # Determine merged source, target, and waypoints.
+        # Use _key_points() which includes port positions, so we capture the
+        # full path even for wires with no intermediate waypoints.
+        kps_a = wire_a._key_points()  # [source_pos, *waypoints, target_pos]
+        kps_b = wire_b._key_points()
+
+        # Wire A contributes from its far end to the join point
+        if end_a == "target":
+            # A goes source→...→target(join), keep as-is, far end is source
+            merged_source = wire_a.source_port
+            path_a = kps_a  # already source→...→join
+        else:
+            # A goes source(join)→...→target, reverse it, far end is target
+            merged_source = wire_a.target_port
+            path_a = list(reversed(kps_a))  # target→...→join
+
+        # Wire B contributes from the join point to its far end
+        if end_b == "source":
+            # B goes source(join)→...→target, keep as-is, far end is target
+            merged_target = wire_b.target_port
+            path_b = kps_b  # join→...→target
+        else:
+            # B goes source→...→target(join), reverse it, far end is source
+            merged_target = wire_b.source_port
+            path_b = list(reversed(kps_b))  # join→...→source
+
+        # Combine: path_a leads to join, path_b leads away from join
+        raw = path_a + path_b
+        new_radius = min(wire_a.corner_radius, wire_b.corner_radius)
+
+        # Deduplicate consecutive identical points
+        merged_wps = [raw[0]] if raw else []
+        for pt in raw[1:]:
+            prev = merged_wps[-1]
+            if abs(pt.x() - prev.x()) > 0.5 or abs(pt.y() - prev.y()) > 0.5:
+                merged_wps.append(pt)
+
+        # Execute as undoable macro
+        from diagrammer.commands.delete_command import DeleteCommand
+        from diagrammer.commands.connect_command import CreateConnectionCommand
+
+        self._scene.undo_stack.beginMacro("Join wires")
+        del_cmd = DeleteCommand(self._scene, [wire_a, wire_b])
+        self._scene.undo_stack.push(del_cmd)
+
+        cmd = CreateConnectionCommand(self._scene, merged_source, merged_target)
+        self._scene.undo_stack.push(cmd)
+        if cmd.connection:
+            cmd.connection.routing_mode = ROUTE_DIRECT
+            cmd.connection.corner_radius = new_radius
+            cmd.connection.vertices = merged_wps
+            cmd.connection.line_width = wire_a.line_width
+            cmd.connection.line_color = wire_a.line_color
+        self._scene.undo_stack.endMacro()
+        self._scene.update_connections()
+
     def _on_selection_changed(self) -> None:
         self._props_panel.update_for_selection(self._scene)
 
@@ -796,11 +895,9 @@ class MainWindow(QMainWindow):
         if enabled:
             self._scene.mode = InteractionMode.CONNECT
             self._view.trace_routing = True
-            self._view.setCursor(Qt.CursorShape.CrossCursor)
         else:
             self._scene.mode = InteractionMode.SELECT
             self._view.trace_routing = False
-            self._view.setCursor(Qt.CursorShape.ArrowCursor)
 
     def _toggle_snap_to_port(self, enabled: bool) -> None:
         app_settings.snap_to_port = enabled
@@ -1407,6 +1504,19 @@ class MainWindow(QMainWindow):
             item for item in self._scene.selectedItems()
             if isinstance(item, AnnotationItem)
         ]
+        selected_conns_direct = [
+            item for item in self._scene.selectedItems()
+            if isinstance(item, ConnectionItem)
+        ]
+
+        # Auto-include endpoint junctions for selected connections
+        # (free wires have invisible junctions the user can't select directly)
+        for conn in selected_conns_direct:
+            for port in (conn.source_port, conn.target_port):
+                comp = port.component
+                if isinstance(comp, JunctionItem) and comp not in selected_juncs:
+                    selected_juncs.append(comp)
+
         if not selected_comps and not selected_juncs and not selected_annots:
             return
 
@@ -1448,6 +1558,7 @@ class MainWindow(QMainWindow):
             self._clipboard.append({
                 "type": "junction",
                 "pos": (junc.pos().x(), junc.pos().y()),
+                "visible": junc.isVisible(),
                 "group": list(junc._group_ids),
             })
             idx += 1
@@ -1554,6 +1665,8 @@ class MainWindow(QMainWindow):
                 junc._skip_snap = True
                 junc.setPos(pos)
                 junc._skip_snap = False
+                if not entry.get("visible", True):
+                    junc.setVisible(False)
                 self._scene.addItem(junc)
                 _remap_group(junc, entry)
                 new_items.append(junc)

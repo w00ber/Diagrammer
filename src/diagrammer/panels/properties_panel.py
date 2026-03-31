@@ -191,6 +191,7 @@ class PropertiesPanel(QDockWidget):
         app_settings.default_line_width = item.line_width
         app_settings.default_line_color = item.line_color
         app_settings.default_corner_radius = item.corner_radius
+        app_settings.default_routing_mode = item.routing_mode
         app_settings.save()
 
     # -- Component form --

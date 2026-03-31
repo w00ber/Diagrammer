@@ -41,6 +41,7 @@ class AppSettings:
         self.default_line_width = _d("wiring", "line_width", 3.0)
         self.default_line_color = QColor(_d("wiring", "line_color", "#323232"))
         self.default_corner_radius = _d("wiring", "corner_radius", 8.0)
+        self.default_routing_mode = _d("wiring", "routing_mode", "ortho")
 
         # Snap behavior
         self.snap_to_port = _d("snap", "snap_to_port", True)
@@ -96,6 +97,7 @@ class AppSettings:
                 "default_line_width": self.default_line_width,
                 "default_line_color": self.default_line_color.name(),
                 "default_corner_radius": self.default_corner_radius,
+                "default_routing_mode": self.default_routing_mode,
                 "snap_to_port": self.snap_to_port,
                 "snap_to_angle": self.snap_to_angle,
                 "snap_to_grid": self.snap_to_grid,
@@ -142,6 +144,7 @@ class AppSettings:
                 if color:
                     self.default_line_color = QColor(color)
                 self.default_corner_radius = data.get("default_corner_radius", self.default_corner_radius)
+                self.default_routing_mode = data.get("default_routing_mode", self.default_routing_mode)
                 self.snap_to_port = data.get("snap_to_port", self.snap_to_port)
                 self.snap_to_angle = data.get("snap_to_angle", self.snap_to_angle)
                 self.snap_to_grid = data.get("snap_to_grid", self.snap_to_grid)

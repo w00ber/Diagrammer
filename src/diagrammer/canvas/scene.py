@@ -442,11 +442,31 @@ class DiagramScene(QGraphicsScene):
         cmd = CreateConnectionCommand(self, source, target)
         self._undo_stack.push(cmd)
 
-        # Apply vertices if provided — trace-routed connections use ROUTE_DIRECT
+        # Apply vertices if provided.  Add endpoint waypoints at junction ends
+        # so the user can grab and move them.
         if vertices and cmd.connection:
-            from diagrammer.items.connection_item import ROUTE_DIRECT
-            cmd.connection.routing_mode = ROUTE_DIRECT
-            cmd.connection.vertices = vertices
+            from diagrammer.items.junction_item import JunctionItem
+            from diagrammer.utils.geometry import point_distance
+            all_verts = list(vertices)
+            NEAR = 1.0  # threshold for "already has a vertex here"
+            # Prepend source position as waypoint if it's a free end (junction)
+            if isinstance(source.component, JunctionItem):
+                src_pos = source.scene_center()
+                if not all_verts or point_distance(all_verts[0], src_pos) > NEAR:
+                    all_verts.insert(0, src_pos)
+            # Append target position as waypoint if it's a free end (junction)
+            if isinstance(target.component, JunctionItem):
+                tgt_pos = target.scene_center()
+                if not all_verts or point_distance(all_verts[-1], tgt_pos) > NEAR:
+                    all_verts.append(tgt_pos)
+            # Routing mode comes from app_settings default (set in CreateConnectionCommand)
+            cmd.connection.vertices = all_verts
+
+        # If the new wire's source shares a port with an existing wire's
+        # endpoint, merge them so they become one continuous path with
+        # corner rounding at the join point.
+        if cmd.connection and vertices:
+            self._try_merge_at_source(cmd.connection)
 
         self._cleanup_connection_state()
         return True
@@ -508,15 +528,32 @@ class DiagramScene(QGraphicsScene):
 
         if best_end == "source":
             # We're joining at the other wire's start → our target is its target
+            # Other wire goes: [source → wps... → target]
+            # We want: [our source → trace → join(source) → wps... → target]
             new_target = best_conn.target_port
-            # Our waypoints + [join point] + reversed other waypoints
             join_pt = best_conn.source_port.scene_center()
-            merged_wps = list(trace_vertices) + [join_pt] + list(reversed(other_wps))
+            raw = list(trace_vertices) + [join_pt] + other_wps
         else:
             # We're joining at the other wire's end → our target is its source
+            # Other wire goes: [source → wps... → target]
+            # We want: [our source → trace → join(target) → reversed wps... → source]
             new_target = best_conn.source_port
             join_pt = best_conn.target_port.scene_center()
-            merged_wps = list(trace_vertices) + [join_pt] + other_wps
+            raw = list(trace_vertices) + [join_pt] + list(reversed(other_wps))
+
+        # Prepend source junction position as a waypoint (draggable endpoint)
+        from diagrammer.items.junction_item import JunctionItem
+        if isinstance(source.component, JunctionItem):
+            src_pos = source.scene_center()
+            if not raw or point_distance(raw[0], src_pos) > 1.0:
+                raw.insert(0, src_pos)
+
+        # Deduplicate consecutive identical points
+        merged_wps = [raw[0]] if raw else []
+        for pt in raw[1:]:
+            prev = merged_wps[-1]
+            if abs(pt.x() - prev.x()) > 0.5 or abs(pt.y() - prev.y()) > 0.5:
+                merged_wps.append(pt)
 
         # Delete the other wire
         from diagrammer.commands.delete_command import DeleteCommand
@@ -535,6 +572,143 @@ class DiagramScene(QGraphicsScene):
 
         self._undo_stack.endMacro()
         return True
+
+    def _try_merge_at_source(self, new_conn) -> None:
+        """Merge *new_conn* with an existing wire that shares its source port.
+
+        If another wire has its source or target port == new_conn.source_port,
+        the two wires are merged into one continuous path.  The shared port
+        position becomes a waypoint so build_rounded_path rounds the corner.
+        """
+        from diagrammer.items.connection_item import ConnectionItem, ROUTE_DIRECT
+        source_port = new_conn.source_port
+        other = None
+        other_end = None  # "source" or "target"
+
+        for item in self.items():
+            if not isinstance(item, ConnectionItem):
+                continue
+            if item is new_conn:
+                continue
+            if item.source_port is source_port:
+                other = item
+                other_end = "source"
+                break
+            if item.target_port is source_port:
+                other = item
+                other_end = "target"
+                break
+
+        if other is None:
+            return
+
+        # Build merged waypoints: other's path + join point + new's path
+        other_wps = [QPointF(w) for w in other.vertices]
+        new_wps = [QPointF(w) for w in new_conn.vertices]
+        join_pt = source_port.scene_center()
+        new_radius = min(new_conn.corner_radius, other.corner_radius)
+
+        if other_end == "source":
+            # other: [other.source → ... → other.target]
+            # Reverse it so we go other.target → ... → join → new's waypoints → new.target
+            merged_source = other.target_port
+            raw = list(reversed(other_wps)) + [join_pt] + new_wps
+        else:
+            # other: [other.source → ... → other.target]
+            merged_source = other.source_port
+            raw = other_wps + [join_pt] + new_wps
+
+        # Deduplicate consecutive identical points
+        merged_wps = [raw[0]] if raw else []
+        for pt in raw[1:]:
+            prev = merged_wps[-1]
+            if abs(pt.x() - prev.x()) > 0.5 or abs(pt.y() - prev.y()) > 0.5:
+                merged_wps.append(pt)
+
+        merged_target = new_conn.target_port
+
+        # Delete both old wires, create merged one
+        from diagrammer.commands.delete_command import DeleteCommand
+        from diagrammer.commands.connect_command import CreateConnectionCommand
+        self._undo_stack.beginMacro("Extend wire")
+        del_cmd = DeleteCommand(self, [other, new_conn])
+        self._undo_stack.push(del_cmd)
+
+        cmd = CreateConnectionCommand(self, merged_source, merged_target)
+        self._undo_stack.push(cmd)
+        if cmd.connection:
+            cmd.connection.routing_mode = ROUTE_DIRECT
+            cmd.connection.corner_radius = new_radius
+            cmd.connection.vertices = merged_wps
+        self._undo_stack.endMacro()
+
+    def extend_wire(
+        self, conn, extending_end: str,
+        new_vertices: list[QPointF], new_target_port=None,
+    ) -> None:
+        """Extend an existing wire by appending/prepending waypoints and changing an endpoint.
+
+        Args:
+            conn: The ConnectionItem to extend.
+            extending_end: 'source' or 'target' — the end being extended.
+            new_vertices: New trace waypoints (not including the shared endpoint).
+            new_target_port: The new endpoint port (junction or component port).
+        """
+        from diagrammer.items.connection_item import ConnectionItem, ROUTE_DIRECT
+        from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.utils.geometry import point_distance
+
+        old_wps = [QPointF(w) for w in conn.vertices]
+        old_source = conn.source_port
+        old_target = conn.target_port
+        old_radius = conn.corner_radius
+
+        if extending_end == "target":
+            # Extending from the target end: old path + new vertices
+            merged_source = old_source
+            merged_target = new_target_port
+            raw = list(old_wps) + list(new_vertices)
+            # Append target position if it's a junction
+            if isinstance(merged_target.component, JunctionItem):
+                tgt_pos = merged_target.scene_center()
+                if not raw or point_distance(raw[-1], tgt_pos) > 1.0:
+                    raw.append(tgt_pos)
+        else:
+            # Extending from the source end: reversed new vertices + old path
+            merged_source = new_target_port
+            merged_target = old_target
+            raw = list(reversed(new_vertices)) + list(old_wps)
+            # Prepend source position if it's a junction
+            if isinstance(merged_source.component, JunctionItem):
+                src_pos = merged_source.scene_center()
+                if not raw or point_distance(raw[0], src_pos) > 1.0:
+                    raw.insert(0, src_pos)
+
+        # Deduplicate consecutive identical points
+        merged_wps = [raw[0]] if raw else []
+        for pt in raw[1:]:
+            prev = merged_wps[-1]
+            if abs(pt.x() - prev.x()) > 0.5 or abs(pt.y() - prev.y()) > 0.5:
+                merged_wps.append(pt)
+
+        # Delete old wire and create extended one
+        from diagrammer.commands.delete_command import DeleteCommand
+        from diagrammer.commands.connect_command import CreateConnectionCommand
+
+        self._undo_stack.beginMacro("Extend wire")
+        del_cmd = DeleteCommand(self, [conn])
+        self._undo_stack.push(del_cmd)
+
+        cmd = CreateConnectionCommand(self, merged_source, merged_target)
+        self._undo_stack.push(cmd)
+        if cmd.connection:
+            cmd.connection.routing_mode = ROUTE_DIRECT
+            cmd.connection.corner_radius = old_radius
+            cmd.connection.vertices = merged_wps
+            cmd.connection.line_width = conn.line_width
+            cmd.connection.line_color = conn.line_color
+        self._undo_stack.endMacro()
+        self._cleanup_connection_state()
 
     def _get_default_corner_radius(self) -> float:
         from diagrammer.panels.settings_dialog import app_settings

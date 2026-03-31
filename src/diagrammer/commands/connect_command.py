@@ -109,11 +109,9 @@ class CreateConnectionCommand(QUndoCommand):
     def redo(self) -> None:
         if self._connection is None:
             self._connection = ConnectionItem(self._source_port, self._target_port)
-            # Apply the scene's default routing mode
-            if hasattr(self._scene, 'default_routing_mode'):
-                self._connection.routing_mode = self._scene.default_routing_mode
             # Apply style defaults from app settings
             from diagrammer.panels.settings_dialog import app_settings
+            self._connection.routing_mode = app_settings.default_routing_mode
             # Try to match the lead stroke width from the source port's component
             lead_width = _get_lead_stroke_width(self._source_port)
             self._connection.line_width = lead_width if lead_width else app_settings.default_line_width

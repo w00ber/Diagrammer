@@ -116,6 +116,7 @@ class ConnectionItem(QGraphicsPathItem):
         self._drag_start_pos: QPointF | None = None
         self._drag_start_expanded: list[QPointF] | None = None
         self._drag_start_waypoints: list[QPointF] | None = None  # for undo
+        self._drag_start_junction_pos: dict[str, QPointF] = {}  # instance_id → start pos
 
         # Flags -----------------------------------------------------------
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
@@ -539,6 +540,42 @@ class ConnectionItem(QGraphicsPathItem):
             return pos
         return snap_to_grid(pos, view.grid_spacing)
 
+    def _record_endpoint_junction_starts(self) -> None:
+        """Record starting positions of endpoint junctions before a waypoint drag."""
+        from diagrammer.items.junction_item import JunctionItem
+        self._drag_start_junction_pos = {}
+        if not self._waypoints:
+            return
+        src_comp = self._source_port.component if self._source_port else None
+        if isinstance(src_comp, JunctionItem):
+            self._drag_start_junction_pos[src_comp.instance_id] = QPointF(src_comp.pos())
+        tgt_comp = self._target_port.component if self._target_port else None
+        if isinstance(tgt_comp, JunctionItem):
+            self._drag_start_junction_pos[tgt_comp.instance_id] = QPointF(tgt_comp.pos())
+
+    def _move_endpoint_junctions(self) -> None:
+        """Move JunctionItems that sit at the wire endpoints when the adjacent waypoint moves.
+
+        If the first waypoint is being dragged and the source port belongs to a
+        JunctionItem, move that junction to follow the waypoint.  Same for the
+        last waypoint and the target port.
+        """
+        from diagrammer.items.junction_item import JunctionItem
+        if not self._waypoints:
+            return
+        selected = self._selected_waypoints if self._dragging_group else {self._dragging_waypoint}
+        # First waypoint → source junction
+        if 0 in selected:
+            comp = self._source_port.component if self._source_port else None
+            if isinstance(comp, JunctionItem):
+                comp.setPos(self._waypoints[0])
+        # Last waypoint → target junction
+        last_idx = len(self._waypoints) - 1
+        if last_idx in selected:
+            comp = self._target_port.component if self._target_port else None
+            if isinstance(comp, JunctionItem):
+                comp.setPos(self._waypoints[last_idx])
+
     # =====================================================================
     # Hit-testing helpers
     # =====================================================================
@@ -718,6 +755,7 @@ class ConnectionItem(QGraphicsPathItem):
                 self._drag_start_pos = QPointF(pos)
                 self._drag_start_expanded = [QPointF(p) for p in self._expanded]
                 self._drag_start_waypoints = [QPointF(w) for w in self._waypoints]
+                self._record_endpoint_junction_starts()
                 event.accept()
                 return
 
@@ -731,6 +769,7 @@ class ConnectionItem(QGraphicsPathItem):
                 self._drag_start_pos = QPointF(pos)
                 self._drag_start_expanded = [QPointF(p) for p in self._expanded]
                 self._drag_start_waypoints = [QPointF(w) for w in self._waypoints]
+                self._record_endpoint_junction_starts()
                 self.update()
                 event.accept()
                 return
@@ -767,12 +806,16 @@ class ConnectionItem(QGraphicsPathItem):
                         if 0 <= si < len(self._waypoints) and si < len(self._drag_start_waypoints):
                             orig = self._drag_start_waypoints[si]
                             self._waypoints[si] = QPointF(orig.x() + delta.x(), orig.y() + delta.y())
+                    # Move adjacent junctions when endpoint waypoints are dragged
+                    self._move_endpoint_junctions()
                 self.update_route()
             else:
                 # Single waypoint drag
                 wi = self._dragging_waypoint
                 if 0 <= wi < len(self._waypoints):
                     self._waypoints[wi] = self._snap_to_grid(pos)
+                    # Move adjacent junction when dragging the first or last waypoint
+                    self._move_endpoint_junctions()
                     self.update_route()
             event.accept()
             return
@@ -798,23 +841,43 @@ class ConnectionItem(QGraphicsPathItem):
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: ANN001
         if self._dragging_waypoint is not None or self._dragging_segment is not None:
-            # Push undo command for the waypoint change
+            # Push undo command for the waypoint change (and any junction moves)
             if self._drag_start_waypoints is not None:
                 new_waypoints = [QPointF(w) for w in self._waypoints]
                 if new_waypoints != self._drag_start_waypoints:
                     from diagrammer.commands.connect_command import EditWaypointsCommand
                     scene = self.scene()
                     if scene and hasattr(scene, 'undo_stack'):
+                        # Bundle waypoint edit + junction moves in a macro
+                        has_junction_moves = bool(self._drag_start_junction_pos)
+                        if has_junction_moves:
+                            scene.undo_stack.beginMacro("Move waypoints")
                         cmd = EditWaypointsCommand(
                             self, self._drag_start_waypoints, new_waypoints
                         )
                         scene.undo_stack.push(cmd)
+                        # Record junction position changes
+                        if has_junction_moves:
+                            from diagrammer.items.junction_item import JunctionItem
+                            from diagrammer.commands.add_command import MoveComponentCommand
+                            for port in (self._source_port, self._target_port):
+                                if port is None:
+                                    continue
+                                comp = port.component
+                                if not isinstance(comp, JunctionItem):
+                                    continue
+                                old_pos = self._drag_start_junction_pos.get(comp.instance_id)
+                                if old_pos is not None and old_pos != comp.pos():
+                                    jcmd = MoveComponentCommand(comp, old_pos, QPointF(comp.pos()))
+                                    scene.undo_stack.push(jcmd)
+                            scene.undo_stack.endMacro()
             self._dragging_waypoint = None
             self._dragging_group = False
             self._dragging_segment = None
             self._drag_start_pos = None
             self._drag_start_expanded = None
             self._drag_start_waypoints = None
+            self._drag_start_junction_pos = {}
             event.accept()
             return
         super().mouseReleaseEvent(event)
@@ -868,9 +931,24 @@ class ConnectionItem(QGraphicsPathItem):
             self.update_route()
 
     def mouseDoubleClickEvent(self, event) -> None:  # noqa: ANN001
-        """Double-click on a connection — no action (waypoint add/remove uses Ctrl+Click)."""
-        # Waypoint creation: Ctrl+Click (handled in mousePressEvent)
-        # Waypoint deletion: Ctrl+Shift+Click (handled in mousePressEvent)
+        """Double-click on a connection segment → select all waypoints for group drag."""
+        if self._group_id:
+            super().mouseDoubleClickEvent(event)
+            return
+        if event.button() == Qt.MouseButton.LeftButton and self.isSelected():
+            pos = event.scenePos()
+            # Only select-all when double-clicking a segment, not a waypoint
+            wi = self._find_waypoint_at(pos)
+            if wi is None and self._waypoints:
+                # Cancel any drag that the first click may have started
+                self._dragging_waypoint = None
+                self._dragging_segment = None
+                self._dragging_group = False
+                # Select all waypoints
+                self._selected_waypoints = set(range(len(self._waypoints)))
+                self.update()
+                event.accept()
+                return
         super().mouseDoubleClickEvent(event)
 
     # -- Helpers for double-click insertion --------------------------------

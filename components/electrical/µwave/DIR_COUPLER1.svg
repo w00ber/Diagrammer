@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 180 80">
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 200 80">
   <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
   <defs>
     <style>
@@ -11,16 +11,16 @@
         stroke-linecap: round;
       }
 
-      .st0, .st1, .st2, .st3 {
+      .st0, .st1, .st2, .st3, .st4 {
         fill: none;
       }
 
-      .st0, .st1, .st2, .st4 {
+      .st0, .st1, .st2, .st3, .st5 {
         stroke: #000;
         stroke-linejoin: round;
       }
 
-      .st5 {
+      .st6 {
         fill: #c66;
       }
 
@@ -29,39 +29,47 @@
       }
 
       .st2 {
-        stroke-width: 4.5px;
+        stroke-width: 6px;
       }
 
       .st3 {
+        stroke-width: 4.5px;
+      }
+
+      .st4 {
         stroke: #999;
         stroke-miterlimit: 10;
         stroke-width: .2px;
       }
 
-      .st6 {
+      .st7 {
         display: none;
       }
     </style>
   </defs>
-  <g id="guides" class="st6">
-    <rect class="st3" y="40" width="20" height="20"/>
-    <rect class="st3" y="60" width="20" height="20"/>
-    <rect class="st3" y="20" width="20" height="20"/>
-    <rect class="st3" width="20" height="20"/>
+  <g id="guides" class="st7">
+    <rect class="st4" x="10" y="40" width="20" height="20"/>
+    <rect class="st4" x="10" y="60" width="20" height="20"/>
+    <rect class="st4" x="10" y="20" width="20" height="20"/>
+    <rect class="st4" x="10" width="20" height="20"/>
   </g>
   <g id="artwork">
-    <rect class="st4" x="26.9" y="63.9" width="13.2" height="6.6"/>
-    <polyline class="st1" points="153.2 63.9 153.2 70.6 140 70.6 140 63.9"/>
-    <polyline class="st1" points="6.6 26.5 0 26.5 0 13.3 6.6 13.3"/>
-    <polyline class="st1" points="173.4 13.3 180 13.3 180 26.5 173.4 26.5"/>
-    <rect class="st0" x="7.6" y="4.1" width="164.8" height="59.9"/>
-    <line class="st2" x1="7.6" y1="19.9" x2="172.4" y2="19.9"/>
-    <path class="st2" d="M33.4,63.9v-20.9c0-6.6,5.4-12,12-12h89.2c6.6,0,12,5.4,12,12v20.9"/>
+    <rect class="st5" x="36.9" y="63.9" width="13.2" height="6.6"/>
+    <rect class="st1" x="150" y="63.9" width="13.2" height="6.6"/>
+    <rect class="st1" x="10" y="13.3" width="6.6" height="13.2"/>
+    <rect class="st1" x="183.4" y="13.3" width="6.6" height="13.2"/>
+    <rect class="st0" x="17.6" y="4.1" width="164.8" height="59.9"/>
+    <line class="st3" x1="17.6" y1="19.9" x2="182.4" y2="19.9"/>
+    <path class="st3" d="M43.4,63.9v-20.9c0-6.6,5.4-12,12-12h89.2c6.6,0,12,5.4,12,12v20.9"/>
+  </g>
+  <g id="leads">
+    <path class="st2" d="M10,19.9H0"/>
+    <path class="st2" d="M190,19.9h10"/>
+    <path class="st2" d="M156.6,70.6v9.4"/>
   </g>
   <g id="ports">
-    <circle id="port:2" class="st5" cx="180" cy="19.9" r="3"/>
-    <circle id="port:1" class="st5" cx="0" cy="19.9" r="3"/>
-    <circle id="port:21" data-name="port:2" class="st5" cx="146.6" cy="70.6" r="3"/>
-    <circle id="port:22" data-name="port:2" class="st5" cx="33.4" cy="70.6" r="3"/>
+    <circle id="port:2" class="st6" cx="200" cy="19.9" r="3"/>
+    <circle id="port:1" class="st6" cx="0" cy="19.9" r="3"/>
+    <circle id="port:21" data-name="port:2" class="st6" cx="156.6" cy="80" r="3"/>
   </g>
 </svg>

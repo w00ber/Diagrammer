@@ -43,6 +43,8 @@ class DiagramView(QGraphicsView):
         self._drag_auto_junctions: list = []  # junctions auto-included (need manual move)
         self._trace_routing = False
         self._trace_vertices: list[QPointF] = []
+        self._extending_wire = None      # ConnectionItem being extended
+        self._extending_end: str = ""    # "source" or "target"
         self._rubber_band_active = False
         self._rubber_band_rect = QRectF()  # scene-coords rect of last rubber-band
         self._zoom_window_mode = False
@@ -113,27 +115,18 @@ class DiagramView(QGraphicsView):
         self._zoom_window_mode = value
         if value:
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
-            # Set cursor AFTER setDragMode — Qt resets cursor when drag mode changes
-            self.setCursor(self._make_zoom_cursor(zoom_in=True))
-            self.viewport().setCursor(self._make_zoom_cursor(zoom_in=True))
+            # Override cursor for zoom mode (setDragMode→_update_cursor skips zoom)
+            zoom_cursor = self._make_zoom_cursor(zoom_in=True)
+            self.setCursor(zoom_cursor)
+            self.viewport().setCursor(zoom_cursor)
         else:
-            self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
-            # Set cursor AFTER setDragMode — Qt resets cursor when drag mode changes
-            if hasattr(self._diagram_scene, 'mode'):
-                from diagrammer.canvas.scene import InteractionMode
-                if self._diagram_scene.mode == InteractionMode.CONNECT:
-                    cursor = Qt.CursorShape.CrossCursor
-                else:
-                    cursor = Qt.CursorShape.ArrowCursor
-            else:
-                cursor = Qt.CursorShape.ArrowCursor
-            self.setCursor(cursor)
-            self.viewport().setCursor(cursor)
             # Clean up any in-progress zoom rect
             if self._zoom_rect_item:
                 self.scene().removeItem(self._zoom_rect_item)
                 self._zoom_rect_item = None
             self._zoom_rect_start = None
+            # Restore normal drag mode — _update_cursor handles the cursor
+            self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
         # Notify main window to update mode label and checkbox
         self._diagram_scene.mode_changed.emit(self._diagram_scene.mode)
 
@@ -171,6 +164,25 @@ class DiagramView(QGraphicsView):
         self._trace_vertices.clear()
         if not value and self._diagram_scene.is_connecting:
             self._diagram_scene._cancel_connection()
+        self._update_cursor()
+
+    def setDragMode(self, mode) -> None:  # noqa: N802, ANN001
+        """Override to re-apply the mode-appropriate cursor after Qt resets it."""
+        super().setDragMode(mode)
+        self._update_cursor()
+
+    def _update_cursor(self) -> None:
+        """Set the cursor to match the current interaction mode."""
+        if self._zoom_window_mode:
+            return  # zoom window manages its own cursor
+        if self._panning:
+            return  # pan manages its own cursor
+        if self._trace_routing:
+            cursor = Qt.CursorShape.CrossCursor
+        else:
+            cursor = Qt.CursorShape.ArrowCursor
+        self.setCursor(cursor)
+        self.viewport().setCursor(cursor)
 
     def current_scale(self) -> float:
         return self.transform().m11()
@@ -182,6 +194,30 @@ class DiagramView(QGraphicsView):
         if self._snap_enabled:
             return self.snap(scene_pos)
         return scene_pos
+
+    def _find_wire_endpoint_for_extend(self, scene_pos: QPointF):
+        """Find an existing wire endpoint near *scene_pos* for extension.
+
+        Returns (ConnectionItem, end_name, port) where end_name is 'source'
+        or 'target', or (None, '', None) if nothing nearby.
+        """
+        from diagrammer.utils.geometry import point_distance
+        ENDPOINT_SNAP = 15.0
+        best_conn = None
+        best_end = ""
+        best_port = None
+        best_dist = ENDPOINT_SNAP
+        for item in self._diagram_scene.items():
+            if not isinstance(item, ConnectionItem):
+                continue
+            for end_name, port in [("source", item.source_port), ("target", item.target_port)]:
+                d = point_distance(scene_pos, port.scene_center())
+                if d < best_dist:
+                    best_dist = d
+                    best_conn = item
+                    best_end = end_name
+                    best_port = port
+        return best_conn, best_end, best_port
 
     def _constrain_to_angle(self, pos: QPointF, origin: QPointF, shift_held: bool) -> QPointF:
         """Constrain pos relative to origin to the nearest angle increment.
@@ -387,6 +423,8 @@ class DiagramView(QGraphicsView):
         if event.button() == Qt.MouseButton.RightButton:
             if self._diagram_scene.is_connecting:
                 self._trace_vertices.clear()
+                self._extending_wire = None
+                self._extending_end = ""
                 self._diagram_scene._cancel_connection()
                 event.accept()
                 return
@@ -395,15 +433,26 @@ class DiagramView(QGraphicsView):
             item = self._item_at_pos(event.position())
             scene_pos = self.mapToScene(event.position().toPoint())
 
-            # -- Trace routing mode: start from empty space --
+            # -- Trace routing mode: start from empty space or wire endpoint --
             if self._trace_routing and not self._diagram_scene.is_connecting:
                 # Not currently connecting — start a new trace
                 if isinstance(item, PortItem):
                     # Clicking a port starts normally
                     pass  # fall through to the port handler below
                 elif item is None or not isinstance(item, (PortItem, ComponentItem)):
-                    # Clicking empty space: create a free junction and start from it
+                    # Check if we're near an existing wire's endpoint
                     snapped = self._snap_if_enabled(scene_pos)
+                    ext_conn, ext_end, ext_port = self._find_wire_endpoint_for_extend(snapped)
+                    if ext_port is not None:
+                        # Enter continuation mode: extend the existing wire
+                        self._extending_wire = ext_conn
+                        self._extending_end = ext_end
+                        self._trace_vertices.clear()
+                        self._diagram_scene.begin_connection(ext_port)
+                        self.setDragMode(QGraphicsView.DragMode.NoDrag)
+                        event.accept()
+                        return
+                    # Clicking empty space: create a free junction and start from it
                     from diagrammer.items.junction_item import JunctionItem as _JI
                     junc = _JI()
                     junc.setPos(snapped)
@@ -425,18 +474,12 @@ class DiagramView(QGraphicsView):
                 # doesn't need to click precisely on the small port circle.
                 target_port = self._diagram_scene._current_target_port
                 if target_port is not None or isinstance(item, PortItem):
-                    self._diagram_scene.finish_connection_with_vertices(
-                        self._trace_vertices, cursor_pos=scene_pos,
-                    )
-                    self._trace_vertices.clear()
+                    self._finish_trace(scene_pos)
                     event.accept()
                     return
                 elif isinstance(item, ConnectionItem):
                     # Click on an existing wire → finish with junction
-                    self._diagram_scene.finish_connection_with_vertices(
-                        self._trace_vertices, cursor_pos=scene_pos,
-                    )
-                    self._trace_vertices.clear()
+                    self._finish_trace(scene_pos)
                     event.accept()
                     return
                 else:
@@ -491,11 +534,10 @@ class DiagramView(QGraphicsView):
 
             # -- Option/Alt+click → duplicate and drag (selected items or single item) --
             elif event.modifiers() & Qt.KeyboardModifier.AltModifier and (
-                isinstance(item, (ComponentItem, AnnotationItem))
-                or (isinstance(item, ConnectionItem) and getattr(item, '_group_id', None))
+                isinstance(item, (ComponentItem, AnnotationItem, ConnectionItem))
             ):
                 # For grouped wires, redirect to a component in the group
-                if isinstance(item, ConnectionItem):
+                if isinstance(item, ConnectionItem) and getattr(item, '_group_id', None):
                     from diagrammer.commands.group_command import get_top_group
                     gid = get_top_group(item)
                     if gid:
@@ -503,6 +545,10 @@ class DiagramView(QGraphicsView):
                             if isinstance(m, ComponentItem):
                                 item = m
                                 break
+                # For free wires, pass the ConnectionItem directly —
+                # _duplicate_selection will auto-include endpoint junctions
+                if isinstance(item, ConnectionItem) and not getattr(item, '_group_id', None):
+                    pass  # handled inside _duplicate_selection
                 result = self._duplicate_selection(item, scene_pos)
                 clones, cloned_conns = result if result else ([], [])
                 if clones:
@@ -952,6 +998,25 @@ class DiagramView(QGraphicsView):
                 and self.dragMode() != QGraphicsView.DragMode.RubberBandDrag):
             self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
 
+    def _finish_trace(self, cursor_pos: QPointF) -> None:
+        """Finish a trace route — either extending an existing wire or creating a new one."""
+        if self._extending_wire is not None:
+            # Extension mode: append new waypoints to the existing wire
+            self._diagram_scene.extend_wire(
+                self._extending_wire,
+                self._extending_end,
+                self._trace_vertices,
+                new_target_port=self._diagram_scene._current_target_port,
+            )
+            self._extending_wire = None
+            self._extending_end = ""
+        else:
+            # Normal mode: create a new connection
+            self._diagram_scene.finish_connection_with_vertices(
+                self._trace_vertices, cursor_pos=cursor_pos,
+            )
+        self._trace_vertices.clear()
+
     def _enter_select_mode(self) -> None:
         """Return to Select mode from any other mode."""
         from diagrammer.canvas.scene import InteractionMode
@@ -962,8 +1027,6 @@ class DiagramView(QGraphicsView):
             self._trace_vertices.clear()
             self._diagram_scene.mode = InteractionMode.SELECT
             self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
-            self.setCursor(Qt.CursorShape.ArrowCursor)
-            self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
             self._diagram_scene.mode_changed.emit(InteractionMode.SELECT)
             # Uncheck trace mode action in main window
             main_win = self.parent()
@@ -971,6 +1034,8 @@ class DiagramView(QGraphicsView):
                 main_win._trace_mode_act.blockSignals(True)
                 main_win._trace_mode_act.setChecked(False)
                 main_win._trace_mode_act.blockSignals(False)
+        self._extending_wire = None
+        self._extending_end = ""
         if self._diagram_scene.is_connecting:
             self._trace_vertices.clear()
             self._diagram_scene._cancel_connection()
@@ -1098,7 +1163,13 @@ class DiagramView(QGraphicsView):
                 i for i in self._diagram_scene.selectedItems()
                 if isinstance(i, (ComponentItem, JunctionItem, AnnotationItem))
             ]
-            if clicked_item not in selected:
+            # If clicked item is a free ConnectionItem, include its endpoint junctions
+            if isinstance(clicked_item, ConnectionItem):
+                for port in (clicked_item.source_port, clicked_item.target_port):
+                    comp = port.component
+                    if isinstance(comp, JunctionItem) and comp not in selected:
+                        selected.append(comp)
+            if clicked_item not in selected and not isinstance(clicked_item, ConnectionItem):
                 selected = [clicked_item]
 
         # Expand to include any other selected groups
@@ -1325,10 +1396,7 @@ class DiagramView(QGraphicsView):
             if hasattr(self._diagram_scene, 'assign_active_layer'):
                 self._diagram_scene.assign_active_layer(junction)
             self._diagram_scene._current_target_port = junction.port
-            self._diagram_scene.finish_connection_with_vertices(
-                self._trace_vertices, cursor_pos=snapped,
-            )
-            self._trace_vertices.clear()
+            self._finish_trace(snapped)
             event.accept()
             return
         super().mouseDoubleClickEvent(event)

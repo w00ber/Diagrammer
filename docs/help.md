@@ -8,7 +8,7 @@ Diagrammer is a tool for building diagrams using SVG components. Drag components
 
 1. **Place components** — drag from the library panel, or search by name
 2. **Connect ports** — click a port (blue circle) and drag to another port
-3. **Route wires** — use trace routing mode (T) to click-place waypoints
+3. **Route wires** — use trace routing mode (W) to click-place waypoints
 4. **Arrange** — move, rotate, flip, align components
 5. **Save** — Ctrl+S to save as `.dgm`, or export as SVG/PNG/PDF
 
@@ -18,11 +18,11 @@ Diagrammer is a tool for building diagrams using SVG components. Drag components
 
 | Action | How |
 |--------|-----|
-| Pan | Middle-click drag |
-| Zoom at cursor | Scroll wheel |
+| Pan | Middle-click drag, or two-finger scroll on trackpad |
+| Zoom at cursor | Scroll wheel (pinch on trackpad) |
 | Zoom in/out (centered) | Ctrl++ / Ctrl+- |
 | Zoom to fit all | **A** |
-| Zoom to rectangle | **Z**, then click-drag a rectangle |
+| Zoom to rectangle | **Z**, then click-drag a rectangle (click to zoom in, Shift+click to zoom out) |
 
 ---
 
@@ -31,10 +31,27 @@ Diagrammer is a tool for building diagrams using SVG components. Drag components
 - **Drag and drop** from the Component Library panel on the left
 - **Search** by typing in the search box at the top of the library
 - **Grid view** — click the Grid toggle for a compact thumbnail view
+- **List view** — click the List toggle for a tree view with nested categories
 - **Favorites** — right-click a component, select "Add to Favorites"
 - **Recently used** — automatically shown at the top of the library
+- **Show in File Browser** — right-click a component or category to open its directory in Finder/Explorer
 
 Components snap to the grid by default. The nearest port to your click determines which grid point the component snaps to.
+
+---
+
+## Library Table View
+
+View all components in a library category as a reference table:
+
+- **Right-click** a category in the tree view and select **View as Table**
+- Click the **grid button** on a category header in grid view
+- Click **View All as Table** at the top of the library panel
+
+Table views open in separate tabs. They support zoom (scroll wheel), pan (click-drag), and zoom window (Z key). Export the table view via File > Export as SVG/PNG/PDF while the table tab is active.
+
+- **Ctrl+W** — close the active table tab
+- The tab bar is hidden when only the diagram is open
 
 ---
 
@@ -45,6 +62,10 @@ Components snap to the grid by default. The nearest port to your click determine
 | Select | Click an item |
 | Multi-select | Shift+click, or drag a rubber-band rectangle |
 | Move | Click and drag a selected item |
+| Copy | Ctrl+C |
+| Cut | Ctrl+X |
+| Paste | Ctrl+V (offset from original) |
+| Duplicate | Option/Alt+drag |
 | Delete | Delete or Backspace |
 
 When moving a component, the port nearest to your grab point snaps to the grid.
@@ -74,6 +95,8 @@ By default, fine rotation (R key) pivots around the component's first port. To c
 
 ## Wiring / Connections
 
+The cursor changes to a **crosshair** when in wiring mode for clear visual feedback.
+
 ### Quick connect (drag)
 
 1. Hover over a component to reveal its ports (blue circles)
@@ -81,44 +104,77 @@ By default, fine rotation (R key) pivots around the component's first port. To c
 3. Drag near another port — it highlights green with a pulse
 4. Release to complete the connection
 
-### Trace routing mode (T)
+### Trace routing mode (W)
 
 For precise routing with waypoints:
 
-1. Press **T** to enter trace routing mode
-2. Click a source port to start
-3. Click on empty space to place waypoints (blue dots)
+1. Press **W** to enter trace routing mode (crosshair cursor)
+2. Click a source port, wire endpoint, or empty space to start
+3. Click on empty space to place waypoints (anchor points)
 4. Click a target port to complete the connection
-5. Right-click or **Escape** to cancel
+5. **Double-click** on empty space to finish with a free end
+6. Right-click or **Escape** to cancel
 
 **Shift** while placing waypoints constrains to horizontal or vertical.
+
+### Starting from existing wires
+
+- Click near an existing wire's **endpoint** to start a new trace from there
+- The new segment is automatically joined to the existing wire when finished
+- To **extend** a wire: in trace mode, click the wire's endpoint, place new waypoints, then double-click or click a port to finish. The new waypoints are appended to the existing wire.
 
 ### Editing wires
 
 - **Select** a wire to see waypoint handles (blue squares)
 - **Drag** a waypoint handle to move it (snaps to grid)
-- **Shift+click** waypoints to multi-select, then drag to move together
-- **Double-click** a segment to insert a new waypoint
-- **Double-click** a waypoint to delete it
+- **Shift+click** waypoints to multi-select, then drag any selected handle to move them together
+- **Drag-select** (rubber-band) waypoints when a single wire is selected
+- **Double-click** a wire segment to select all waypoints for easy whole-wire dragging
+- **Ctrl+click** a segment to insert a new waypoint
+- **Ctrl+Shift+click** a waypoint to delete it
 - **Right-click** a waypoint for a context menu with "Delete Waypoint"
-- **Drag** a segment to shift it perpendicular (KiCad-style)
+
+### Free wire endpoints
+
+Wires terminated in empty space (free ends) have draggable anchor points at both ends. Dragging an endpoint anchor moves the wire's end. Free wires can be copied (Ctrl+C/V) and duplicated (Option/Alt+drag).
+
+### Wire joining
+
+- **Automatic**: When routing a new wire to an existing wire's endpoint, the wires are merged automatically with corner rounding at the join
+- **Manual (Ctrl+J)**: Select two wires with overlapping endpoints, press **Ctrl+J** to join them into one continuous wire
 
 ### Wire-to-wire junctions
 
 To tap into an existing wire:
-- While routing, drag near an existing wire — an orange dot preview appears
-- Release (or click in trace mode) to create a junction
+- While routing, click near an existing wire — a junction is created
+- Toggle junction dot visibility in Settings or via the Routing menu
 
 ### Routing options (Routing menu)
 
 | Option | Description |
 |--------|-------------|
-| Trace Routing Mode | Click-to-place waypoints |
+| Trace Routing Mode | Click-to-place waypoints (W key) |
 | Snap to Grid | Waypoints snap to grid |
 | Snap to Port | Wire endpoints snap to nearby ports |
 | Snap to Angle | Waypoints snap to angle increments |
 | Discrete Angle Routing | Route with configurable angle steps (default 15°) |
 | Show Junctions | Toggle junction dot visibility |
+
+### Wire properties
+
+Select a wire to edit in the Properties panel: width, color, corner radius, and routing mode (Ortho, Ortho+45°, Direct).
+
+---
+
+## Groups
+
+| Shortcut | Action |
+|----------|--------|
+| **Ctrl+G** | Group selected items |
+| **Ctrl+Shift+G** | Ungroup (pops one nesting level) |
+| **Ctrl+J** | Join two wires at overlapping endpoints |
+
+Groups support nesting — grouping already-grouped items creates an outer group. Ungrouping removes only the outermost level.
 
 ---
 
@@ -167,21 +223,43 @@ For precise port alignment instead of center alignment:
 
 ---
 
+## Annotations
+
+Add text annotations to your diagrams:
+
+- **Ctrl+Shift+T** — add a text annotation at the center of the view
+- Double-click an annotation to edit its text
+- Supports **LaTeX math**: wrap expressions in `$...$` for inline math
+- Edit font, size, bold/italic, and color in the Properties panel
+
+---
+
 ## Simple Shapes
 
 **Draw menu** provides basic shapes:
 
-- **Rectangle** — resizable with 8 grab handles
+- **Rectangle** — resizable with 8 grab handles, adjustable corner radius
 - **Ellipse** — resizable
-- **Line** — two-point line
+- **Line** — two-point line with optional arrowheads
 
-**Double-click** any shape to edit its properties (stroke color, width, fill).
+**Double-click** any shape to edit its properties (stroke color, width, fill, dash pattern, arrowheads).
 
 ---
 
 ## Stretchable Components
 
 Some components (e.g., coax cables) can be stretched. When selected, orange diamond handles appear at the edges. Drag a handle to stretch the component while keeping connections intact.
+
+---
+
+## Per-Instance Style Overrides
+
+Double-click a component to enter **isolation mode** for editing individual SVG elements:
+
+- The element list shows all artwork and lead elements
+- Click an element to flash-highlight it on the canvas
+- Modify stroke color, fill, width, opacity, and line cap per element
+- Changes are per-instance — other copies of the same component are unaffected
 
 ---
 
@@ -196,8 +274,24 @@ Some components (e.g., coax cables) can be stretched. When selected, orange diam
 | Export SVG | File > Export as SVG |
 | Export PNG | File > Export as PNG |
 | Export PDF | File > Export as PDF |
+| Close Tab | Ctrl+W |
 
 Diagrams are saved as `.dgm` JSON files. All component positions, connections, waypoints, styles, layers, and transforms are preserved.
+
+**Unsaved changes** — a prompt appears when creating a new diagram, opening a file, or quitting with unsaved changes. Choose Save, Discard, or Cancel.
+
+---
+
+## Compound Components
+
+Create reusable components from your diagrams:
+
+1. Select the components, wires, and shapes you want to combine
+2. File > **Create Component from Selection**
+3. Choose a name and save location
+4. The new component appears in the library (after rescan)
+
+Unconnected ports become the new component's ports. Stretched and styled components are baked into the exported SVG.
 
 ---
 
@@ -214,6 +308,7 @@ Diagrams are saved as `.dgm` JSON files. All component positions, connections, w
 
 ### Libraries
 - Toggle visibility of component library categories
+- Add custom library folder paths
 
 Settings persist across sessions in `~/.diagrammer/settings.json`.
 
@@ -227,8 +322,11 @@ Key layers in a component SVG:
 - `artwork` — the visual body
 - `leads` — connection stems (dynamically shortened for rounded corners)
 - `ports` — connection points
-- `labels` — text placeholders
+- `labels` — text placeholders (reserved for future use)
 - `stretch` — break lines for stretchable components
+- `tile` — repeating stretch content
+- `snap` — snap anchor for decorative components
+- `decorative` — marks component as freely resizable
 
 ---
 
@@ -239,3 +337,5 @@ Key layers in a component SVG:
 - **Round caps**: Use `stroke-linecap: round` in SVGs for smooth wire junctions
 - **Corner rounding**: The corner radius (Settings > Line Styles) controls how smoothly wires turn. Components with a `leads` layer get automatic lead shortening for seamless rounded corners.
 - **Zoom for precision**: Use Z (zoom window) to zoom into detailed areas
+- **Double-click wire to move**: Double-click a wire segment to select all its waypoints, then grab any handle to move the entire wire
+- **Wire extension**: In trace mode (W), click a wire endpoint to extend it with new segments
