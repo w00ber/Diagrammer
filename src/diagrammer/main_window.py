@@ -9,10 +9,13 @@ from PySide6.QtGui import QAction, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
     QDoubleSpinBox,
+    QGraphicsView,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QPushButton,
+    QTabBar,
+    QTabWidget,
     QToolBar,
     QWidget,
 )
@@ -73,7 +76,20 @@ class MainWindow(QMainWindow):
         # -- Scene and View --
         self._scene = DiagramScene(library=self._library, parent=self)
         self._view = DiagramView(self._scene, self)
-        self.setCentralWidget(self._view)
+
+        # -- Tab widget (diagram tab + closable library table tabs) --
+        self._tab_widget = QTabWidget(self)
+        self._tab_widget.setTabsClosable(True)
+        self._tab_widget.setMovable(False)
+        self._tab_widget.tabCloseRequested.connect(self._on_tab_close_requested)
+        self._tab_widget.addTab(self._view, "Diagram")
+        # Diagram tab is never closable
+        self._tab_widget.tabBar().setTabButton(
+            0, QTabBar.ButtonPosition.RightSide, None
+        )
+        # Hide tab bar when only the diagram tab is shown
+        self._tab_widget.tabBar().setVisible(False)
+        self.setCentralWidget(self._tab_widget)
 
         # -- Clipboard for copy/paste --
         self._clipboard: list = []
@@ -329,12 +345,12 @@ class MainWindow(QMainWindow):
 
         zoom_in_act = QAction("Zoom &In", self)
         zoom_in_act.setShortcut(get_shortcut("view.zoom_in"))
-        zoom_in_act.triggered.connect(lambda: self._view.zoom_centered(1.25))
+        zoom_in_act.triggered.connect(lambda: self._zoom_active_view(1.25))
         view_menu.addAction(zoom_in_act)
 
         zoom_out_act = QAction("Zoom &Out", self)
         zoom_out_act.setShortcut(get_shortcut("view.zoom_out"))
-        zoom_out_act.triggered.connect(lambda: self._view.zoom_centered(0.8))
+        zoom_out_act.triggered.connect(lambda: self._zoom_active_view(0.8))
         view_menu.addAction(zoom_out_act)
 
         fit_act = QAction("Zoom &All / Fit", self)
@@ -342,7 +358,7 @@ class MainWindow(QMainWindow):
             get_shortcut("view.fit_all"),
             get_shortcut("view.fit_all2"),
         ])
-        fit_act.triggered.connect(self._view.fit_all)
+        fit_act.triggered.connect(self._fit_active_view)
         view_menu.addAction(fit_act)
 
         view_menu.addSeparator()
@@ -360,6 +376,13 @@ class MainWindow(QMainWindow):
         self._zoom_window_act.setShortcut(get_shortcut("view.zoom_window"))
         self._zoom_window_act.toggled.connect(self._toggle_zoom_window)
         view_menu.addAction(self._zoom_window_act)
+
+        view_menu.addSeparator()
+
+        close_tab_act = QAction("Close Tab", self)
+        close_tab_act.setShortcut(get_shortcut("view.close_tab"))
+        close_tab_act.triggered.connect(self.close_active_tab)
+        view_menu.addAction(close_tab_act)
 
         # ---- Routing ----
         routing_menu = menu_bar.addMenu("&Routing")
@@ -471,6 +494,7 @@ class MainWindow(QMainWindow):
     def _create_panels(self) -> None:
         self._library_panel = LibraryPanel(self._library, self)
         self._library_panel.setObjectName("LibraryPanel")
+        self._library_panel.table_view_requested.connect(self._open_library_table)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._library_panel)
 
         # Annotations tool palette below library
@@ -503,6 +527,97 @@ class MainWindow(QMainWindow):
 
         # Restore saved dock layout (overrides defaults if previously saved)
         self._restore_dock_state()
+
+    # --------------------------------------------------------- Tab management
+
+    def _active_scene(self):
+        """Return the QGraphicsScene for the currently active tab."""
+        widget = self._tab_widget.currentWidget()
+        if widget is self._view:
+            return self._scene
+        if hasattr(widget, 'scene') and callable(widget.scene):
+            return widget.scene()
+        return self._scene
+
+    def _active_view(self) -> QGraphicsView:
+        """Return the QGraphicsView for the currently active tab."""
+        widget = self._tab_widget.currentWidget()
+        if isinstance(widget, QGraphicsView):
+            return widget
+        return self._view
+
+    def _update_tab_bar_visibility(self) -> None:
+        """Show the tab bar only when there are library table tabs open."""
+        self._tab_widget.tabBar().setVisible(self._tab_widget.count() > 1)
+
+    def _on_tab_close_requested(self, index: int) -> None:
+        """Close a library table tab (diagram tab at index 0 is never closable)."""
+        if index == 0:
+            return
+        widget = self._tab_widget.widget(index)
+        self._tab_widget.removeTab(index)
+        self._update_tab_bar_visibility()
+        # Clean up the scene and view
+        if hasattr(widget, 'scene') and callable(widget.scene):
+            scene = widget.scene()
+            if scene:
+                scene.clear()
+        widget.deleteLater()
+
+    def _open_library_table(self, category: str) -> None:
+        """Open (or focus) a library table tab for the given category."""
+        # Check if a tab for this category already exists
+        for i in range(1, self._tab_widget.count()):
+            widget = self._tab_widget.widget(i)
+            if getattr(widget, '_library_category', None) == category:
+                self._tab_widget.setCurrentIndex(i)
+                return
+
+        # Collect component defs for this category and subcategories
+        defs_by_subcat: dict[str, list] = {}
+        if category == "__all__":
+            # All categories
+            defs_by_subcat = dict(self._library.categories)
+        else:
+            for cat, cat_defs in self._library.categories.items():
+                if cat == category or cat.startswith(category + "/"):
+                    defs_by_subcat[cat] = cat_defs
+
+        if not defs_by_subcat:
+            return
+
+        from diagrammer.panels.library_table_view import build_library_table
+        title = "All Libraries" if category == "__all__" else category
+        scene, view = build_library_table(title, defs_by_subcat)
+        view._library_category = category  # tag for deduplication
+
+        label = "All Libraries" if category == "__all__" else category.replace("/", " / ").replace("_", " ")
+        index = self._tab_widget.addTab(view, f"Table: {label}")
+        self._tab_widget.setCurrentIndex(index)
+        self._update_tab_bar_visibility()
+        # Defer fit_all so the view has its final geometry
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, view.fit_all)
+
+    def close_active_tab(self) -> None:
+        """Close the active tab if it's a library table tab (not the diagram)."""
+        index = self._tab_widget.currentIndex()
+        if index > 0:
+            self._on_tab_close_requested(index)
+
+    def _zoom_active_view(self, factor: float) -> None:
+        """Zoom the active tab's view."""
+        v = self._active_view()
+        if hasattr(v, 'zoom_centered'):
+            v.zoom_centered(factor)
+        else:
+            v.scale(factor, factor)
+
+    def _fit_active_view(self) -> None:
+        """Fit-all on the active tab's view."""
+        v = self._active_view()
+        if hasattr(v, 'fit_all'):
+            v.fit_all()
 
     # ------------------------------------------------------------------ Slots
 
@@ -667,7 +782,11 @@ class MainWindow(QMainWindow):
         self._scene.apply_layer_state()
 
     def _toggle_zoom_window(self, enabled: bool) -> None:
-        self._view.zoom_window_mode = enabled
+        v = self._active_view()
+        if v is self._view:
+            self._view.zoom_window_mode = enabled
+        elif hasattr(v, 'set_zoom_window_mode'):
+            v.set_zoom_window_mode(enabled)
         if enabled:
             self._mode_label.setText("Mode: Zoom Window")
         else:
@@ -1663,7 +1782,10 @@ class MainWindow(QMainWindow):
             self.restoreState(state)
 
     def closeEvent(self, event) -> None:
-        """Auto-save session state and dock layout on close."""
+        """Prompt for unsaved changes, then auto-save session state and dock layout."""
+        if not self._check_unsaved_changes():
+            event.ignore()
+            return
         try:
             self._save_dock_state()
             from diagrammer.io.serializer import DiagramSerializer
@@ -1743,6 +1865,8 @@ class MainWindow(QMainWindow):
         self._track_file(path)
 
     def _file_new(self) -> None:
+        if not self._check_unsaved_changes():
+            return
         self._scene.clear()
         self._scene.undo_stack.clear()
         from diagrammer.panels.layers_panel import LayerManager
@@ -1753,6 +1877,8 @@ class MainWindow(QMainWindow):
         self._update_title()
 
     def _file_open(self) -> None:
+        if not self._check_unsaved_changes():
+            return
         from PySide6.QtWidgets import QFileDialog
         path, _ = QFileDialog.getOpenFileName(
             self, "Open Diagram", self._last_dir(),
@@ -1765,6 +1891,7 @@ class MainWindow(QMainWindow):
         if self._current_file:
             from diagrammer.io.serializer import DiagramSerializer
             DiagramSerializer.save(self._scene, self._current_file)
+            self._scene.undo_stack.setClean()
             self._track_file(self._current_file)
         else:
             self._file_save_as()
@@ -1780,9 +1907,40 @@ class MainWindow(QMainWindow):
                 path += ".dgm"
             from diagrammer.io.serializer import DiagramSerializer
             DiagramSerializer.save(self._scene, path)
+            self._scene.undo_stack.setClean()
             self._current_file = path
             self._update_title()
             self._track_file(path)
+
+    def _check_unsaved_changes(self) -> bool:
+        """Check for unsaved changes and prompt the user.
+
+        Returns True if it's OK to proceed (saved, discarded, or no changes).
+        Returns False if the user cancelled.
+        """
+        if self._scene.undo_stack.isClean():
+            return True
+        # Also treat an empty scene as clean
+        if not self._scene.items():
+            return True
+        from PySide6.QtWidgets import QMessageBox
+        name = Path(self._current_file).name if self._current_file else "Untitled"
+        reply = QMessageBox.warning(
+            self,
+            "Unsaved Changes",
+            f'"{name}" has unsaved changes.\n\nDo you want to save before continuing?',
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if reply == QMessageBox.StandardButton.Save:
+            self._file_save()
+            # If user cancelled the Save As dialog, the stack is still dirty
+            return self._scene.undo_stack.isClean()
+        if reply == QMessageBox.StandardButton.Discard:
+            return True
+        return False  # Cancel
 
     def _export_svg(self) -> None:
         from PySide6.QtWidgets import QFileDialog
@@ -1791,7 +1949,7 @@ class MainWindow(QMainWindow):
         )
         if path:
             from diagrammer.io.exporter import DiagramExporter
-            DiagramExporter.export_svg(self._scene, path)
+            DiagramExporter.export_svg(self._active_scene(), path)
             app_settings.last_directory = str(Path(path).parent)
             app_settings.save()
 
@@ -1802,7 +1960,7 @@ class MainWindow(QMainWindow):
         )
         if path:
             from diagrammer.io.exporter import DiagramExporter
-            DiagramExporter.export_png(self._scene, path)
+            DiagramExporter.export_png(self._active_scene(), path)
             app_settings.last_directory = str(Path(path).parent)
             app_settings.save()
 
@@ -1813,7 +1971,7 @@ class MainWindow(QMainWindow):
         )
         if path:
             from diagrammer.io.exporter import DiagramExporter
-            DiagramExporter.export_pdf(self._scene, path)
+            DiagramExporter.export_pdf(self._active_scene(), path)
             app_settings.last_directory = str(Path(path).parent)
             app_settings.save()
 

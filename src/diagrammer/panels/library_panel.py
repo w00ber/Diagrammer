@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PySide6.QtCore import QMimeData, QSize, Qt
+from PySide6.QtCore import QMimeData, QSize, Qt, Signal
 from PySide6.QtGui import QDrag, QIcon, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
@@ -41,6 +41,8 @@ _PREFS_FILE = Path.home() / ".diagrammer" / "library_prefs.json"
 
 class LibraryPanel(QDockWidget):
     """Dock widget showing the component library with search, grouped views, and reorderable categories."""
+
+    table_view_requested = Signal(str)  # emits category path
 
     def __init__(self, library: ComponentLibrary, parent=None):
         super().__init__("Component Library", parent)
@@ -92,6 +94,17 @@ class LibraryPanel(QDockWidget):
         toggle_row.addWidget(self._grid_btn)
 
         toggle_row.addStretch()
+
+        table_all_btn = QPushButton("View All as Table")
+        table_all_btn.setFixedHeight(22)
+        table_all_btn.setStyleSheet(
+            "QPushButton { border: 1px solid #999; border-radius: 3px; "
+            "padding: 2px 8px; font-size: 11px; }"
+            "QPushButton:hover { background: #e0e0e0; }"
+        )
+        table_all_btn.clicked.connect(lambda: self.open_library_table("__all__"))
+        toggle_row.addWidget(table_all_btn)
+
         self._view_group.idClicked.connect(
             lambda idx: self._set_view_mode("tree" if idx == 0 else "grid")
         )
@@ -220,6 +233,10 @@ class LibraryPanel(QDockWidget):
         except Exception:
             pass
 
+    def open_library_table(self, category: str) -> None:
+        """Request the main window to open a library table tab for *category*."""
+        self.table_view_requested.emit(category)
+
 
 # =========================================================================
 # Tree view (list mode)
@@ -231,6 +248,7 @@ class _DragTree(QTreeWidget):
         self.setHeaderHidden(True)
         self.setIconSize(THUMB_SIZE)
         self.setDragEnabled(True)
+        self._library = library
         self._favorites = favorites
         self.populate(library, favorites, [])
 
@@ -238,6 +256,7 @@ class _DragTree(QTreeWidget):
                  recents: list[str] | None = None,
                  category_order: list[str] | None = None) -> None:
         self.clear()
+        self._library = library
         if favorites is not None:
             self._favorites = favorites
         fav_set = self._favorites
@@ -270,7 +289,10 @@ class _DragTree(QTreeWidget):
                 self._add_comp_child(rec_item, comp_def)
             rec_item.setExpanded(True)
 
-        # Categories in specified order
+        # Build hierarchical category tree.
+        # Categories like "electrical/LC" produce a parent "electrical" node
+        # containing a child "LC" node.  Leaf nodes hold components; intermediate
+        # nodes are navigable and support "View as Table" for the whole subtree.
         if category_order:
             cats = [c for c in category_order if c in library.categories]
             for c in sorted(library.categories.keys()):
@@ -279,21 +301,39 @@ class _DragTree(QTreeWidget):
         else:
             cats = sorted(library.categories.keys())
 
+        # node_map: path prefix -> QTreeWidgetItem
+        node_map: dict[str, QTreeWidgetItem] = {}
+
+        def _get_or_create_node(path: str) -> QTreeWidgetItem:
+            if path in node_map:
+                return node_map[path]
+            parts = path.split("/")
+            if len(parts) == 1:
+                # Top-level node
+                label = parts[0].replace("_", " ")
+                node = QTreeWidgetItem(self, [label])
+            else:
+                parent_path = "/".join(parts[:-1])
+                parent = _get_or_create_node(parent_path)
+                label = parts[-1].replace("_", " ")
+                node = QTreeWidgetItem(parent, [label])
+            node.setFlags(node.flags() & ~Qt.ItemFlag.ItemIsDragEnabled)
+            node.setData(0, Qt.ItemDataRole.UserRole + 1, path)
+            node.setExpanded(True)
+            node_map[path] = node
+            return node
+
         for category in cats:
             defs = library.categories.get(category, [])
             if not defs:
                 continue
-            label = category.replace("/", " / ").replace("_", " ").title()
-            cat_item = QTreeWidgetItem(self, [label])
-            cat_item.setFlags(cat_item.flags() & ~Qt.ItemFlag.ItemIsDragEnabled)
-            cat_item.setData(0, Qt.ItemDataRole.UserRole + 1, category)  # store raw category
+            cat_node = _get_or_create_node(category)
             for comp_def in defs:
-                self._add_comp_child(cat_item, comp_def)
-            cat_item.setExpanded(True)
+                self._add_comp_child(cat_node, comp_def)
 
     def _add_comp_child(self, parent_item: QTreeWidgetItem, comp_def: ComponentDef) -> None:
         key = f"{comp_def.category}/{comp_def.name}"
-        label = comp_def.name.replace("_", " ").title()
+        label = comp_def.name.replace("_", " ")
         if key in self._favorites:
             label = f"\u2605 {label}"
         child = QTreeWidgetItem(parent_item, [label])
@@ -331,6 +371,11 @@ class _DragTree(QTreeWidget):
         if key is not None:
             is_fav = key in self._favorites
             fav_act = menu.addAction("\u2605 Remove from Favorites" if is_fav else "\u2606 Add to Favorites")
+            show_act = None
+            comp_def = self._library.get(key) if self._library else None
+            if comp_def and comp_def.svg_path:
+                menu.addSeparator()
+                show_act = menu.addAction("Show in File Browser")
             action = menu.exec(event.globalPos())
             if action is fav_act:
                 panel = self.parent()
@@ -338,10 +383,21 @@ class _DragTree(QTreeWidget):
                     panel = panel.parent()
                 if isinstance(panel, LibraryPanel):
                     panel.toggle_favorite(key)
+            elif show_act and action is show_act:
+                _show_in_file_browser(comp_def.svg_path.parent)
             return
 
-        # Category context menu (reorder)
+        # Category context menu (reorder + table view)
         if raw_cat is not None:
+            table_act = menu.addAction("View as Table")
+            # "Show in File Browser" — find the directory for this category
+            show_act = None
+            if self._library:
+                cat_defs = self._library.categories.get(raw_cat, [])
+                if cat_defs and cat_defs[0].svg_path:
+                    menu.addSeparator()
+                    show_act = menu.addAction("Show in File Browser")
+            menu.addSeparator()
             up_act = menu.addAction("\u2191 Move Up")
             down_act = menu.addAction("\u2193 Move Down")
             action = menu.exec(event.globalPos())
@@ -349,10 +405,14 @@ class _DragTree(QTreeWidget):
             while panel and not isinstance(panel, LibraryPanel):
                 panel = panel.parent()
             if isinstance(panel, LibraryPanel):
-                if action is up_act:
+                if action is table_act:
+                    panel.open_library_table(raw_cat)
+                elif action is up_act:
                     panel.move_category(raw_cat, -1)
                 elif action is down_act:
                     panel.move_category(raw_cat, 1)
+            if show_act and action is show_act:
+                _show_in_file_browser(cat_defs[0].svg_path.parent)
 
 
 # =========================================================================
@@ -425,9 +485,18 @@ class _CategorySection(QWidget):
         self._toggle_btn.clicked.connect(self._toggle_collapse)
         header_layout.addWidget(self._toggle_btn)
 
-        label = QLabel(f"<b>{category.replace('/', ' / ').replace('_', ' ').title()}</b>")
+        label = QLabel(f"<b>{category.replace('/', ' / ').replace('_', ' ')}</b>")
         header_layout.addWidget(label)
         header_layout.addStretch()
+
+        # Table view button
+        table_btn = QToolButton()
+        table_btn.setText("\u2637")  # trigram for heaven (grid-like icon)
+        table_btn.setToolTip("View as Table")
+        table_btn.setFixedSize(18, 18)
+        table_btn.setStyleSheet("QToolButton { border: 1px solid #ccc; font-size: 10px; }")
+        table_btn.clicked.connect(lambda: panel.open_library_table(category))
+        header_layout.addWidget(table_btn)
 
         # Reorder buttons
         up_btn = QToolButton()
@@ -474,7 +543,7 @@ class _DragThumbnail(QLabel):
         self.setPixmap(icon.pixmap(DENSE_THUMB_SIZE))
         self.setFixedSize(DENSE_THUMB_SIZE.width() + 2, DENSE_THUMB_SIZE.height() + 2)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setToolTip(comp_def.name.replace("_", " ").title())
+        self.setToolTip(comp_def.name.replace("_", " "))
         self.setStyleSheet("QLabel:hover { background: #ddeeff; border-radius: 3px; }")
 
     def mousePressEvent(self, event) -> None:
@@ -604,3 +673,22 @@ def _make_icon(comp_def: ComponentDef) -> QIcon:
     renderer.render(painter, target_rect)
     painter.end()
     return QIcon(pixmap)
+
+
+# =========================================================================
+# Platform file browser
+# =========================================================================
+
+def _show_in_file_browser(path: Path) -> None:
+    """Open *path* in the platform's file browser (Finder / Explorer / xdg-open)."""
+    import subprocess
+    import sys
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", str(path)])
+        elif sys.platform == "win32":
+            subprocess.Popen(["explorer", str(path)])
+        else:
+            subprocess.Popen(["xdg-open", str(path)])
+    except Exception:
+        pass

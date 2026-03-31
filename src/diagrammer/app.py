@@ -3,10 +3,22 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from diagrammer.main_window import MainWindow
+
+
+def _load_app_icon() -> QIcon:
+    """Load the application icon from the iconset directory."""
+    icon = QIcon()
+    iconset = Path(__file__).resolve().parent.parent.parent / "misc" / "diagrammer2_icon" / "icon.iconset"
+    if iconset.is_dir():
+        for png in sorted(iconset.glob("*.png")):
+            icon.addFile(str(png))
+    return icon
 
 
 def create_app(argv: list[str] | None = None) -> tuple[QApplication, MainWindow]:
@@ -16,5 +28,6 @@ def create_app(argv: list[str] | None = None) -> tuple[QApplication, MainWindow]
     app = QApplication(argv)
     app.setApplicationName("Diagrammer")
     app.setOrganizationName("Diagrammer")
+    app.setWindowIcon(_load_app_icon())
     window = MainWindow()
     return app, window
