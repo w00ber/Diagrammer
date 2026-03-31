@@ -142,6 +142,7 @@ _reg("view.zoom_out",  QKeySequence.StandardKey.ZoomOut,   description="Zoom Out
 _reg("view.fit_all",   _ks("A"),                           description="Zoom All / Fit",    category="View")
 _reg("view.fit_all2",  _ks("Ctrl+0"),                      description="Zoom All / Fit",    category="View")
 _reg("view.zoom_window", _ks("Z"),                         description="Zoom Window",       category="View")
+_reg("view.close_tab",  QKeySequence.StandardKey.Close,    description="Close Tab",         category="View")
 
 # ----- Routing -----
 _reg("routing.trace",  _ks("W"),                           description="Trace Routing Mode", category="Routing")
