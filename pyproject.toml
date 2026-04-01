@@ -34,4 +34,5 @@ where = ["src"]
 [tool.setuptools.package-data]
 diagrammer = [
     "defaults.yaml",
+    "icons/*.png",
 ]

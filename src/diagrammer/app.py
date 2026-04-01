@@ -14,9 +14,9 @@ from diagrammer.main_window import MainWindow
 def _load_app_icon() -> QIcon:
     """Load the application icon from the iconset directory."""
     icon = QIcon()
-    iconset = Path(__file__).resolve().parent.parent.parent / "misc" / "diagrammer2_icon" / "icon.iconset"
-    if iconset.is_dir():
-        for png in sorted(iconset.glob("*.png")):
+    icons_dir = Path(__file__).resolve().parent / "icons"
+    if icons_dir.is_dir():
+        for png in sorted(icons_dir.glob("icon_*.png")):
             icon.addFile(str(png))
     return icon
 
