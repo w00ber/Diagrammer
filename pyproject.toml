@@ -35,4 +35,5 @@ where = ["src"]
 diagrammer = [
     "defaults.yaml",
     "icons/*.png",
+    "components/**/*.svg",
 ]

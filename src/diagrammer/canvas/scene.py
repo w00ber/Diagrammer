@@ -280,7 +280,13 @@ class DiagramScene(QGraphicsScene):
         if trace_vertices and len(expanded) >= 2:
             # Trace mode: render with rounded corners for realistic preview
             from diagrammer.panels.settings_dialog import app_settings
-            path = build_rounded_path(expanded, app_settings.default_corner_radius)
+            # Detect if closing back to start (polygon preview)
+            is_closing = (nearest_port is not None
+                          and nearest_port is self._connecting_from_port)
+            path = build_rounded_path(
+                expanded, app_settings.default_corner_radius,
+                closed=is_closing,
+            )
         else:
             path = QPainterPath()
             if expanded:
@@ -381,6 +387,21 @@ class DiagramScene(QGraphicsScene):
         best_port = None
         best_dist = PORT_SNAP_DISTANCE
 
+        # Check source port for polygon closure (source is on a JunctionItem
+        # which isn't yielded by _all_port_items).  Require at least 2 trace
+        # vertices so the polygon has 3+ sides.
+        views = self.views()
+        trace_verts = 0
+        if views and hasattr(views[0], '_trace_vertices'):
+            trace_verts = len(views[0]._trace_vertices)
+        if trace_verts >= 2:
+            sc = source.scene_center()
+            d = ((sc.x() - scene_pos.x()) ** 2
+                 + (sc.y() - scene_pos.y()) ** 2) ** 0.5
+            if d < best_dist:
+                best_dist = d
+                best_port = source
+
         for port in self._all_port_items():
             # Skip the source port and ports on the same component
             if port is source or port.component is source.component:
@@ -442,6 +463,10 @@ class DiagramScene(QGraphicsScene):
         cmd = CreateConnectionCommand(self, source, target)
         self._undo_stack.push(cmd)
 
+        # Closed polygon: source and target are the same port
+        from diagrammer.items.connection_item import ROUTE_DIRECT
+        is_closed = source is target
+
         # Apply vertices if provided.  Add endpoint waypoints at junction ends
         # so the user can grab and move them.
         if vertices and cmd.connection:
@@ -449,16 +474,26 @@ class DiagramScene(QGraphicsScene):
             from diagrammer.utils.geometry import point_distance
             all_verts = list(vertices)
             NEAR = 1.0  # threshold for "already has a vertex here"
-            # Prepend source position as waypoint if it's a free end (junction)
-            if isinstance(source.component, JunctionItem):
+            if is_closed:
+                # Closed polygon: waypoints ARE the polygon vertices.
+                # Prepend the junction position so the corner at the
+                # start/end is included in the vertex list.
                 src_pos = source.scene_center()
                 if not all_verts or point_distance(all_verts[0], src_pos) > NEAR:
                     all_verts.insert(0, src_pos)
-            # Append target position as waypoint if it's a free end (junction)
-            if isinstance(target.component, JunctionItem):
-                tgt_pos = target.scene_center()
-                if not all_verts or point_distance(all_verts[-1], tgt_pos) > NEAR:
-                    all_verts.append(tgt_pos)
+                cmd.connection.closed = True
+                cmd.connection.routing_mode = ROUTE_DIRECT
+            else:
+                # Prepend source position as waypoint if it's a free end (junction)
+                if isinstance(source.component, JunctionItem):
+                    src_pos = source.scene_center()
+                    if not all_verts or point_distance(all_verts[0], src_pos) > NEAR:
+                        all_verts.insert(0, src_pos)
+                # Append target position as waypoint if it's a free end (junction)
+                if isinstance(target.component, JunctionItem):
+                    tgt_pos = target.scene_center()
+                    if not all_verts or point_distance(all_verts[-1], tgt_pos) > NEAR:
+                        all_verts.append(tgt_pos)
             # Routing mode comes from app_settings default (set in CreateConnectionCommand)
             cmd.connection.vertices = all_verts
 

@@ -127,12 +127,16 @@ def _dedup(points: list[QPointF]) -> list[QPointF]:
 # ---------------------------------------------------------------------------
 
 
-def build_rounded_path(points: list[QPointF], radius: float) -> QPainterPath:
+def build_rounded_path(
+    points: list[QPointF], radius: float, *, closed: bool = False,
+) -> QPainterPath:
     """Build a QPainterPath from a list of points with rounded corners.
 
     Args:
         points: Ordered list of path vertices (at least 2).
         radius: Corner rounding radius. 0 means sharp corners.
+        closed: If True, close the path into a polygon and round the
+                closing corner as well.
 
     Returns:
         A QPainterPath with rounded corners at each bend point.
@@ -141,6 +145,53 @@ def build_rounded_path(points: list[QPointF], radius: float) -> QPainterPath:
     if len(points) < 2:
         return path
 
+    # -- Closed polygon path -------------------------------------------
+    if closed:
+        # Strip duplicate closing point if present
+        pts = list(points)
+        if len(pts) >= 2 and point_distance(pts[0], pts[-1]) < 1.0:
+            pts = pts[:-1]
+        n = len(pts)
+        if n < 3 or radius <= 0:
+            path.moveTo(pts[0])
+            for p in pts[1:]:
+                path.lineTo(p)
+            path.closeSubpath()
+            return path
+
+        def _corner(idx):
+            """Compute arc_start and arc_end for corner at pts[idx]."""
+            prev = pts[(idx - 1) % n]
+            curr = pts[idx]
+            nxt = pts[(idx + 1) % n]
+            tp = QPointF(prev.x() - curr.x(), prev.y() - curr.y())
+            tn = QPointF(nxt.x() - curr.x(), nxt.y() - curr.y())
+            lp = max((tp.x() ** 2 + tp.y() ** 2) ** 0.5, 1e-9)
+            ln = max((tn.x() ** 2 + tn.y() ** 2) ** 0.5, 1e-9)
+            r = min(radius, lp / 2, ln / 2)
+            a_start = QPointF(curr.x() + tp.x() / lp * r,
+                              curr.y() + tp.y() / lp * r)
+            a_end = QPointF(curr.x() + tn.x() / ln * r,
+                            curr.y() + tn.y() / ln * r)
+            return a_start, curr, a_end
+
+        # Start just after the rounded corner at point 0
+        s0, c0, e0 = _corner(0)
+        path.moveTo(e0)
+
+        # Round corners 1 through n-1
+        for i in range(1, n):
+            si, ci, ei = _corner(i)
+            path.lineTo(si)
+            path.quadTo(ci, ei)
+
+        # Close: round the corner at point 0
+        path.lineTo(s0)
+        path.quadTo(c0, e0)
+        path.closeSubpath()
+        return path
+
+    # -- Open polyline path --------------------------------------------
     path.moveTo(points[0])
 
     if radius <= 0 or len(points) == 2:

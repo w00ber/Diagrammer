@@ -99,6 +99,7 @@ class ConnectionItem(QGraphicsPathItem):
         self._line_width = DEFAULT_LINE_WIDTH
         self._corner_radius = DEFAULT_CORNER_RADIUS
         self._routing_mode: str = ROUTE_ORTHO  # default; scene can override
+        self._closed: bool = False  # True for closed polygon (source == target)
 
         # Waypoints (user-placed intermediate points, NOT port endpoints) -
         self._waypoints: list[QPointF] = []
@@ -182,6 +183,17 @@ class ConnectionItem(QGraphicsPathItem):
             self._routing_mode = mode
             self.update_route()
 
+    @property
+    def closed(self) -> bool:
+        """True when this connection forms a closed polygon (source == target)."""
+        return self._closed
+
+    @closed.setter
+    def closed(self, value: bool) -> None:
+        if value != self._closed:
+            self._closed = value
+            self.update_route()
+
     # -- Waypoint / vertex access ----------------------------------------
     # The public property is called ``vertices`` for backward compatibility
     # with the undo commands and copy/paste logic.  Internally these are
@@ -235,6 +247,25 @@ class ConnectionItem(QGraphicsPathItem):
         kps = self._key_points()
         if len(kps) < 2:
             return list(kps)
+
+        # For closed polygons, the waypoints ARE the vertices.
+        # Skip the duplicate endpoint and approach segments, but still
+        # respect the routing mode between consecutive vertices.
+        if self._closed:
+            pts = [QPointF(w) for w in self._waypoints]
+            if not pts:
+                return []
+            if self._routing_mode == ROUTE_DIRECT:
+                return pts
+            # Apply routing between consecutive vertices (wrapping around)
+            result: list[QPointF] = []
+            for i in range(len(pts)):
+                seg = self._expand_route(pts[i], pts[(i + 1) % len(pts)])
+                if result:
+                    result.extend(seg[1:])
+                else:
+                    result.extend(seg)
+            return result
 
         result: list[QPointF] = []
         for i in range(len(kps) - 1):
@@ -430,7 +461,9 @@ class ConnectionItem(QGraphicsPathItem):
     def update_route(self) -> None:
         """Rebuild the expanded route and QPainterPath."""
         self._expanded = self._build_expanded()
-        path = build_rounded_path(self._expanded, self._corner_radius)
+        path = build_rounded_path(
+            self._expanded, self._corner_radius, closed=self._closed,
+        )
         self.setPath(path)
 
     # =====================================================================
@@ -704,9 +737,16 @@ class ConnectionItem(QGraphicsPathItem):
                 base_expanded[ib].y() + delta.y(),
             )
 
-        # Clamp: never move the port endpoints (first / last point).
-        pts[0] = QPointF(base_expanded[0])
-        pts[-1] = QPointF(base_expanded[-1])
+        # Clamp: never move the port endpoints (first / last point) —
+        # unless the endpoint is a JunctionItem (free anchor), which should
+        # follow the segment drag.
+        from diagrammer.items.junction_item import JunctionItem
+        src_comp = self._source_port.component if self._source_port else None
+        tgt_comp = self._target_port.component if self._target_port else None
+        if not isinstance(src_comp, JunctionItem):
+            pts[0] = QPointF(base_expanded[0])
+        if not isinstance(tgt_comp, JunctionItem):
+            pts[-1] = QPointF(base_expanded[-1])
 
         return pts
 
@@ -786,6 +826,15 @@ class ConnectionItem(QGraphicsPathItem):
                 self._drag_start_pos = QPointF(pos)
                 self._drag_start_expanded = [QPointF(p) for p in self._expanded]
                 self._drag_start_waypoints = [QPointF(w) for w in self._waypoints]
+                # Record junction endpoint positions for undo.
+                from diagrammer.items.junction_item import JunctionItem
+                self._drag_start_junction_pos = {}
+                src_comp = self._source_port.component if self._source_port else None
+                if isinstance(src_comp, JunctionItem):
+                    self._drag_start_junction_pos[src_comp.instance_id] = QPointF(src_comp.pos())
+                tgt_comp = self._target_port.component if self._target_port else None
+                if isinstance(tgt_comp, JunctionItem):
+                    self._drag_start_junction_pos[tgt_comp.instance_id] = QPointF(tgt_comp.pos())
                 event.accept()
                 return
 
@@ -833,7 +882,47 @@ class ConnectionItem(QGraphicsPathItem):
             new_expanded = self._apply_segment_drag(
                 self._dragging_segment, delta, self._drag_start_expanded
             )
+            # Move junction endpoints to follow the segment drag.
+            # Must happen BEFORE _store_expanded_as_waypoints so that
+            # update_route sees the new port positions.
+            #
+            # We check whether the dragged segment's BASE endpoints
+            # coincide with a junction's original position.  This is
+            # robust against duplicate/degenerate points and approach
+            # segments in the expanded route.
+            from diagrammer.items.junction_item import JunctionItem
+            src_comp = self._source_port.component if self._source_port else None
+            tgt_comp = self._target_port.component if self._target_port else None
+            junctions_moved = False
+            seg = self._dragging_segment
+            base_a = self._drag_start_expanded[seg]
+            base_b = self._drag_start_expanded[seg + 1]
+            if isinstance(src_comp, JunctionItem):
+                src_orig = self._drag_start_junction_pos.get(src_comp.instance_id)
+                if src_orig is not None:
+                    if point_distance(base_a, src_orig) < 2.0:
+                        src_comp.setPos(new_expanded[seg])
+                        junctions_moved = True
+                    elif point_distance(base_b, src_orig) < 2.0:
+                        src_comp.setPos(new_expanded[seg + 1])
+                        junctions_moved = True
+            if isinstance(tgt_comp, JunctionItem):
+                tgt_orig = self._drag_start_junction_pos.get(tgt_comp.instance_id)
+                if tgt_orig is not None:
+                    if point_distance(base_a, tgt_orig) < 2.0:
+                        tgt_comp.setPos(new_expanded[seg])
+                        junctions_moved = True
+                    elif point_distance(base_b, tgt_orig) < 2.0:
+                        tgt_comp.setPos(new_expanded[seg + 1])
+                        junctions_moved = True
             self._store_expanded_as_waypoints(new_expanded)
+            # Update other connections attached to moved junctions
+            if junctions_moved:
+                scene = self.scene()
+                if scene:
+                    for item in scene.items():
+                        if isinstance(item, ConnectionItem) and item is not self:
+                            item.update_route()
             event.accept()
             return
 

@@ -433,6 +433,12 @@ class DiagramView(QGraphicsView):
             item = self._item_at_pos(event.position())
             scene_pos = self.mapToScene(event.position().toPoint())
 
+            # Resolve PortItem to its parent component for drag/selection
+            # purposes (ports sit at z=10, above their parent, so they
+            # intercept clicks meant for the component/junction).
+            if isinstance(item, PortItem) and not self._trace_routing:
+                item = item.component
+
             # -- Trace routing mode: start from empty space or wire endpoint --
             if self._trace_routing and not self._diagram_scene.is_connecting:
                 # Not currently connecting — start a new trace
@@ -966,14 +972,29 @@ class DiagramView(QGraphicsView):
 
         super().mouseReleaseEvent(event)
 
-        # After rubber-band selection, expand to full groups
+        # After rubber-band selection, expand to full groups — but only
+        # include group members whose scene bounding rect intersects the
+        # rubber-band area so we don't pull in items far outside the box.
         from diagrammer.commands.group_command import get_top_group as _gtg2
+        rb = self._rubber_band_rect
         for item in list(self._diagram_scene.selectedItems()):
             gid = _gtg2(item)
             if gid:
                 for m in self._diagram_scene.get_group_members(gid):
                     if not m.isSelected():
-                        m.setSelected(True)
+                        if rb.isNull() or rb.intersects(m.sceneBoundingRect()):
+                            m.setSelected(True)
+
+        # After rubber-band selection, deselect any junction whose center
+        # is outside the rubber-band rect (prevents connected junctions from
+        # being pulled in when the wire intersects the box but the junction
+        # itself doesn't).
+        if not rb.isNull():
+            from diagrammer.items.junction_item import JunctionItem
+            for item in list(self._diagram_scene.selectedItems()):
+                if isinstance(item, JunctionItem):
+                    if not rb.contains(item.pos()):
+                        item.setSelected(False)
 
         # After rubber-band selection, select waypoints within the rect
         # if exactly one ConnectionItem is selected.

@@ -32,25 +32,10 @@ from diagrammer.shortcuts import SHORTCUTS, get as get_shortcut
 def _find_builtin_components() -> Path:
     """Locate the built-in components directory shipped with the package.
 
-    Searches several locations to handle both development mode
-    (running from source) and installed mode (pip install).
+    Components are stored inside the package at diagrammer/components/,
+    so the same path works in both development and installed modes.
     """
-    import sys
     here = Path(__file__).resolve().parent
-    # Development mode: components/ next to src/
-    for ancestor in [here.parent.parent, here.parent.parent.parent]:
-        candidate = ancestor / "components"
-        if candidate.is_dir():
-            return candidate
-    # Installed mode: check share/diagrammer/components
-    for prefix in [sys.prefix, Path.home() / ".local"]:
-        candidate = Path(prefix) / "share" / "diagrammer" / "components"
-        if candidate.is_dir():
-            return candidate
-    # User components directory
-    user_dir = Path.home() / ".diagrammer" / "components"
-    if user_dir.is_dir():
-        return user_dir
     return here / "components"
 
 
@@ -2107,7 +2092,7 @@ class MainWindow(QMainWindow):
 
         # Ask for save location within components directory
         from diagrammer.models.library import ComponentLibrary
-        comp_dir = Path(__file__).resolve().parent.parent.parent / "components"
+        comp_dir = Path(__file__).resolve().parent / "components"
         if not comp_dir.is_dir():
             comp_dir = Path.home() / ".diagrammer" / "components"
             comp_dir.mkdir(parents=True, exist_ok=True)
@@ -2127,7 +2112,7 @@ class MainWindow(QMainWindow):
         )
         if success:
             # Rescan library to pick up the new component
-            builtin_path = Path(__file__).resolve().parent.parent.parent / "components"
+            builtin_path = Path(__file__).resolve().parent / "components"
             if builtin_path.is_dir():
                 self._library.scan(builtin_path)
             self._library_panel._refresh_views()

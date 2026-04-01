@@ -191,6 +191,8 @@ class DiagramSerializer:
                 conn.corner_radius = cd["corner_radius"]
             if "routing_mode" in cd:
                 conn.routing_mode = cd["routing_mode"]
+            if cd.get("closed"):
+                conn.closed = True
             # Apply waypoints
             if cd.get("waypoints"):
                 conn.vertices = [QPointF(w[0], w[1]) for w in cd["waypoints"]]
@@ -338,6 +340,7 @@ def _serialize_connection(item) -> dict:
         "line_color": item.line_color.name(),
         "corner_radius": item.corner_radius,
         "routing_mode": item.routing_mode,
+        "closed": item.closed,
         "layer": getattr(item, '_layer_index', 0),
         "z": item.zValue(),
         "group": getattr(item, '_group_ids', []) or [],
