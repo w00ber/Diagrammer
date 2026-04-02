@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, QSize, Qt
+from PySide6.QtCore import QByteArray, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QImage, QPainter
-from PySide6.QtWidgets import QGraphicsScene
+from PySide6.QtWidgets import QApplication, QGraphicsScene
 
 
 class DiagramExporter:
@@ -168,6 +168,69 @@ class DiagramExporter:
         scene.render(painter, target_rect, source_rect)
         painter.end()
 
+    # ------------------------------------------------------------------
+    # Clipboard (selection → system clipboard)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def copy_selection_to_clipboard(
+        scene: QGraphicsScene,
+        dpi: int = 300,
+        margin: float = 20.0,
+    ) -> bool:
+        """Copy the selected items to the system clipboard as PDF + PNG.
+
+        On macOS the PDF is placed on the pasteboard via native APIs so
+        that Illustrator, Keynote, and PowerPoint receive editable vector
+        data.  A high-DPI PNG is included as a universal fallback.
+
+        Selection highlights, handles, and ports are temporarily hidden so
+        the clipboard image shows a clean "presentation" view.
+
+        Returns ``True`` if something was copied, ``False`` if the selection
+        was empty.
+        """
+        source_rect = _selection_rect_with_margin(scene, margin)
+        if source_rect.isNull() or source_rect.isEmpty():
+            return False
+
+        selected_items = scene.selectedItems()
+        _clear_selection_visuals(scene)
+
+        try:
+            pdf_data = _render_pdf_bytes(scene, source_rect)
+            png_data = _render_png_bytes(scene, source_rect, dpi)
+        finally:
+            _restore_selection_visuals(scene, selected_items)
+
+        return _set_clipboard(pdf_data, png_data)
+
+    @staticmethod
+    def copy_all_to_clipboard(
+        scene: QGraphicsScene,
+        dpi: int = 300,
+        margin: float = 20.0,
+    ) -> bool:
+        """Copy the entire scene to the system clipboard (PDF + PNG).
+
+        Convenience wrapper that uses the full items bounding rect instead
+        of the selection rect.  Returns ``True`` on success.
+        """
+        source_rect = _items_rect_with_margin(scene, margin)
+        if source_rect.isNull() or source_rect.isEmpty():
+            return False
+
+        selected_items = scene.selectedItems()
+        _clear_selection_visuals(scene)
+
+        try:
+            pdf_data = _render_pdf_bytes(scene, source_rect)
+            png_data = _render_png_bytes(scene, source_rect, dpi)
+        finally:
+            _restore_selection_visuals(scene, selected_items)
+
+        return _set_clipboard(pdf_data, png_data)
+
 
 # ----------------------------------------------------------------------
 # Helpers
@@ -184,3 +247,260 @@ def _items_rect_with_margin(scene: QGraphicsScene, margin: float) -> QRectF:
         rect = QRectF(-50, -50, 100, 100)
     rect = rect.adjusted(-margin, -margin, margin, margin)
     return rect
+
+
+def _selection_rect_with_margin(scene: QGraphicsScene, margin: float) -> QRectF:
+    """Return the united bounding rect of the currently selected items.
+
+    Falls back to the full items bounding rect when nothing is selected.
+    """
+    selected = scene.selectedItems()
+    if not selected:
+        return _items_rect_with_margin(scene, margin)
+
+    rect = QRectF()
+    for item in selected:
+        rect = rect.united(item.sceneBoundingRect())
+    if rect.isNull() or rect.isEmpty():
+        return _items_rect_with_margin(scene, margin)
+    rect = rect.adjusted(-margin, -margin, margin, margin)
+    return rect
+
+
+# -- Selection visual suppression ----------------------------------------
+
+def _clear_selection_visuals(scene: QGraphicsScene) -> None:
+    """Temporarily deselect all items so paint() methods skip highlights.
+
+    Also hides ports on selected components since those become visible
+    when their parent is selected.
+    """
+    for item in scene.selectedItems():
+        item.setSelected(False)
+        # Hide ports that were visible due to selection
+        if hasattr(item, '_ports'):
+            for port in item._ports:
+                if not getattr(port, 'is_alignment_selected', False):
+                    port.setVisible(False)
+
+
+def _restore_selection_visuals(
+    scene: QGraphicsScene,
+    items: list,
+) -> None:
+    """Re-select *items* and restore port visibility."""
+    for item in items:
+        item.setSelected(True)
+        if hasattr(item, '_update_port_visibility'):
+            item._update_port_visibility()
+
+
+# -- Platform-aware clipboard writer -------------------------------------
+
+def _set_clipboard(pdf_data: bytes | None, png_data: bytes | None) -> bool:
+    """Place *pdf_data* and *png_data* on the system clipboard.
+
+    On macOS, uses NSPasteboard directly so that Keynote, Illustrator,
+    and PowerPoint see proper ``com.adobe.pdf`` data (vector).
+    On other platforms falls back to Qt's QMimeData.
+    """
+    import sys
+
+    if sys.platform == "darwin" and pdf_data:
+        if _set_clipboard_macos(pdf_data, png_data):
+            return True
+        # Fall through to Qt path if native approach fails.
+
+    return _set_clipboard_qt(pdf_data, png_data)
+
+
+def _set_clipboard_macos(pdf_data: bytes, png_data: bytes | None) -> bool:
+    """Write PDF + PNG to the macOS pasteboard via AppKit (PyObjC).
+
+    Returns ``True`` on success, ``False`` if PyObjC is unavailable.
+    """
+    try:
+        from AppKit import NSPasteboard, NSPasteboardTypePDF, NSPasteboardTypePNG
+    except ImportError:
+        # PyObjC not available — try the subprocess fallback.
+        return _set_clipboard_macos_subprocess(pdf_data, png_data)
+
+    pb = NSPasteboard.generalPasteboard()
+    types = [NSPasteboardTypePDF]
+    if png_data:
+        types.append(NSPasteboardTypePNG)
+
+    pb.clearContents()
+    pb.declareTypes_owner_(types, None)
+    pb.setData_forType_(pdf_data, NSPasteboardTypePDF)
+    if png_data:
+        pb.setData_forType_(png_data, NSPasteboardTypePNG)
+    return True
+
+
+def _set_clipboard_macos_subprocess(pdf_data: bytes, png_data: bytes | None) -> bool:
+    """Fallback: write PDF to macOS pasteboard via a subprocess that uses AppKit.
+
+    This handles the case where the running Python doesn't have PyObjC
+    but the system Python (``/usr/bin/python3``) does (always true on
+    macOS 12.3+).
+    """
+    import os
+    import subprocess
+    import tempfile
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(fd)
+    png_tmp = None
+
+    try:
+        with open(tmp_path, "wb") as f:
+            f.write(bytes(pdf_data))
+
+        if png_data:
+            fd2, png_tmp = tempfile.mkstemp(suffix=".png")
+            os.close(fd2)
+            with open(png_tmp, "wb") as f:
+                f.write(bytes(png_data))
+
+        script = _PASTEBOARD_SCRIPT.format(
+            pdf_path=tmp_path,
+            png_path=png_tmp or "",
+        )
+
+        result = subprocess.run(
+            ["/usr/bin/python3", "-c", script],
+            capture_output=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        if png_tmp:
+            try:
+                os.unlink(png_tmp)
+            except OSError:
+                pass
+
+
+_PASTEBOARD_SCRIPT = '''\
+import sys
+from AppKit import NSPasteboard, NSPasteboardTypePDF, NSPasteboardTypePNG
+
+pdf_path = "{pdf_path}"
+png_path = "{png_path}"
+
+with open(pdf_path, "rb") as f:
+    pdf_data = f.read()
+
+pb = NSPasteboard.generalPasteboard()
+types = [NSPasteboardTypePDF]
+if png_path:
+    types.append(NSPasteboardTypePNG)
+
+pb.clearContents()
+pb.declareTypes_owner_(types, None)
+pb.setData_forType_(pdf_data, NSPasteboardTypePDF)
+
+if png_path:
+    with open(png_path, "rb") as f:
+        png_data = f.read()
+    pb.setData_forType_(png_data, NSPasteboardTypePNG)
+'''
+
+
+def _set_clipboard_qt(pdf_data: bytes | None, png_data: bytes | None) -> bool:
+    """Write to clipboard via Qt QMimeData (Linux / Windows fallback)."""
+    from PySide6.QtCore import QMimeData
+
+    mime = QMimeData()
+    if pdf_data:
+        mime.setData("application/pdf", QByteArray(pdf_data))
+    if png_data:
+        image = QImage()
+        image.loadFromData(QByteArray(png_data), "PNG")
+        if not image.isNull():
+            mime.setImageData(image)
+
+    QApplication.clipboard().setMimeData(mime)
+    return True
+
+
+# -- Rendering helpers ---------------------------------------------------
+
+def _render_png_bytes(
+    scene: QGraphicsScene,
+    source_rect: QRectF,
+    dpi: int,
+) -> bytes | None:
+    """Render *source_rect* of *scene* to PNG bytes at the given DPI."""
+    from PySide6.QtCore import QBuffer, QIODevice
+
+    scale = dpi / 96.0
+    pixel_w = max(1, int(source_rect.width() * scale))
+    pixel_h = max(1, int(source_rect.height() * scale))
+
+    image = QImage(QSize(pixel_w, pixel_h), QImage.Format.Format_ARGB32_Premultiplied)
+    image.setDotsPerMeterX(int(dpi / 0.0254))
+    image.setDotsPerMeterY(int(dpi / 0.0254))
+    image.fill(QColor(Qt.GlobalColor.white))
+
+    painter = QPainter()
+    painter.begin(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    scene.render(painter, QRectF(0, 0, pixel_w, pixel_h), source_rect)
+    painter.end()
+
+    buf = QBuffer()
+    buf.open(QIODevice.OpenModeFlag.WriteOnly)
+    image.save(buf, "PNG")
+    return bytes(buf.data())
+
+
+def _render_pdf_bytes(scene: QGraphicsScene, source_rect: QRectF) -> bytes | None:
+    """Render *source_rect* of *scene* to PDF bytes."""
+    try:
+        from PySide6.QtCore import QMarginsF
+        from PySide6.QtGui import QPageLayout, QPageSize
+        from PySide6.QtPrintSupport import QPrinter
+    except ImportError:
+        return None
+
+    import os
+    import tempfile
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(fd)
+
+    try:
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+        printer.setOutputFileName(tmp_path)
+        page_size = QPageSize(source_rect.size(), QPageSize.Unit.Point)
+        page_layout = QPageLayout(
+            page_size, QPageLayout.Orientation.Portrait, QMarginsF(0, 0, 0, 0)
+        )
+        printer.setPageLayout(page_layout)
+
+        painter = QPainter()
+        painter.begin(printer)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        printer_rect = printer.pageRect(QPrinter.Unit.DevicePixel)
+        scene.render(painter, QRectF(printer_rect), source_rect)
+        painter.end()
+
+        with open(tmp_path, "rb") as f:
+            return f.read()
+    except Exception:
+        return None
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
