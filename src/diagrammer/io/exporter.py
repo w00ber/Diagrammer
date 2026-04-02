@@ -297,55 +297,73 @@ def _restore_selection_visuals(
 
 # -- Platform-aware clipboard writer -------------------------------------
 
+# Clipboard method used for the most recent copy (for diagnostics).
+# One of: "native", "subprocess", "qt", or "failed".
+last_clipboard_method: str = ""
+
+
 def _set_clipboard(pdf_data: bytes | None, png_data: bytes | None) -> bool:
     """Place *pdf_data* and *png_data* on the system clipboard.
 
     On macOS, uses NSPasteboard directly so that Keynote, Illustrator,
     and PowerPoint see proper ``com.adobe.pdf`` data (vector).
     On other platforms falls back to Qt's QMimeData.
+
+    Sets the module-level ``last_clipboard_method`` to indicate which
+    path was taken ("native", "subprocess", or "qt").
     """
+    global last_clipboard_method
     import sys
 
     if sys.platform == "darwin" and pdf_data:
-        if _set_clipboard_macos(pdf_data, png_data):
+        ok, method = _set_clipboard_macos(pdf_data, png_data)
+        if ok:
+            last_clipboard_method = method
             return True
         # Fall through to Qt path if native approach fails.
 
+    last_clipboard_method = "qt"
     return _set_clipboard_qt(pdf_data, png_data)
 
 
-def _set_clipboard_macos(pdf_data: bytes, png_data: bytes | None) -> bool:
+def _set_clipboard_macos(
+    pdf_data: bytes, png_data: bytes | None,
+) -> tuple[bool, str]:
     """Write PDF + PNG to the macOS pasteboard via AppKit (PyObjC).
 
-    Returns ``True`` on success, ``False`` if PyObjC is unavailable.
+    Returns ``(True, method_name)`` on success, ``(False, "")`` on failure.
     """
     try:
         from AppKit import NSPasteboard, NSPasteboardTypePDF, NSPasteboardTypePNG
     except ImportError:
-        # PyObjC not available — try the subprocess fallback.
+        # PyObjC not available in this Python — try subprocess fallbacks.
         return _set_clipboard_macos_subprocess(pdf_data, png_data)
 
-    pb = NSPasteboard.generalPasteboard()
-    types = [NSPasteboardTypePDF]
-    if png_data:
-        types.append(NSPasteboardTypePNG)
+    try:
+        pb = NSPasteboard.generalPasteboard()
+        types = [NSPasteboardTypePDF]
+        if png_data:
+            types.append(NSPasteboardTypePNG)
 
-    pb.clearContents()
-    pb.declareTypes_owner_(types, None)
-    pb.setData_forType_(pdf_data, NSPasteboardTypePDF)
-    if png_data:
-        pb.setData_forType_(png_data, NSPasteboardTypePNG)
-    return True
+        pb.clearContents()
+        pb.declareTypes_owner_(types, None)
+        pb.setData_forType_(pdf_data, NSPasteboardTypePDF)
+        if png_data:
+            pb.setData_forType_(png_data, NSPasteboardTypePNG)
+        return True, "native"
+    except Exception:
+        return _set_clipboard_macos_subprocess(pdf_data, png_data)
 
 
-def _set_clipboard_macos_subprocess(pdf_data: bytes, png_data: bytes | None) -> bool:
-    """Fallback: write PDF to macOS pasteboard via a subprocess that uses AppKit.
+def _set_clipboard_macos_subprocess(
+    pdf_data: bytes, png_data: bytes | None,
+) -> tuple[bool, str]:
+    """Fallback: write PDF to macOS pasteboard via a subprocess.
 
-    This handles the case where the running Python doesn't have PyObjC
-    but the system Python (``/usr/bin/python3``) does (always true on
-    macOS 12.3+).
+    Tries several Python interpreters that may have AppKit available.
     """
     import os
+    import shutil
     import subprocess
     import tempfile
 
@@ -368,14 +386,30 @@ def _set_clipboard_macos_subprocess(pdf_data: bytes, png_data: bytes | None) -> 
             png_path=png_tmp or "",
         )
 
-        result = subprocess.run(
-            ["/usr/bin/python3", "-c", script],
-            capture_output=True,
-            timeout=5,
-        )
-        return result.returncode == 0
+        # Try multiple Python interpreters — corporate Macs may not have
+        # command-line tools at /usr/bin/python3 but may have a Homebrew
+        # or conda Python with PyObjC.
+        candidates = ["/usr/bin/python3"]
+        for name in ("python3", "python"):
+            found = shutil.which(name)
+            if found and found not in candidates:
+                candidates.append(found)
+
+        for python in candidates:
+            try:
+                result = subprocess.run(
+                    [python, "-c", script],
+                    capture_output=True,
+                    timeout=5,
+                )
+                if result.returncode == 0:
+                    return True, f"subprocess ({python})"
+            except Exception:
+                continue
+
+        return False, ""
     except Exception:
-        return False
+        return False, ""
     finally:
         try:
             os.unlink(tmp_path)
