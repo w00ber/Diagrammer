@@ -5,7 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QTextBrowser, QVBoxLayout, QWidget
+from PySide6.QtGui import QTextDocument
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class HelpWindow(QWidget):
@@ -28,7 +37,29 @@ class HelpWindow(QWidget):
         self.resize(650, 700)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(8, 8, 8, 8)
+
+        # Search bar
+        search_row = QHBoxLayout()
+        search_row.setContentsMargins(0, 0, 0, 0)
+        search_label = QLabel("Search:")
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Type to search...")
+        self._search.setClearButtonEnabled(True)
+        self._search.textChanged.connect(self._on_search)
+        self._prev_btn = QPushButton("Prev")
+        self._next_btn = QPushButton("Next")
+        self._prev_btn.setFixedWidth(50)
+        self._next_btn.setFixedWidth(50)
+        self._prev_btn.clicked.connect(self._search_prev)
+        self._next_btn.clicked.connect(self._search_next)
+        self._match_label = QLabel("")
+        search_row.addWidget(search_label)
+        search_row.addWidget(self._search, 1)
+        search_row.addWidget(self._prev_btn)
+        search_row.addWidget(self._next_btn)
+        search_row.addWidget(self._match_label)
+        layout.addLayout(search_row)
 
         self._browser = QTextBrowser()
         self._browser.setOpenExternalLinks(True)
@@ -36,6 +67,48 @@ class HelpWindow(QWidget):
         layout.addWidget(self._browser)
 
         self._load_help()
+
+    def _on_search(self, text: str) -> None:
+        """Highlight all matches and jump to the first one."""
+        # Clear previous highlights
+        cursor = self._browser.textCursor()
+        cursor.select(cursor.SelectionType.Document)
+        fmt = cursor.charFormat()
+        fmt.setBackground(Qt.GlobalColor.transparent)
+        cursor.mergeCharFormat(fmt)
+        cursor.clearSelection()
+        self._browser.setTextCursor(cursor)
+
+        if not text:
+            self._match_label.setText("")
+            return
+
+        # Find and jump to first match
+        found = self._browser.find(text)
+        if found:
+            self._match_label.setText("")
+        else:
+            self._match_label.setText("No matches")
+
+    def _search_next(self) -> None:
+        text = self._search.text()
+        if text:
+            if not self._browser.find(text):
+                # Wrap around to start
+                cursor = self._browser.textCursor()
+                cursor.movePosition(cursor.MoveOperation.Start)
+                self._browser.setTextCursor(cursor)
+                self._browser.find(text)
+
+    def _search_prev(self) -> None:
+        text = self._search.text()
+        if text:
+            if not self._browser.find(text, QTextDocument.FindFlag.FindBackward):
+                # Wrap around to end
+                cursor = self._browser.textCursor()
+                cursor.movePosition(cursor.MoveOperation.End)
+                self._browser.setTextCursor(cursor)
+                self._browser.find(text, QTextDocument.FindFlag.FindBackward)
 
     def _load_help(self) -> None:
         """Load and render help.md."""
@@ -58,7 +131,7 @@ class HelpWindow(QWidget):
         styled = f"""
         <html><head><style>
             body {{ font-family: Helvetica, Arial, sans-serif;
-                   font-size: 13px; padding: 16px; line-height: 1.5; }}
+                   font-size: 13px; padding: 20px; line-height: 1.5; }}
             h1 {{ font-size: 20px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }}
             h2 {{ font-size: 16px; margin-top: 20px; border-bottom: 1px solid #eee; padding-bottom: 4px; }}
             h3 {{ font-size: 14px; margin-top: 16px; }}
@@ -98,12 +171,11 @@ class HelpWindow(QWidget):
 
     @staticmethod
     def _find_help_file() -> Path | None:
-        """Locate help.md in the docs directory."""
+        """Locate help.md in the docs directory inside the package."""
         here = Path(__file__).resolve().parent
-        for ancestor in [here.parent.parent, here.parent.parent.parent]:
-            candidate = ancestor / "docs" / "help.md"
-            if candidate.exists():
-                return candidate
+        candidate = here.parent / "docs" / "help.md"
+        if candidate.exists():
+            return candidate
         return None
 
     @staticmethod
@@ -114,6 +186,13 @@ class HelpWindow(QWidget):
         html_lines = []
         in_table = False
         in_code = False
+        in_list = False
+
+        def _inline(text: str) -> str:
+            """Apply inline formatting: bold, inline code."""
+            text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+            text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
+            return text
 
         for line in lines:
             # Fenced code blocks
@@ -131,22 +210,28 @@ class HelpWindow(QWidget):
 
             # Headings
             if line.startswith("### "):
-                html_lines.append(f"<h3>{line[4:]}</h3>")
+                html_lines.append(f"<h3>{_inline(line[4:])}</h3>")
                 continue
             if line.startswith("## "):
-                html_lines.append(f"<h2>{line[3:]}</h2>")
+                html_lines.append(f"<h2>{_inline(line[3:])}</h2>")
                 continue
             if line.startswith("# "):
-                html_lines.append(f"<h1>{line[2:]}</h1>")
+                html_lines.append(f"<h1>{_inline(line[2:])}</h1>")
                 continue
 
             # Horizontal rule
             if line.strip() == "---":
+                if in_list:
+                    html_lines.append("</ul>")
+                    in_list = False
                 html_lines.append("<hr>")
                 continue
 
             # Tables
             if "|" in line:
+                if in_list:
+                    html_lines.append("</ul>")
+                    in_list = False
                 cells = [c.strip() for c in line.split("|")[1:-1]]
                 if all(set(c) <= {"-", ":", " "} for c in cells):
                     continue  # separator row
@@ -155,29 +240,49 @@ class HelpWindow(QWidget):
                     html_lines.append("<table>")
                     in_table = True
                     tag = "th"
-                row = "".join(f"<{tag}>{c}</{tag}>" for c in cells)
+                row = "".join(f"<{tag}>{_inline(c)}</{tag}>" for c in cells)
                 html_lines.append(f"<tr>{row}</tr>")
                 continue
             elif in_table:
                 html_lines.append("</table>")
                 in_table = False
 
-            # Bold / inline code
-            line = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', line)
-            line = re.sub(r'`(.+?)`', r'<code>\1</code>', line)
+            line = _inline(line)
 
-            # List items
+            # Numbered list items
+            m = re.match(r'^(\d+)\.\s+(.*)', line)
+            if m:
+                if not in_list:
+                    html_lines.append("<ol>")
+                    in_list = "ol"
+                html_lines.append(f"<li>{m.group(2)}</li>")
+                continue
+
+            # Unordered list items
             if line.startswith("- "):
+                if not in_list:
+                    html_lines.append("<ul>")
+                    in_list = "ul"
                 html_lines.append(f"<li>{line[2:]}</li>")
                 continue
+
+            # Close list if we're no longer in one
+            if in_list and line.strip():
+                html_lines.append(f"</{in_list}>")
+                in_list = False
 
             # Paragraph
             if line.strip():
                 html_lines.append(f"<p>{line}</p>")
             else:
+                if in_list:
+                    html_lines.append(f"</{in_list}>")
+                    in_list = False
                 html_lines.append("")
 
         if in_table:
             html_lines.append("</table>")
+        if in_list:
+            html_lines.append(f"</{in_list}>")
 
         return "\n".join(html_lines)

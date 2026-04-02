@@ -36,4 +36,5 @@ diagrammer = [
     "defaults.yaml",
     "icons/*.png",
     "components/**/*.svg",
+    "docs/*.md",
 ]

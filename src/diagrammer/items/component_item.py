@@ -1200,6 +1200,22 @@ class ComponentItem(QGraphicsItem):
 
         # Tokenize: split into commands and numbers
         tokens = re.findall(r'[A-Za-z]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?', d)
+
+        # If there are NO command letters, this is a polyline/polygon points
+        # attribute (bare "x1 y1 x2 y2 ..." pairs).  Handle directly.
+        has_commands = any(t.isalpha() for t in tokens)
+        if not has_commands:
+            result = []
+            for i, token in enumerate(tokens):
+                val = float(token)
+                is_x = (i % 2 == 0)
+                if (axis == "x" and is_x and val > break_pos):
+                    val += delta
+                elif (axis == "y" and not is_x and val > break_pos):
+                    val += delta
+                result.append(str(round(val, 4) if val != int(val) else int(val)))
+            return " ".join(result)
+
         result = []
         cmd = ""
         coord_idx = 0  # tracks which coordinate we're on within a command
