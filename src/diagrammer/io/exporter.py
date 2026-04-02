@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, QSize, Qt
+from PySide6.QtCore import QByteArray, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QImage, QPainter
-from PySide6.QtWidgets import QGraphicsScene
+from PySide6.QtWidgets import QApplication, QGraphicsScene
 
 
 class DiagramExporter:
@@ -168,6 +168,103 @@ class DiagramExporter:
         scene.render(painter, target_rect, source_rect)
         painter.end()
 
+    # ------------------------------------------------------------------
+    # Clipboard (selection → system clipboard)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def copy_selection_to_clipboard(
+        scene: QGraphicsScene,
+        dpi: int = 300,
+        margin: float = 20.0,
+    ) -> bool:
+        """Copy the selected items to the system clipboard as PNG + PDF.
+
+        The receiving application picks the best available format:
+        PDF for vector-aware apps (Illustrator, Keynote, PowerPoint on macOS),
+        PNG as a universal fallback.
+
+        Returns ``True`` if something was copied, ``False`` if the selection
+        was empty.
+        """
+        from PySide6.QtCore import QMimeData
+
+        source_rect = _selection_rect_with_margin(scene, margin)
+        if source_rect.isNull() or source_rect.isEmpty():
+            return False
+
+        # --- Render PNG at high DPI ---
+        scale = dpi / 96.0
+        pixel_w = max(1, int(source_rect.width() * scale))
+        pixel_h = max(1, int(source_rect.height() * scale))
+
+        image = QImage(QSize(pixel_w, pixel_h), QImage.Format.Format_ARGB32_Premultiplied)
+        image.setDotsPerMeterX(int(dpi / 0.0254))
+        image.setDotsPerMeterY(int(dpi / 0.0254))
+        image.fill(QColor(Qt.GlobalColor.white))
+
+        painter = QPainter()
+        painter.begin(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        scene.render(painter, QRectF(0, 0, pixel_w, pixel_h), source_rect)
+        painter.end()
+
+        # --- Render PDF into a byte buffer ---
+        pdf_data = _render_pdf_bytes(scene, source_rect)
+
+        # --- Build MIME data with both formats ---
+        mime = QMimeData()
+        mime.setImageData(image)
+        if pdf_data:
+            mime.setData("application/pdf", pdf_data)
+
+        QApplication.clipboard().setMimeData(mime)
+        return True
+
+    @staticmethod
+    def copy_all_to_clipboard(
+        scene: QGraphicsScene,
+        dpi: int = 300,
+        margin: float = 20.0,
+    ) -> bool:
+        """Copy the entire scene to the system clipboard (PNG + PDF).
+
+        Convenience wrapper that uses the full items bounding rect instead
+        of the selection rect.  Returns ``True`` on success.
+        """
+        from PySide6.QtCore import QMimeData
+
+        source_rect = _items_rect_with_margin(scene, margin)
+        if source_rect.isNull() or source_rect.isEmpty():
+            return False
+
+        scale = dpi / 96.0
+        pixel_w = max(1, int(source_rect.width() * scale))
+        pixel_h = max(1, int(source_rect.height() * scale))
+
+        image = QImage(QSize(pixel_w, pixel_h), QImage.Format.Format_ARGB32_Premultiplied)
+        image.setDotsPerMeterX(int(dpi / 0.0254))
+        image.setDotsPerMeterY(int(dpi / 0.0254))
+        image.fill(QColor(Qt.GlobalColor.white))
+
+        painter = QPainter()
+        painter.begin(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        scene.render(painter, QRectF(0, 0, pixel_w, pixel_h), source_rect)
+        painter.end()
+
+        pdf_data = _render_pdf_bytes(scene, source_rect)
+
+        mime = QMimeData()
+        mime.setImageData(image)
+        if pdf_data:
+            mime.setData("application/pdf", pdf_data)
+
+        QApplication.clipboard().setMimeData(mime)
+        return True
+
 
 # ----------------------------------------------------------------------
 # Helpers
@@ -184,3 +281,68 @@ def _items_rect_with_margin(scene: QGraphicsScene, margin: float) -> QRectF:
         rect = QRectF(-50, -50, 100, 100)
     rect = rect.adjusted(-margin, -margin, margin, margin)
     return rect
+
+
+def _selection_rect_with_margin(scene: QGraphicsScene, margin: float) -> QRectF:
+    """Return the united bounding rect of the currently selected items.
+
+    Falls back to the full items bounding rect when nothing is selected.
+    """
+    selected = scene.selectedItems()
+    if not selected:
+        return _items_rect_with_margin(scene, margin)
+
+    rect = QRectF()
+    for item in selected:
+        rect = rect.united(item.sceneBoundingRect())
+    if rect.isNull() or rect.isEmpty():
+        return _items_rect_with_margin(scene, margin)
+    rect = rect.adjusted(-margin, -margin, margin, margin)
+    return rect
+
+
+def _render_pdf_bytes(scene: QGraphicsScene, source_rect: QRectF) -> QByteArray | None:
+    """Render *source_rect* of *scene* to an in-memory PDF and return raw bytes.
+
+    Returns ``None`` if PDF generation fails (e.g. QtPrintSupport unavailable).
+    """
+    try:
+        from PySide6.QtCore import QMarginsF
+        from PySide6.QtGui import QPageLayout, QPageSize
+        from PySide6.QtPrintSupport import QPrinter
+    except ImportError:
+        return None
+
+    # QPrinter requires a real file path; render to a temp file and read back.
+    import tempfile, os
+
+    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+    printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+    fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(fd)
+
+    try:
+        printer.setOutputFileName(tmp_path)
+        page_size = QPageSize(source_rect.size(), QPageSize.Unit.Point)
+        page_layout = QPageLayout(
+            page_size, QPageLayout.Orientation.Portrait, QMarginsF(0, 0, 0, 0)
+        )
+        printer.setPageLayout(page_layout)
+
+        painter = QPainter()
+        painter.begin(printer)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        printer_rect = printer.pageRect(QPrinter.Unit.DevicePixel)
+        scene.render(painter, QRectF(printer_rect), source_rect)
+        painter.end()
+
+        with open(tmp_path, "rb") as f:
+            data = QByteArray(f.read())
+        return data
+    except Exception:
+        return None
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass

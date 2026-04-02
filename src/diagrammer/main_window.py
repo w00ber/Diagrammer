@@ -197,6 +197,11 @@ class MainWindow(QMainWindow):
         paste_act.triggered.connect(self._paste)
         edit_menu.addAction(paste_act)
 
+        copy_image_act = QAction("Copy Selection as &Image", self)
+        copy_image_act.setShortcut(get_shortcut("edit.copy_as_image"))
+        copy_image_act.triggered.connect(self._copy_selection_as_image)
+        edit_menu.addAction(copy_image_act)
+
         edit_menu.addSeparator()
 
         select_all_act = QAction("Select &All", self)
@@ -1722,6 +1727,19 @@ class MainWindow(QMainWindow):
                 item.setSelected(True)
         for item in pasted_annotations:
             item.setSelected(True)
+
+    # ------------------------------------------------- Copy Selection as Image
+
+    def _copy_selection_as_image(self) -> None:
+        """Copy selected items (or entire scene) to clipboard as PNG + PDF."""
+        from diagrammer.io.exporter import DiagramExporter
+
+        scene = self._active_scene()
+        ok = DiagramExporter.copy_selection_to_clipboard(scene)
+        if ok:
+            self.statusBar().showMessage("Selection copied to clipboard", 3000)
+        else:
+            self.statusBar().showMessage("Nothing to copy", 3000)
 
     # ----------------------------------------------------------- Annotation tools
 

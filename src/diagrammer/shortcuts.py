@@ -135,6 +135,7 @@ _reg("edit.group",     _ks("Ctrl+G"),                      description="Group", 
 _reg("edit.ungroup",   _ks("Ctrl+Shift+G"),                description="Ungroup",           category="Edit")
 _reg("edit.join_wires", _ks("Ctrl+J"),                      description="Join Wires",        category="Edit")
 
+_reg("edit.copy_as_image", _ks("Ctrl+Shift+C"),              description="Copy Selection as Image", category="Edit")
 _reg("edit.settings",  _ks("Ctrl+,"),                      description="Settings",          category="Edit")
 
 # ----- View -----
