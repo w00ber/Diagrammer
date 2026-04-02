@@ -178,11 +178,11 @@ class DiagramExporter:
         dpi: int = 300,
         margin: float = 20.0,
     ) -> bool:
-        """Copy the selected items to the system clipboard as PNG + PDF.
+        """Copy the selected items to the system clipboard as PDF + PNG.
 
-        The receiving application picks the best available format:
-        PDF for vector-aware apps (Illustrator, Keynote, PowerPoint on macOS),
-        PNG as a universal fallback.
+        On macOS the PDF is placed on the pasteboard via native APIs so
+        that Illustrator, Keynote, and PowerPoint receive editable vector
+        data.  A high-DPI PNG is included as a universal fallback.
 
         Selection highlights, handles, and ports are temporarily hidden so
         the clipboard image shows a clean "presentation" view.
@@ -190,32 +190,20 @@ class DiagramExporter:
         Returns ``True`` if something was copied, ``False`` if the selection
         was empty.
         """
-        from PySide6.QtCore import QMimeData
-
         source_rect = _selection_rect_with_margin(scene, margin)
         if source_rect.isNull() or source_rect.isEmpty():
             return False
 
-        # Temporarily suppress selection visuals for a clean render.
         selected_items = scene.selectedItems()
         _clear_selection_visuals(scene)
 
         try:
-            image = _render_png(scene, source_rect, dpi)
             pdf_data = _render_pdf_bytes(scene, source_rect)
-            svg_data = _render_svg_bytes(scene, source_rect)
+            png_data = _render_png_bytes(scene, source_rect, dpi)
         finally:
             _restore_selection_visuals(scene, selected_items)
 
-        mime = QMimeData()
-        mime.setImageData(image)
-        if pdf_data:
-            mime.setData("application/pdf", pdf_data)
-        if svg_data:
-            mime.setData("image/svg+xml", svg_data)
-
-        QApplication.clipboard().setMimeData(mime)
-        return True
+        return _set_clipboard(pdf_data, png_data)
 
     @staticmethod
     def copy_all_to_clipboard(
@@ -223,13 +211,11 @@ class DiagramExporter:
         dpi: int = 300,
         margin: float = 20.0,
     ) -> bool:
-        """Copy the entire scene to the system clipboard (PNG + PDF).
+        """Copy the entire scene to the system clipboard (PDF + PNG).
 
         Convenience wrapper that uses the full items bounding rect instead
         of the selection rect.  Returns ``True`` on success.
         """
-        from PySide6.QtCore import QMimeData
-
         source_rect = _items_rect_with_margin(scene, margin)
         if source_rect.isNull() or source_rect.isEmpty():
             return False
@@ -238,21 +224,12 @@ class DiagramExporter:
         _clear_selection_visuals(scene)
 
         try:
-            image = _render_png(scene, source_rect, dpi)
             pdf_data = _render_pdf_bytes(scene, source_rect)
-            svg_data = _render_svg_bytes(scene, source_rect)
+            png_data = _render_png_bytes(scene, source_rect, dpi)
         finally:
             _restore_selection_visuals(scene, selected_items)
 
-        mime = QMimeData()
-        mime.setImageData(image)
-        if pdf_data:
-            mime.setData("application/pdf", pdf_data)
-        if svg_data:
-            mime.setData("image/svg+xml", svg_data)
-
-        QApplication.clipboard().setMimeData(mime)
-        return True
+        return _set_clipboard(pdf_data, png_data)
 
 
 # ----------------------------------------------------------------------
@@ -318,14 +295,152 @@ def _restore_selection_visuals(
             item._update_port_visibility()
 
 
+# -- Platform-aware clipboard writer -------------------------------------
+
+def _set_clipboard(pdf_data: bytes | None, png_data: bytes | None) -> bool:
+    """Place *pdf_data* and *png_data* on the system clipboard.
+
+    On macOS, uses NSPasteboard directly so that Keynote, Illustrator,
+    and PowerPoint see proper ``com.adobe.pdf`` data (vector).
+    On other platforms falls back to Qt's QMimeData.
+    """
+    import sys
+
+    if sys.platform == "darwin" and pdf_data:
+        if _set_clipboard_macos(pdf_data, png_data):
+            return True
+        # Fall through to Qt path if native approach fails.
+
+    return _set_clipboard_qt(pdf_data, png_data)
+
+
+def _set_clipboard_macos(pdf_data: bytes, png_data: bytes | None) -> bool:
+    """Write PDF + PNG to the macOS pasteboard via AppKit (PyObjC).
+
+    Returns ``True`` on success, ``False`` if PyObjC is unavailable.
+    """
+    try:
+        from AppKit import NSPasteboard, NSPasteboardTypePDF, NSPasteboardTypePNG
+    except ImportError:
+        # PyObjC not available — try the subprocess fallback.
+        return _set_clipboard_macos_subprocess(pdf_data, png_data)
+
+    pb = NSPasteboard.generalPasteboard()
+    types = [NSPasteboardTypePDF]
+    if png_data:
+        types.append(NSPasteboardTypePNG)
+
+    pb.clearContents()
+    pb.declareTypes_owner_(types, None)
+    pb.setData_forType_(pdf_data, NSPasteboardTypePDF)
+    if png_data:
+        pb.setData_forType_(png_data, NSPasteboardTypePNG)
+    return True
+
+
+def _set_clipboard_macos_subprocess(pdf_data: bytes, png_data: bytes | None) -> bool:
+    """Fallback: write PDF to macOS pasteboard via a subprocess that uses AppKit.
+
+    This handles the case where the running Python doesn't have PyObjC
+    but the system Python (``/usr/bin/python3``) does (always true on
+    macOS 12.3+).
+    """
+    import os
+    import subprocess
+    import tempfile
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(fd)
+    png_tmp = None
+
+    try:
+        with open(tmp_path, "wb") as f:
+            f.write(bytes(pdf_data))
+
+        if png_data:
+            fd2, png_tmp = tempfile.mkstemp(suffix=".png")
+            os.close(fd2)
+            with open(png_tmp, "wb") as f:
+                f.write(bytes(png_data))
+
+        script = _PASTEBOARD_SCRIPT.format(
+            pdf_path=tmp_path,
+            png_path=png_tmp or "",
+        )
+
+        result = subprocess.run(
+            ["/usr/bin/python3", "-c", script],
+            capture_output=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        if png_tmp:
+            try:
+                os.unlink(png_tmp)
+            except OSError:
+                pass
+
+
+_PASTEBOARD_SCRIPT = '''\
+import sys
+from AppKit import NSPasteboard, NSPasteboardTypePDF, NSPasteboardTypePNG
+
+pdf_path = "{pdf_path}"
+png_path = "{png_path}"
+
+with open(pdf_path, "rb") as f:
+    pdf_data = f.read()
+
+pb = NSPasteboard.generalPasteboard()
+types = [NSPasteboardTypePDF]
+if png_path:
+    types.append(NSPasteboardTypePNG)
+
+pb.clearContents()
+pb.declareTypes_owner_(types, None)
+pb.setData_forType_(pdf_data, NSPasteboardTypePDF)
+
+if png_path:
+    with open(png_path, "rb") as f:
+        png_data = f.read()
+    pb.setData_forType_(png_data, NSPasteboardTypePNG)
+'''
+
+
+def _set_clipboard_qt(pdf_data: bytes | None, png_data: bytes | None) -> bool:
+    """Write to clipboard via Qt QMimeData (Linux / Windows fallback)."""
+    from PySide6.QtCore import QMimeData
+
+    mime = QMimeData()
+    if pdf_data:
+        mime.setData("application/pdf", QByteArray(pdf_data))
+    if png_data:
+        image = QImage()
+        image.loadFromData(QByteArray(png_data), "PNG")
+        if not image.isNull():
+            mime.setImageData(image)
+
+    QApplication.clipboard().setMimeData(mime)
+    return True
+
+
 # -- Rendering helpers ---------------------------------------------------
 
-def _render_png(
+def _render_png_bytes(
     scene: QGraphicsScene,
     source_rect: QRectF,
     dpi: int,
-) -> QImage:
-    """Render *source_rect* of *scene* to a ``QImage`` at the given DPI."""
+) -> bytes | None:
+    """Render *source_rect* of *scene* to PNG bytes at the given DPI."""
+    from PySide6.QtCore import QBuffer, QIODevice
+
     scale = dpi / 96.0
     pixel_w = max(1, int(source_rect.width() * scale))
     pixel_h = max(1, int(source_rect.height() * scale))
@@ -341,11 +456,15 @@ def _render_png(
     painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
     scene.render(painter, QRectF(0, 0, pixel_w, pixel_h), source_rect)
     painter.end()
-    return image
+
+    buf = QBuffer()
+    buf.open(QIODevice.OpenModeFlag.WriteOnly)
+    image.save(buf, "PNG")
+    return bytes(buf.data())
 
 
-def _render_pdf_bytes(scene: QGraphicsScene, source_rect: QRectF) -> QByteArray | None:
-    """Render *source_rect* of *scene* to an in-memory PDF and return raw bytes."""
+def _render_pdf_bytes(scene: QGraphicsScene, source_rect: QRectF) -> bytes | None:
+    """Render *source_rect* of *scene* to PDF bytes."""
     try:
         from PySide6.QtCore import QMarginsF
         from PySide6.QtGui import QPageLayout, QPageSize
@@ -377,51 +496,7 @@ def _render_pdf_bytes(scene: QGraphicsScene, source_rect: QRectF) -> QByteArray 
         painter.end()
 
         with open(tmp_path, "rb") as f:
-            data = QByteArray(f.read())
-        return data
-    except Exception:
-        return None
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-
-
-def _render_svg_bytes(scene: QGraphicsScene, source_rect: QRectF) -> QByteArray | None:
-    """Render *source_rect* of *scene* to SVG bytes.
-
-    SVG on the clipboard is recognised by Illustrator and other vector
-    editors as a native vector format.
-    """
-    try:
-        from PySide6.QtSvg import QSvgGenerator
-    except ImportError:
-        return None
-
-    import os
-    import tempfile
-
-    fd, tmp_path = tempfile.mkstemp(suffix=".svg")
-    os.close(fd)
-
-    try:
-        generator = QSvgGenerator()
-        generator.setFileName(tmp_path)
-        generator.setSize(QSize(int(source_rect.width()), int(source_rect.height())))
-        generator.setViewBox(QRectF(0, 0, source_rect.width(), source_rect.height()))
-        generator.setTitle("Diagrammer Export")
-        generator.setDescription("Exported from Diagrammer")
-
-        painter = QPainter()
-        painter.begin(generator)
-        target_rect = QRectF(0, 0, source_rect.width(), source_rect.height())
-        scene.render(painter, target_rect, source_rect)
-        painter.end()
-
-        with open(tmp_path, "rb") as f:
-            data = QByteArray(f.read())
-        return data
+            return f.read()
     except Exception:
         return None
     finally:
