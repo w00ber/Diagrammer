@@ -1738,7 +1738,7 @@ class MainWindow(QMainWindow):
         ok = _exp.DiagramExporter.copy_selection_to_clipboard(scene)
         if ok:
             method = _exp.last_clipboard_method
-            if method in ("native", ) or method.startswith("subprocess"):
+            if method.startswith("native") or method.startswith("subprocess"):
                 detail = "as vector (PDF)"
             else:
                 detail = "as image (PNG)"
