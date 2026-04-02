@@ -184,6 +184,9 @@ class DiagramExporter:
         PDF for vector-aware apps (Illustrator, Keynote, PowerPoint on macOS),
         PNG as a universal fallback.
 
+        Selection highlights, handles, and ports are temporarily hidden so
+        the clipboard image shows a clean "presentation" view.
+
         Returns ``True`` if something was copied, ``False`` if the selection
         was empty.
         """
@@ -193,31 +196,23 @@ class DiagramExporter:
         if source_rect.isNull() or source_rect.isEmpty():
             return False
 
-        # --- Render PNG at high DPI ---
-        scale = dpi / 96.0
-        pixel_w = max(1, int(source_rect.width() * scale))
-        pixel_h = max(1, int(source_rect.height() * scale))
+        # Temporarily suppress selection visuals for a clean render.
+        selected_items = scene.selectedItems()
+        _clear_selection_visuals(scene)
 
-        image = QImage(QSize(pixel_w, pixel_h), QImage.Format.Format_ARGB32_Premultiplied)
-        image.setDotsPerMeterX(int(dpi / 0.0254))
-        image.setDotsPerMeterY(int(dpi / 0.0254))
-        image.fill(QColor(Qt.GlobalColor.white))
+        try:
+            image = _render_png(scene, source_rect, dpi)
+            pdf_data = _render_pdf_bytes(scene, source_rect)
+            svg_data = _render_svg_bytes(scene, source_rect)
+        finally:
+            _restore_selection_visuals(scene, selected_items)
 
-        painter = QPainter()
-        painter.begin(image)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        scene.render(painter, QRectF(0, 0, pixel_w, pixel_h), source_rect)
-        painter.end()
-
-        # --- Render PDF into a byte buffer ---
-        pdf_data = _render_pdf_bytes(scene, source_rect)
-
-        # --- Build MIME data with both formats ---
         mime = QMimeData()
         mime.setImageData(image)
         if pdf_data:
             mime.setData("application/pdf", pdf_data)
+        if svg_data:
+            mime.setData("image/svg+xml", svg_data)
 
         QApplication.clipboard().setMimeData(mime)
         return True
@@ -239,28 +234,22 @@ class DiagramExporter:
         if source_rect.isNull() or source_rect.isEmpty():
             return False
 
-        scale = dpi / 96.0
-        pixel_w = max(1, int(source_rect.width() * scale))
-        pixel_h = max(1, int(source_rect.height() * scale))
+        selected_items = scene.selectedItems()
+        _clear_selection_visuals(scene)
 
-        image = QImage(QSize(pixel_w, pixel_h), QImage.Format.Format_ARGB32_Premultiplied)
-        image.setDotsPerMeterX(int(dpi / 0.0254))
-        image.setDotsPerMeterY(int(dpi / 0.0254))
-        image.fill(QColor(Qt.GlobalColor.white))
-
-        painter = QPainter()
-        painter.begin(image)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        scene.render(painter, QRectF(0, 0, pixel_w, pixel_h), source_rect)
-        painter.end()
-
-        pdf_data = _render_pdf_bytes(scene, source_rect)
+        try:
+            image = _render_png(scene, source_rect, dpi)
+            pdf_data = _render_pdf_bytes(scene, source_rect)
+            svg_data = _render_svg_bytes(scene, source_rect)
+        finally:
+            _restore_selection_visuals(scene, selected_items)
 
         mime = QMimeData()
         mime.setImageData(image)
         if pdf_data:
             mime.setData("application/pdf", pdf_data)
+        if svg_data:
+            mime.setData("image/svg+xml", svg_data)
 
         QApplication.clipboard().setMimeData(mime)
         return True
@@ -301,11 +290,62 @@ def _selection_rect_with_margin(scene: QGraphicsScene, margin: float) -> QRectF:
     return rect
 
 
-def _render_pdf_bytes(scene: QGraphicsScene, source_rect: QRectF) -> QByteArray | None:
-    """Render *source_rect* of *scene* to an in-memory PDF and return raw bytes.
+# -- Selection visual suppression ----------------------------------------
 
-    Returns ``None`` if PDF generation fails (e.g. QtPrintSupport unavailable).
+def _clear_selection_visuals(scene: QGraphicsScene) -> None:
+    """Temporarily deselect all items so paint() methods skip highlights.
+
+    Also hides ports on selected components since those become visible
+    when their parent is selected.
     """
+    for item in scene.selectedItems():
+        item.setSelected(False)
+        # Hide ports that were visible due to selection
+        if hasattr(item, '_ports'):
+            for port in item._ports:
+                if not getattr(port, 'is_alignment_selected', False):
+                    port.setVisible(False)
+
+
+def _restore_selection_visuals(
+    scene: QGraphicsScene,
+    items: list,
+) -> None:
+    """Re-select *items* and restore port visibility."""
+    for item in items:
+        item.setSelected(True)
+        if hasattr(item, '_update_port_visibility'):
+            item._update_port_visibility()
+
+
+# -- Rendering helpers ---------------------------------------------------
+
+def _render_png(
+    scene: QGraphicsScene,
+    source_rect: QRectF,
+    dpi: int,
+) -> QImage:
+    """Render *source_rect* of *scene* to a ``QImage`` at the given DPI."""
+    scale = dpi / 96.0
+    pixel_w = max(1, int(source_rect.width() * scale))
+    pixel_h = max(1, int(source_rect.height() * scale))
+
+    image = QImage(QSize(pixel_w, pixel_h), QImage.Format.Format_ARGB32_Premultiplied)
+    image.setDotsPerMeterX(int(dpi / 0.0254))
+    image.setDotsPerMeterY(int(dpi / 0.0254))
+    image.fill(QColor(Qt.GlobalColor.white))
+
+    painter = QPainter()
+    painter.begin(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    scene.render(painter, QRectF(0, 0, pixel_w, pixel_h), source_rect)
+    painter.end()
+    return image
+
+
+def _render_pdf_bytes(scene: QGraphicsScene, source_rect: QRectF) -> QByteArray | None:
+    """Render *source_rect* of *scene* to an in-memory PDF and return raw bytes."""
     try:
         from PySide6.QtCore import QMarginsF
         from PySide6.QtGui import QPageLayout, QPageSize
@@ -313,15 +353,15 @@ def _render_pdf_bytes(scene: QGraphicsScene, source_rect: QRectF) -> QByteArray 
     except ImportError:
         return None
 
-    # QPrinter requires a real file path; render to a temp file and read back.
-    import tempfile, os
+    import os
+    import tempfile
 
-    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-    printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
     fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
     os.close(fd)
 
     try:
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
         printer.setOutputFileName(tmp_path)
         page_size = QPageSize(source_rect.size(), QPageSize.Unit.Point)
         page_layout = QPageLayout(
@@ -334,6 +374,49 @@ def _render_pdf_bytes(scene: QGraphicsScene, source_rect: QRectF) -> QByteArray 
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         printer_rect = printer.pageRect(QPrinter.Unit.DevicePixel)
         scene.render(painter, QRectF(printer_rect), source_rect)
+        painter.end()
+
+        with open(tmp_path, "rb") as f:
+            data = QByteArray(f.read())
+        return data
+    except Exception:
+        return None
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+def _render_svg_bytes(scene: QGraphicsScene, source_rect: QRectF) -> QByteArray | None:
+    """Render *source_rect* of *scene* to SVG bytes.
+
+    SVG on the clipboard is recognised by Illustrator and other vector
+    editors as a native vector format.
+    """
+    try:
+        from PySide6.QtSvg import QSvgGenerator
+    except ImportError:
+        return None
+
+    import os
+    import tempfile
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".svg")
+    os.close(fd)
+
+    try:
+        generator = QSvgGenerator()
+        generator.setFileName(tmp_path)
+        generator.setSize(QSize(int(source_rect.width()), int(source_rect.height())))
+        generator.setViewBox(QRectF(0, 0, source_rect.width(), source_rect.height()))
+        generator.setTitle("Diagrammer Export")
+        generator.setDescription("Exported from Diagrammer")
+
+        painter = QPainter()
+        painter.begin(generator)
+        target_rect = QRectF(0, 0, source_rect.width(), source_rect.height())
+        scene.render(painter, target_rect, source_rect)
         painter.end()
 
         with open(tmp_path, "rb") as f:
