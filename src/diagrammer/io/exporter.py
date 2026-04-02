@@ -176,7 +176,7 @@ class DiagramExporter:
     def copy_selection_to_clipboard(
         scene: QGraphicsScene,
         dpi: int = 300,
-        margin: float = 20.0,
+        margin: float = 5.0,
     ) -> bool:
         """Copy the selected items to the system clipboard as PDF + PNG.
 
@@ -209,7 +209,7 @@ class DiagramExporter:
     def copy_all_to_clipboard(
         scene: QGraphicsScene,
         dpi: int = 300,
-        margin: float = 20.0,
+        margin: float = 5.0,
     ) -> bool:
         """Copy the entire scene to the system clipboard (PDF + PNG).
 
@@ -448,7 +448,7 @@ def _render_png_bytes(
     image = QImage(QSize(pixel_w, pixel_h), QImage.Format.Format_ARGB32_Premultiplied)
     image.setDotsPerMeterX(int(dpi / 0.0254))
     image.setDotsPerMeterY(int(dpi / 0.0254))
-    image.fill(QColor(Qt.GlobalColor.white))
+    image.fill(Qt.GlobalColor.transparent)
 
     painter = QPainter()
     painter.begin(image)
