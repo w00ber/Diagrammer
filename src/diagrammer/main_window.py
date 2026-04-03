@@ -1731,13 +1731,20 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------- Copy Selection as Image
 
     def _copy_selection_as_image(self) -> None:
-        """Copy selected items (or entire scene) to clipboard as PNG + PDF."""
-        from diagrammer.io.exporter import DiagramExporter
+        """Copy selected items (or entire scene) to clipboard as PDF + PNG."""
+        from diagrammer.io import exporter as _exp
 
         scene = self._active_scene()
-        ok = DiagramExporter.copy_selection_to_clipboard(scene)
+        ok = _exp.DiagramExporter.copy_selection_to_clipboard(scene)
         if ok:
-            self.statusBar().showMessage("Selection copied to clipboard", 3000)
+            method = _exp.last_clipboard_method
+            if method.startswith("native") or method.startswith("subprocess"):
+                detail = "as vector (PDF)"
+            else:
+                detail = "as image (PNG)"
+            self.statusBar().showMessage(
+                f"Copied to clipboard {detail}  [{method}]", 5000,
+            )
         else:
             self.statusBar().showMessage("Nothing to copy", 3000)
 

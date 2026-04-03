@@ -297,33 +297,182 @@ def _restore_selection_visuals(
 
 # -- Platform-aware clipboard writer -------------------------------------
 
+# Clipboard method used for the most recent copy (for diagnostics).
+# One of: "native", "subprocess", "qt", or "failed".
+last_clipboard_method: str = ""
+
+
 def _set_clipboard(pdf_data: bytes | None, png_data: bytes | None) -> bool:
     """Place *pdf_data* and *png_data* on the system clipboard.
 
-    On macOS, uses NSPasteboard directly so that Keynote, Illustrator,
-    and PowerPoint see proper ``com.adobe.pdf`` data (vector).
+    On macOS, uses the Objective-C runtime via ctypes to write directly
+    to NSPasteboard with the correct UTIs (``com.adobe.pdf``,
+    ``public.png``).  This requires no third-party packages — only
+    ``libobjc.dylib`` which ships with every macOS install.
+
     On other platforms falls back to Qt's QMimeData.
+
+    Sets the module-level ``last_clipboard_method`` to indicate which
+    path was taken.
     """
+    global last_clipboard_method
     import sys
 
     if sys.platform == "darwin" and pdf_data:
-        if _set_clipboard_macos(pdf_data, png_data):
+        # 1) ctypes — always available, no dependencies
+        try:
+            _set_clipboard_macos_ctypes(pdf_data, png_data)
+            last_clipboard_method = "native (ctypes)"
             return True
-        # Fall through to Qt path if native approach fails.
+        except Exception:
+            pass
 
+        # 2) PyObjC — if installed in this interpreter
+        try:
+            _set_clipboard_macos_pyobjc(pdf_data, png_data)
+            last_clipboard_method = "native (PyObjC)"
+            return True
+        except Exception:
+            pass
+
+        # 3) subprocess — try system Python which usually has PyObjC
+        ok, method = _set_clipboard_macos_subprocess(pdf_data, png_data)
+        if ok:
+            last_clipboard_method = method
+            return True
+
+    last_clipboard_method = "qt"
     return _set_clipboard_qt(pdf_data, png_data)
 
 
-def _set_clipboard_macos(pdf_data: bytes, png_data: bytes | None) -> bool:
+# -- macOS: ctypes (no dependencies) ------------------------------------
+
+def _set_clipboard_macos_ctypes(
+    pdf_data: bytes, png_data: bytes | None,
+) -> None:
+    """Write PDF + PNG to the macOS pasteboard via the ObjC runtime.
+
+    Uses ctypes to call ``libobjc.dylib`` directly — works on every
+    macOS install without any third-party packages.  Raises on failure.
+    """
+    import ctypes
+    import ctypes.util
+
+    # Load the Objective-C runtime
+    objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+
+    # Configure objc_msgSend signatures
+    objc.objc_getClass.restype = ctypes.c_void_p
+    objc.objc_getClass.argtypes = [ctypes.c_char_p]
+    objc.sel_registerName.restype = ctypes.c_void_p
+    objc.sel_registerName.argtypes = [ctypes.c_char_p]
+
+    # Generic messenger — we cast per-call as needed
+    msg = objc.objc_msgSend
+    msg.restype = ctypes.c_void_p
+    msg.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+
+    def cls(name: str) -> ctypes.c_void_p:
+        return objc.objc_getClass(name.encode())
+
+    def sel(name: str) -> ctypes.c_void_p:
+        return objc.sel_registerName(name.encode())
+
+    def send(obj, selector, *args):
+        return msg(obj, selector, *args)
+
+    # NSData from bytes
+    def make_nsdata(raw: bytes) -> ctypes.c_void_p:
+        NSData = cls("NSData")
+        buf = ctypes.create_string_buffer(raw)
+        # +[NSData dataWithBytes:length:]
+        fn = ctypes.cast(msg, ctypes.CFUNCTYPE(
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+            ctypes.c_void_p, ctypes.c_uint64,
+        ))
+        return fn(
+            NSData, sel("dataWithBytes:length:"),
+            buf, len(raw),
+        )
+
+    # NSString from Python str
+    def make_nsstring(s: str) -> ctypes.c_void_p:
+        NSString = cls("NSString")
+        encoded = s.encode("utf-8")
+        buf = ctypes.create_string_buffer(encoded)
+        fn = ctypes.cast(msg, ctypes.CFUNCTYPE(
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+            ctypes.c_void_p, ctypes.c_uint64,
+        ))
+        return fn(
+            NSString, sel("stringWithUTF8String:"),
+            buf, 0,  # second arg ignored for this selector
+        )
+
+    # NSArray from list of ObjC objects
+    def make_nsarray(items: list) -> ctypes.c_void_p:
+        NSArray = cls("NSArray")
+        arr_type = ctypes.c_void_p * len(items)
+        c_arr = arr_type(*items)
+        fn = ctypes.cast(msg, ctypes.CFUNCTYPE(
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_void_p), ctypes.c_uint64,
+        ))
+        return fn(
+            NSArray, sel("arrayWithObjects:count:"),
+            c_arr, len(items),
+        )
+
+    # UTI strings
+    pdf_type = make_nsstring("com.adobe.pdf")
+    types = [pdf_type]
+
+    png_type = None
+    if png_data:
+        png_type = make_nsstring("public.png")
+        types.append(png_type)
+
+    ns_types = make_nsarray(types)
+
+    # Get the general pasteboard
+    NSPasteboard = cls("NSPasteboard")
+    pb = send(NSPasteboard, sel("generalPasteboard"))
+    if not pb:
+        raise RuntimeError("Failed to get NSPasteboard")
+
+    # Clear and declare types
+    send(pb, sel("clearContents"))
+
+    fn_declare = ctypes.cast(msg, ctypes.CFUNCTYPE(
+        ctypes.c_int64, ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.c_void_p, ctypes.c_void_p,
+    ))
+    fn_declare(pb, sel("declareTypes:owner:"), ns_types, None)
+
+    # Set PDF data
+    pdf_nsdata = make_nsdata(pdf_data)
+    fn_set = ctypes.cast(msg, ctypes.CFUNCTYPE(
+        ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.c_void_p, ctypes.c_void_p,
+    ))
+    fn_set(pb, sel("setData:forType:"), pdf_nsdata, pdf_type)
+
+    # Set PNG data
+    if png_data and png_type:
+        png_nsdata = make_nsdata(png_data)
+        fn_set(pb, sel("setData:forType:"), png_nsdata, png_type)
+
+
+# -- macOS: PyObjC -------------------------------------------------------
+
+def _set_clipboard_macos_pyobjc(
+    pdf_data: bytes, png_data: bytes | None,
+) -> None:
     """Write PDF + PNG to the macOS pasteboard via AppKit (PyObjC).
 
-    Returns ``True`` on success, ``False`` if PyObjC is unavailable.
+    Raises ImportError if PyObjC is not available.
     """
-    try:
-        from AppKit import NSPasteboard, NSPasteboardTypePDF, NSPasteboardTypePNG
-    except ImportError:
-        # PyObjC not available — try the subprocess fallback.
-        return _set_clipboard_macos_subprocess(pdf_data, png_data)
+    from AppKit import NSPasteboard, NSPasteboardTypePDF, NSPasteboardTypePNG
 
     pb = NSPasteboard.generalPasteboard()
     types = [NSPasteboardTypePDF]
@@ -335,17 +484,19 @@ def _set_clipboard_macos(pdf_data: bytes, png_data: bytes | None) -> bool:
     pb.setData_forType_(pdf_data, NSPasteboardTypePDF)
     if png_data:
         pb.setData_forType_(png_data, NSPasteboardTypePNG)
-    return True
 
 
-def _set_clipboard_macos_subprocess(pdf_data: bytes, png_data: bytes | None) -> bool:
-    """Fallback: write PDF to macOS pasteboard via a subprocess that uses AppKit.
+# -- macOS: subprocess ----------------------------------------------------
 
-    This handles the case where the running Python doesn't have PyObjC
-    but the system Python (``/usr/bin/python3``) does (always true on
-    macOS 12.3+).
+def _set_clipboard_macos_subprocess(
+    pdf_data: bytes, png_data: bytes | None,
+) -> tuple[bool, str]:
+    """Fallback: write PDF to macOS pasteboard via a subprocess.
+
+    Tries several Python interpreters that may have AppKit available.
     """
     import os
+    import shutil
     import subprocess
     import tempfile
 
@@ -368,14 +519,27 @@ def _set_clipboard_macos_subprocess(pdf_data: bytes, png_data: bytes | None) -> 
             png_path=png_tmp or "",
         )
 
-        result = subprocess.run(
-            ["/usr/bin/python3", "-c", script],
-            capture_output=True,
-            timeout=5,
-        )
-        return result.returncode == 0
+        candidates = ["/usr/bin/python3"]
+        for name in ("python3", "python"):
+            found = shutil.which(name)
+            if found and found not in candidates:
+                candidates.append(found)
+
+        for python in candidates:
+            try:
+                result = subprocess.run(
+                    [python, "-c", script],
+                    capture_output=True,
+                    timeout=5,
+                )
+                if result.returncode == 0:
+                    return True, f"subprocess ({python})"
+            except Exception:
+                continue
+
+        return False, ""
     except Exception:
-        return False
+        return False, ""
     finally:
         try:
             os.unlink(tmp_path)
@@ -389,7 +553,6 @@ def _set_clipboard_macos_subprocess(pdf_data: bytes, png_data: bytes | None) -> 
 
 
 _PASTEBOARD_SCRIPT = '''\
-import sys
 from AppKit import NSPasteboard, NSPasteboardTypePDF, NSPasteboardTypePNG
 
 pdf_path = "{pdf_path}"
