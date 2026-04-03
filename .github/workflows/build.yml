@@ -1,0 +1,107 @@
+name: Build Standalone Executables
+
+on:
+  push:
+    tags:
+      - "v*"          # Trigger on version tags (v0.1.0, v1.0.0, etc.)
+  workflow_dispatch:   # Allow manual trigger from GitHub UI
+
+permissions:
+  contents: write      # Needed to create releases
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS
+            artifact: Diagrammer-macOS
+          - os: windows-latest
+            name: Windows
+            artifact: Diagrammer-Windows
+
+    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.name }})
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[dev]"
+
+      # ── Windows: generate .ico from PNG ──────────────────────────────
+      - name: Install Pillow for icon generation (Windows)
+        if: runner.os == 'Windows'
+        run: pip install Pillow
+
+      - name: Generate Windows icon
+        if: runner.os == 'Windows'
+        shell: python
+        run: |
+          from PIL import Image
+          import os
+
+          icon_dir = "src/diagrammer/icons"
+          sizes = [16, 32, 48, 64, 128, 256]
+          images = []
+          for s in sizes:
+              path = os.path.join(icon_dir, f"icon_{s}x{s}.png")
+              if os.path.exists(path):
+                  images.append(Image.open(path))
+          if not images:
+              images = [Image.open(os.path.join(icon_dir, "icon_256x256.png"))]
+          images[0].save(
+              "diagrammer.ico",
+              format="ICO",
+              sizes=[(img.width, img.height) for img in images],
+              append_images=images[1:],
+          )
+          print("Created diagrammer.ico")
+
+      # ── Build ────────────────────────────────────────────────────────
+      - name: Build with PyInstaller
+        run: pyinstaller diagrammer.spec
+
+      # ── Package ──────────────────────────────────────────────────────
+      - name: Package macOS app
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          zip -r -y ../Diagrammer-macOS.zip Diagrammer.app
+
+      - name: Package Windows app
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist\Diagrammer" -DestinationPath "Diagrammer-Windows.zip"
+
+      # ── Upload artifact ──────────────────────────────────────────────
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            Diagrammer-macOS.zip
+            Diagrammer-Windows.zip
+          if-no-files-found: ignore
+
+      # ── Attach to release (tag builds only) ──────────────────────────
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Diagrammer-macOS.zip
+            Diagrammer-Windows.zip
+          fail_on_unmatched_files: false
