@@ -1,29 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 100 40">
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 40 100">
   <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
   <defs>
     <style>
-      .st0 {
+      .st0, .st1, .st2 {
+        fill: none;
+      }
+
+      .st1 {
         stroke-linejoin: bevel;
       }
 
-      .st0, .st1 {
-        fill: none;
+      .st1, .st2 {
         stroke: #000;
         stroke-linecap: round;
         stroke-width: 3px;
       }
 
-      .st1 {
+      .st2 {
         stroke-linejoin: round;
       }
 
-      .st2 {
-        fill: #c66;
-      }
-
       .st3 {
-        fill: #231f20;
+        fill: #c66;
       }
 
       .st4 {
@@ -39,25 +38,25 @@
     </style>
   </defs>
   <g id="guides" class="st5">
-    <rect class="st4" y="20" width="50" height="20"/>
+    <rect class="st4" x="-30" y="50" width="50" height="20"/>
+  </g>
+  <g id="ports">
+    <circle id="port:left" class="st3" cx="19.8" cy="0" r="3"/>
+    <circle id="port:right" class="st3" cx="19.8" cy="100" r="3"/>
   </g>
   <g id="artwork">
-    <path class="st1" d="M61.6,20c2.6-13.1,12.9-13.1,15.4,0M61.6,20c-2.6,13.1,5.1,13.1,2.6,0M23,20c2.6-13.1,12.9-13.1,15.4,0M35.9,20c2.6-13.1,12.9-13.1,15.4,0M48.7,20c2.6-13.1,12.9-13.1,15.4,0M35.9,20c-2.6,13.1,5.1,13.1,2.6,0M48.7,20c-2.6,13.1,5.1,13.1,2.6,0M77,20h0M23,20h0"/>
+    <path class="st2" d="M19.8,61.6c13.1,2.6,13.1,12.9,0,15.4M19.8,61.6c-13.1-2.6-13.1,5.1,0,2.6M19.8,23c13.1,2.6,13.1,12.9,0,15.4M19.8,35.9c13.1,2.6,13.1,12.9,0,15.4M19.8,48.7c13.1,2.6,13.1,12.9,0,15.4M19.8,35.9c-13.1-2.6-13.1,5.1,0,2.6M19.8,48.7c-13.1-2.6-13.1,5.1,0,2.6M19.8,77h0M19.8,23h0"/>
     <g>
       <g>
-        <line class="st0" x1="91.2" y1="32.4" x2="18.5" y2="5"/>
-        <polygon points="23.3 1.7 4.9 -.2 19.9 10.6 23.3 1.7"/>
+        <line class="st1" x1="7.4" y1="91.2" x2="34.8" y2="18.5"/>
+        <polygon points="38.1 23.3 40 4.9 29.2 19.9 38.1 23.3"/>
       </g>
-      <line class="st3" x1="91.2" y1="32.4" x2="18.5" y2="5"/>
-      <line class="st3" x1="91.2" y1="32.4" x2="18.5" y2="5"/>
+      <line class="st0" x1="7.4" y1="91.2" x2="34.8" y2="18.5"/>
+      <line class="st0" x1="7.4" y1="91.2" x2="34.8" y2="18.5"/>
     </g>
   </g>
   <g id="leads">
-    <line class="st1" x1="23" y1="20" y2="20"/>
-    <line class="st1" x1="100" y1="20" x2="77" y2="20"/>
-  </g>
-  <g id="ports">
-    <circle id="port:left" class="st2" cy="20" r="3"/>
-    <circle id="port:right" class="st2" cx="100" cy="20" r="3"/>
+    <line class="st2" x1="19.8" y1="23" x2="19.8" y2="0"/>
+    <line class="st2" x1="19.8" y1="100" x2="19.8" y2="77"/>
   </g>
 </svg>

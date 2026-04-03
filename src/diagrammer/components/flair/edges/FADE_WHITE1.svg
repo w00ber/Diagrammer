@@ -1,21 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 509.4 200">
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="0 0 509.4 200">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
   <defs>
-    <linearGradient id="fade" x1="509.4" y1="100" x2="0" y2="100" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fff" stop-opacity="1"/>
-      <stop offset="0.5" stop-color="#fff" stop-opacity="1"/>
-      <stop offset="0.7" stop-color="#fff" stop-opacity="0.85"/>
-      <stop offset="0.8" stop-color="#fff" stop-opacity="0.6"/>
-      <stop offset="0.9" stop-color="#fff" stop-opacity="0.3"/>
-      <stop offset="0.95" stop-color="#fff" stop-opacity="0.1"/>
+    <style>
+      .st0 {
+        fill: url(#linear-gradient);
+      }
+    </style>
+    <linearGradient id="linear-gradient" x1="509.4" y1="104" x2="0" y2="104" gradientTransform="translate(0 202) scale(1 -1)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset=".5" stop-color="#fff"/>
+      <stop offset=".7" stop-color="#fff" stop-opacity=".9"/>
+      <stop offset=".8" stop-color="#fff" stop-opacity=".6"/>
+      <stop offset=".9" stop-color="#fff" stop-opacity=".3"/>
+      <stop offset=".9" stop-color="#fff" stop-opacity=".1"/>
       <stop offset="1" stop-color="#fff" stop-opacity="0"/>
     </linearGradient>
   </defs>
-  <g id="decorative"/>
   <g id="snap">
     <circle cx="68.5" cy="100" r="2"/>
   </g>
   <g id="artwork">
-    <path fill="url(#fade)" d="M15.9,35.7c0,11-10.7,11-10.7,22s10.7,11,10.7,22-10.7,11-10.7,22,10.7,11,10.7,22-10.7,11-10.7,22,9.1,14.2,10.9,19.8h493.3V30.5H15.8c.1,1.4.1,3.1.1,5.1h0Z"/>
+    <path class="st0" d="M15.9,35.7c0,11-10.7,11-10.7,22s10.7,11,10.7,22-10.7,11-10.7,22,10.7,11,10.7,22-10.7,11-10.7,22,9.1,14.2,10.9,19.8h493.3V30.5H15.8c.1,1.4.1,3.1.1,5.1h0Z"/>
   </g>
 </svg>

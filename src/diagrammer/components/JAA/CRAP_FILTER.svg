@@ -1,0 +1,44 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns:ns0="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104.0 184.0">
+  <g id="artwork">
+    <g transform="matrix(1.0000,0.0000,0.0000,1.0000,22.0,22.0)">
+      <style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1 {
+        fill: #fff;
+        stroke-linejoin: round;
+      }
+
+      .st1, .st2 {
+        stroke: #000;
+        stroke-width: 3px;
+      }
+
+      .st3 {
+        display: none;
+      }
+
+      .st4 {
+        stroke: #999;
+        stroke-width: .5px;
+      }
+
+      .st4, .st2 {
+        fill: none;
+        stroke-miterlimit: 10;
+      }
+    </style>
+      <ns0:rect class="st2" x="9.8" y="21.8" width="40.5" height="96.5" />
+      <ns0:path class="st1" d="M30.1,0v21.7" />
+      <ns0:path class="st1" d="M30.1,118.3v21.7" />
+    </g>
+    <text x="68.5" y="79.6" font-family="CMU Sans Serif" font-size="20.0" fill="#000000" font-weight="bold">CRAP</text>
+  </g>
+  <g id="ports">
+    <circle id="port:left" cx="52.1" cy="22.0" r="3" fill="#c66" />
+    <circle id="port:right" cx="52.1" cy="162.1" r="3" fill="#c66" />
+  </g>
+</svg>

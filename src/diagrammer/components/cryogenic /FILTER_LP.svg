@@ -8,49 +8,56 @@
       }
 
       .st1 {
-        fill: #ccc;
-      }
-
-      .st2 {
         fill: #fff;
         stroke-linejoin: round;
       }
 
-      .st2, .st3 {
+      .st1, .st2, .st3 {
         stroke: #000;
+      }
+
+      .st1, .st3 {
         stroke-width: 3px;
       }
 
-      .st4 {
-        display: none;
+      .st2 {
+        fill: #ccc;
+        stroke-width: 1.5px;
+      }
+
+      .st2, .st4, .st3 {
+        stroke-miterlimit: 10;
       }
 
       .st5 {
+        display: none;
+      }
+
+      .st4 {
         stroke: #999;
         stroke-width: .5px;
       }
 
-      .st5, .st3 {
+      .st4, .st3 {
         fill: none;
-        stroke-miterlimit: 10;
       }
     </style>
   </defs>
-  <g id="guides" class="st4">
-    <rect class="st5" x="-6.8" y="58.2" width="50" height="20"/>
+  <g id="guides" class="st5">
+    <rect class="st4" x="-6.8" y="58.2" width="50" height="20"/>
   </g>
   <g id="ports">
     <circle id="port:left" class="st0" cx="30.1" r="3"/>
     <circle id="port:right" class="st0" cx="30.1" cy="140.1" r="3"/>
   </g>
   <g id="artwork">
-    <path class="st1" d="M13.1,21.7h-3.2v96.6h3.2v-44.6c0-5.4,4.1-7.4,9.8-8.8l9.3-2c2.5-.4,7.6-2.4,7.6-6.6V21.8H13.1Z"/>
+    <path class="st2" d="M13.1,21.7h-3.2v96.6h3.2v-44.6c0-5.4,4.1-7.4,9.8-8.8l9.3-2c2.5-.4,7.6-2.4,7.6-6.6V21.8H13.1Z"/>
     <rect class="st3" x="9.8" y="21.8" width="40.5" height="96.5"/>
   </g>
   <g id="leads">
-    <path class="st2" d="M30.1,0v21.7"/>
+    <path class="st1" d="M30.1,0v21.7"/>
   </g>
   <g id="leads1">
-    <path class="st2" d="M30.1,118.3v21.7"/>
+    <path class="st1" d="M30.1,118.3v21.7"/>
   </g>
 </svg>
