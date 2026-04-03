@@ -26,8 +26,14 @@ jobs:
     name: Build (${{ matrix.name }})
 
     steps:
+      - name: Configure git for Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.protectNTFS false
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v5
