@@ -25,6 +25,13 @@ def create_app(argv: list[str] | None = None) -> tuple[QApplication, MainWindow]
     """Create and return the QApplication and MainWindow instances."""
     if argv is None:
         argv = sys.argv
+
+    # On Windows, force software OpenGL to avoid black canvas on machines
+    # with incompatible GPU drivers (common with integrated Intel/AMD GPUs).
+    if sys.platform == "win32":
+        from PySide6.QtCore import Qt
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseSoftwareOpenGL)
+
     app = QApplication(argv)
     app.setApplicationName("Diagrammer")
     app.setOrganizationName("Diagrammer")
