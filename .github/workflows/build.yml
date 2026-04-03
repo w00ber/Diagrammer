@@ -26,14 +26,24 @@ jobs:
     name: Build (${{ matrix.name }})
 
     steps:
-      - name: Configure git for Windows
-        if: runner.os == 'Windows'
-        run: git config --global core.protectNTFS false
-
-      - name: Checkout
+      # macOS: full checkout (needs misc/ for .icns icon)
+      - name: Checkout (macOS)
+        if: runner.os == 'macOS'
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      # Windows: sparse checkout to avoid Icon\r file that NTFS rejects
+      - name: Checkout (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            src
+            diagrammer.spec
+            pyproject.toml
+          sparse-checkout-cone-mode: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
