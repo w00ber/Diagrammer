@@ -276,6 +276,9 @@ class DiagramSerializer:
                 item.setHtml(ad["html"])
             elif "text" in ad:
                 item.setPlainText(ad["text"])
+            if ad.get("rotation"):
+                item.setTransformOriginPoint(item.boundingRect().center())
+                item.setRotation(ad["rotation"])
             item.setPos(QPointF(ad["pos"][0], ad["pos"][1]))
             item._layer_index = ad.get("layer", 0)
             scene.addItem(item)
@@ -400,6 +403,7 @@ def _serialize_annotation(item) -> dict:
         "font_bold": item.font_bold,
         "font_italic": item.font_italic,
         "text_color": item.text_color.name(),
+        "rotation": item.rotation(),
         "layer": getattr(item, '_layer_index', 0),
         "z": item.zValue(),
         "group": getattr(item, '_group_ids', []) or [],

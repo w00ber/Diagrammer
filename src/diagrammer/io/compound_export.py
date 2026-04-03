@@ -318,9 +318,14 @@ def _render_annotation(parent: ET.Element, annot, ox: float, oy: float) -> None:
     x = sc.x() - ox
     y = sc.y() - oy
 
+    rotation = annot.rotation()
+
     text = ET.SubElement(parent, "text")
     text.set("x", f"{x:.1f}")
     text.set("y", f"{y + annot.font_size:.1f}")  # SVG text y is baseline
+    if rotation:
+        # Rotate around the annotation's scene origin
+        text.set("transform", f"rotate({rotation:.1f},{x:.1f},{y:.1f})")
     text.set("font-family", annot.font_family)
     text.set("font-size", f"{annot.font_size}")
     text.set("fill", annot.text_color.name())

@@ -493,6 +493,17 @@ class DiagramView(QGraphicsView):
             if isinstance(item, PortItem) and not self._trace_routing:
                 item = item.component
 
+            # If a JunctionItem is hit but a selected connection has a
+            # waypoint at the same spot, redirect to the ConnectionItem so
+            # that waypoint drag takes priority over junction drag.
+            if isinstance(item, JunctionItem) and not self._trace_routing:
+                for si in self._diagram_scene.selectedItems():
+                    if isinstance(si, ConnectionItem):
+                        wi = si._find_waypoint_at(scene_pos)
+                        if wi is not None:
+                            item = si
+                            break
+
             # -- Trace routing mode: start from empty space or wire endpoint --
             if self._trace_routing and not self._diagram_scene.is_connecting:
                 # Not currently connecting — start a new trace
@@ -1240,7 +1251,7 @@ class DiagramView(QGraphicsView):
             self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
             self._diagram_scene.mode_changed.emit(InteractionMode.SELECT)
             # Uncheck trace mode action in main window
-            main_win = self.parent()
+            main_win = self.window()
             if hasattr(main_win, '_trace_mode_act'):
                 main_win._trace_mode_act.blockSignals(True)
                 main_win._trace_mode_act.setChecked(False)
@@ -1435,7 +1446,7 @@ class DiagramView(QGraphicsView):
                     selected.append(m)
 
         # Auto-include connected junctions (invisible T-junction markers)
-        main_win = self.parent()
+        main_win = self.window()
         if hasattr(main_win, '_gather_connected_junctions'):
             extra_juncs = main_win._gather_connected_junctions(selected)
             for j in extra_juncs:
@@ -1675,7 +1686,7 @@ class DiagramView(QGraphicsView):
                 snapped = self.snap(scene_pos)
                 self._diagram_scene.place_component(comp_def, snapped)
                 # Record as recently used
-                main_win = self.parent()
+                main_win = self.window()
                 if hasattr(main_win, '_library_panel'):
                     main_win._library_panel.record_use(key)
             event.acceptProposedAction()
@@ -1691,7 +1702,7 @@ class DiagramView(QGraphicsView):
         scene_pos = self.mapToScene(event.pos())
         item = self._item_at_pos(event.pos())
         menu = QMenu(self)
-        main_win = self.parent()
+        main_win = self.window()
 
         # Check for waypoint at this position on any selected connection
         wp_conn, wp_idx = self._find_any_waypoint_at(scene_pos)

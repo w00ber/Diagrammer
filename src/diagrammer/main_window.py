@@ -464,6 +464,7 @@ class MainWindow(QMainWindow):
 
     def _create_toolbar(self) -> None:
         toolbar = QToolBar("Grid", self)
+        toolbar.setObjectName("GridToolBar")
         toolbar.setMovable(False)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
 
@@ -1562,6 +1563,7 @@ class MainWindow(QMainWindow):
                 "font_bold": annot.font_bold,
                 "font_italic": annot.font_italic,
                 "text_color": annot.text_color.name(),
+                "rotation": annot.rotation(),
                 "group": list(annot._group_ids),
             })
         for conn in selected_conns:
@@ -1673,6 +1675,9 @@ class MainWindow(QMainWindow):
                     annot.font_italic = True
                 if "text_color" in entry:
                     annot.text_color = QColor(entry["text_color"])
+                if entry.get("rotation"):
+                    annot.setTransformOriginPoint(annot.boundingRect().center())
+                    annot.setRotation(entry["rotation"])
                 annot.setPos(pos)
                 self._scene.addItem(annot)
                 _remap_group(annot, entry)

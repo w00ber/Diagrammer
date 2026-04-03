@@ -7,40 +7,45 @@
         stroke-linejoin: bevel;
       }
 
-      .st0, .st1 {
-        fill: none;
-      }
-
-      .st0, .st1, .st2 {
+      .st0, .st1, .st2, .st3 {
         stroke: #000;
         stroke-linecap: round;
         stroke-width: 3px;
       }
 
-      .st1, .st2 {
+      .st0, .st1, .st3 {
+        fill: none;
+      }
+
+      .st1, .st2, .st3 {
         stroke-linejoin: round;
       }
 
-      .st3 {
+      .st4 {
         fill: #c66;
+      }
+
+      .st3 {
+        display: none;
       }
     </style>
   </defs>
   <g id="artwork">
     <g id="artwork1">
-      <circle class="st0" cx="40" cy="50.2" r="26.5"/>
-      <line class="st1" x1="75.4" y1="55.1" x2="57.7" y2="44.7"/>
-      <line class="st1" x1="57.7" y1="55.1" x2="75.4" y2="44.7"/>
-      <line class="st1" x1="22.3" y1="55.1" x2="4.6" y2="44.7"/>
-      <line class="st1" x1="4.6" y1="55.1" x2="22.3" y2="44.7"/>
+      <circle class="st0" cx="40" cy="50" r="26.5"/>
+      <line class="st1" x1="75.4" y1="54.9" x2="57.7" y2="44.5"/>
+      <line class="st1" x1="57.7" y1="54.9" x2="75.4" y2="44.5"/>
+      <line class="st1" x1="22.3" y1="54.9" x2="4.6" y2="44.5"/>
+      <line class="st1" x1="4.6" y1="54.9" x2="22.3" y2="44.5"/>
+      <rect class="st3" x="13.5" y="23.5" width="53" height="53"/>
     </g>
   </g>
   <g id="leads">
-    <path class="st2" d="M40,23.6V0"/>
+    <path class="st2" d="M40,23.5V0"/>
     <path class="st2" d="M40,100v-23.3"/>
   </g>
   <g id="ports">
-    <circle id="port:bot" class="st3" cx="40.1" r="3"/>
-    <circle id="port:top" class="st3" cx="40.1" cy="100" r="3"/>
+    <circle id="port:bot" class="st4" cx="40.1" r="3"/>
+    <circle id="port:top" class="st4" cx="40.1" cy="100" r="3"/>
   </g>
 </svg>
