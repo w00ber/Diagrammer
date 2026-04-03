@@ -418,6 +418,11 @@ class AnnotationItem(QGraphicsTextItem):
         return path
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None) -> None:
+        # Ensure antialiasing is enabled, especially for rotated text on macOS
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
         if self._math_renderer:
             # Render vector math SVG
             self._math_renderer.render(painter, self._math_rect)
