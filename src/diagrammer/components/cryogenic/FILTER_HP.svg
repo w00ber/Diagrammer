@@ -7,25 +7,29 @@
         fill: #c66;
       }
 
-      .st1 {
-        fill: #fff;
+      .st1, .st2 {
         stroke-linejoin: round;
+        stroke-width: 3px;
       }
 
       .st1, .st2, .st3 {
         stroke: #000;
       }
 
-      .st1, .st3 {
-        stroke-width: 3px;
+      .st1, .st4 {
+        fill: none;
       }
 
       .st2 {
+        fill: #fff;
+      }
+
+      .st3 {
         fill: #ccc;
         stroke-width: 1.5px;
       }
 
-      .st2, .st4, .st3 {
+      .st3, .st4 {
         stroke-miterlimit: 10;
       }
 
@@ -37,27 +41,23 @@
         stroke: #999;
         stroke-width: .5px;
       }
-
-      .st4, .st3 {
-        fill: none;
-      }
     </style>
   </defs>
   <g id="guides" class="st5">
     <rect class="st4" x="-6.8" y="58.2" width="50" height="20"/>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st0" cx="30" cy="0" r="3"/>
+    <circle id="port:left" class="st0" cx="30" r="3"/>
     <circle id="port:right" class="st0" cx="30" cy="140" r="3"/>
   </g>
   <g id="leads">
-    <path class="st1" d="M30,118.3v21.7"/>
-    <g id="leads1" data-name="leads">
-      <path class="st1" d="M30,0v21.7"/>
+    <path class="st2" d="M30,118.3v21.7"/>
+    <g id="leads1">
+      <path class="st2" d="M30,0v21.7"/>
     </g>
   </g>
   <g id="artwork">
-    <path class="st2" d="M13,118.3h-3.2V21.7h3.2v44.6c0,5.4,4.1,7.4,9.8,8.8l9.3,2c2.5.4,7.6,2.4,7.6,6.6v34.5s-26.6.1-26.6.1Z"/>
-    <rect class="st3" x="-18.2" y="49.8" width="96.5" height="40.5" transform="translate(100.1 40) rotate(90)"/>
+    <path class="st3" d="M13,118.3h-3.2V21.7h3.2v44.6c0,5.4,4.1,7.4,9.8,8.8l9.3,2c2.5.4,7.6,2.4,7.6,6.6v34.5H13.1c0,0,0,0,0,0Z"/>
+    <rect class="st1" x="9.8" y="21.8" width="40.5" height="96.5"/>
   </g>
 </svg>
