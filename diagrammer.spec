@@ -96,6 +96,7 @@ datas = [
     (str(PKG / "components"), "diagrammer/components"),
     (str(PKG / "icons"), "diagrammer/icons"),
     (str(PKG / "docs"), "diagrammer/docs"),
+    (str(PKG / "fonts"), "diagrammer/fonts"),
     (str(PKG / "defaults.yaml"), "diagrammer"),
 ]
 

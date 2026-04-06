@@ -58,6 +58,7 @@ if _sys.platform == "darwin":
     ]
 elif _sys.platform == "win32":
     FONT_FAMILIES = [
+        "CMU Serif", "CMU Sans Serif",
         "Cambria Math", "Times New Roman", "Calibri",
         "Arial", "Verdana", "Segoe UI",
         "Georgia", "Palatino Linotype",
