@@ -89,6 +89,33 @@ class AppSettings:
         self.last_directory: str = ""
         self.recent_files: list[str] = []
 
+        # User-saved compounds: when enabled, every compound saved via
+        # "Create Component from Selection" is automatically registered with
+        # the library. The list persists the actual file paths so they
+        # reappear on next launch.
+        self.auto_add_saved_compounds: bool = True
+        self.user_compound_files: list[str] = []
+
+        # Math rendering: when True, ``$$...$$`` display-math annotations
+        # are rendered through matplotlib's ``usetex`` mode (requires a
+        # system LaTeX install) in preference to the pure-Python ziamath
+        # backend. Useful when ziamath's bracket sizing or layout falls
+        # short and the user has MacTeX/TeX Live available.
+        self.prefer_system_latex_for_math: bool = False
+        # Optional explicit path to the directory containing the ``latex``
+        # binary (and friends like ``dvips``, ``gs``). Needed on macOS
+        # when launching from a .app bundle, because GUI processes don't
+        # inherit the shell PATH where ``/Library/TeX/texbin`` is added.
+        # Empty string means "use the inherited PATH".
+        self.latex_bin_path: str = ""
+        # Matrix typography knobs (LaTeX usetex path only). These map to
+        # \arraycolsep (inter-column spacing inside bmatrix/pmatrix/array)
+        # and \arraystretch (row-height multiplier). The LaTeX defaults
+        # are 5pt and 1.0 respectively — both look cramped through
+        # matplotlib's tight-bbox cropping.
+        self.latex_arraycolsep_pt: float = 48.0
+        self.latex_arraystretch: float = 1.15
+
     def save(self) -> None:
         """Persist settings to disk."""
         try:
@@ -113,6 +140,12 @@ class AppSettings:
                 "last_opened_file": self.last_opened_file,
                 "last_directory": self.last_directory,
                 "recent_files": self.recent_files[:10],
+                "auto_add_saved_compounds": self.auto_add_saved_compounds,
+                "user_compound_files": self.user_compound_files,
+                "prefer_system_latex_for_math": self.prefer_system_latex_for_math,
+                "latex_bin_path": self.latex_bin_path,
+                "latex_arraycolsep_pt": self.latex_arraycolsep_pt,
+                "latex_arraystretch": self.latex_arraystretch,
                 "default_annotation_font": self.default_annotation_font,
                 "default_annotation_size": self.default_annotation_size,
                 "default_annotation_color": self.default_annotation_color.name(),
@@ -162,6 +195,18 @@ class AppSettings:
                 self.last_opened_file = data.get("last_opened_file", "")
                 self.last_directory = data.get("last_directory", "")
                 self.recent_files = data.get("recent_files", [])[:10]
+                self.auto_add_saved_compounds = data.get(
+                    "auto_add_saved_compounds", self.auto_add_saved_compounds)
+                self.user_compound_files = data.get("user_compound_files", [])
+                self.prefer_system_latex_for_math = data.get(
+                    "prefer_system_latex_for_math",
+                    self.prefer_system_latex_for_math)
+                self.latex_bin_path = data.get(
+                    "latex_bin_path", self.latex_bin_path)
+                self.latex_arraycolsep_pt = data.get(
+                    "latex_arraycolsep_pt", self.latex_arraycolsep_pt)
+                self.latex_arraystretch = data.get(
+                    "latex_arraystretch", self.latex_arraystretch)
                 self.default_annotation_font = data.get("default_annotation_font", self.default_annotation_font)
                 self.default_annotation_size = data.get("default_annotation_size", self.default_annotation_size)
                 ac = data.get("default_annotation_color")
@@ -371,6 +416,12 @@ class SettingsDialog(QDialog):
         paths_group.setLayout(paths_layout)
         lib_layout.addWidget(paths_group)
 
+        # Auto-add saved compounds toggle
+        self._auto_add_compounds_cb = QCheckBox(
+            "Automatically add saved compounds to the library")
+        self._auto_add_compounds_cb.setChecked(settings.auto_add_saved_compounds)
+        lib_layout.addWidget(self._auto_add_compounds_cb)
+
         lib_layout.addStretch()
         tabs.addTab(lib_tab, "Libraries")
 
@@ -441,11 +492,80 @@ class SettingsDialog(QDialog):
         annot_group.setLayout(annot_form)
         annot_layout.addWidget(annot_group)
 
-        annot_hint = QLabel("Use $...$ in annotations for LaTeX math.\n"
+        annot_hint = QLabel("Use $...$ in annotations for inline LaTeX math\n"
+                            "and $$...$$ for display math (matrices, etc.).\n"
                             "STIX Two Text and CMU Serif closely match\n"
                             "TeX's Computer Modern style.")
         annot_hint.setStyleSheet("color: #666; font-size: 11px; margin-top: 8px;")
         annot_layout.addWidget(annot_hint)
+
+        # Display-math backend toggle. By default we prefer ziamath
+        # (pure-Python, no install) when available; users with a working
+        # MacTeX/TeX Live install may flip this on to get matplotlib's
+        # usetex pipeline instead — useful when ziamath's bracket sizing
+        # or layout falls short.
+        self._prefer_latex_cb = QCheckBox(
+            "Prefer system LaTeX over ziamath for $$...$$ display math")
+        self._prefer_latex_cb.setChecked(settings.prefer_system_latex_for_math)
+        self._prefer_latex_cb.setToolTip(
+            "Requires a system LaTeX install (MacTeX, TeX Live, MiKTeX). "
+            "When unchecked, ziamath is used if available."
+        )
+        annot_layout.addWidget(self._prefer_latex_cb)
+
+        # Explicit path to the LaTeX bin directory. macOS GUI apps
+        # launched from a .app bundle don't inherit the shell PATH where
+        # /Library/TeX/texbin lives, so users need a way to point us at
+        # the install explicitly.
+        from PySide6.QtWidgets import QLineEdit
+        latex_path_row = QHBoxLayout()
+        latex_path_row.addWidget(QLabel("LaTeX bin path:"))
+        self._latex_path_edit = QLineEdit(settings.latex_bin_path)
+        self._latex_path_edit.setPlaceholderText(
+            "Auto-detect (e.g. /Library/TeX/texbin)")
+        self._latex_path_edit.setToolTip(
+            "Directory containing the 'latex' binary. Leave blank to "
+            "use the inherited PATH. Typical values:\n"
+            "  • macOS (MacTeX): /Library/TeX/texbin\n"
+            "  • Linux (TeX Live): /usr/local/texlive/2024/bin/x86_64-linux\n"
+            "  • Homebrew (BasicTeX): /usr/local/texlive/.../bin/universal-darwin"
+        )
+        latex_path_row.addWidget(self._latex_path_edit, 1)
+        browse_btn = QPushButton("Browse…")
+        browse_btn.setAutoDefault(False)
+        browse_btn.clicked.connect(self._browse_latex_bin_path)
+        latex_path_row.addWidget(browse_btn)
+        annot_layout.addLayout(latex_path_row)
+
+        # Matrix typography knobs (LaTeX usetex path)
+        matrix_form = QFormLayout()
+        self._latex_arraycolsep_spin = QDoubleSpinBox()
+        self._latex_arraycolsep_spin.setRange(0.0, 128.0)
+        self._latex_arraycolsep_spin.setSingleStep(0.5)
+        self._latex_arraycolsep_spin.setSuffix(" pt")
+        self._latex_arraycolsep_spin.setValue(settings.latex_arraycolsep_pt)
+        self._latex_arraycolsep_spin.setToolTip(
+            "Inter-column spacing inside bmatrix / pmatrix / array. "
+            "LaTeX default is 5 pt; 6 pt feels closer to standard "
+            "typeset matrices."
+        )
+        matrix_form.addRow("Matrix column gap (\\arraycolsep):",
+                           self._latex_arraycolsep_spin)
+
+        self._latex_arraystretch_spin = QDoubleSpinBox()
+        self._latex_arraystretch_spin.setRange(0.5, 3.0)
+        self._latex_arraystretch_spin.setSingleStep(0.05)
+        self._latex_arraystretch_spin.setDecimals(2)
+        self._latex_arraystretch_spin.setValue(settings.latex_arraystretch)
+        self._latex_arraystretch_spin.setToolTip(
+            "Row-height multiplier inside matrix / array environments. "
+            "LaTeX default is 1.0; 1.15 adds a bit of vertical breathing "
+            "room."
+        )
+        matrix_form.addRow("Matrix row stretch (\\arraystretch):",
+                           self._latex_arraystretch_spin)
+
+        annot_layout.addLayout(matrix_form)
 
         reset_all_btn = QPushButton("Reset All to Original Defaults")
         reset_all_btn.setAutoDefault(False)
@@ -494,6 +614,14 @@ class SettingsDialog(QDialog):
             self._junc_color_btn.setStyleSheet(
                 f"background-color: {c.name()}; border: 1px solid #888;"
             )
+
+    def _browse_latex_bin_path(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+        start = self._latex_path_edit.text() or "/Library/TeX/texbin"
+        path = QFileDialog.getExistingDirectory(
+            self, "Select LaTeX bin directory", start)
+        if path:
+            self._latex_path_edit.setText(path)
 
     def _add_library_path(self) -> None:
         from PySide6.QtWidgets import QFileDialog
@@ -566,6 +694,13 @@ class SettingsDialog(QDialog):
             self._lib_paths_list.item(i).text()
             for i in range(self._lib_paths_list.count())
         ]
+        # Auto-add toggle for compounds saved via "Create Component"
+        self._settings.auto_add_saved_compounds = self._auto_add_compounds_cb.isChecked()
+        # Prefer system LaTeX over ziamath for display math
+        self._settings.prefer_system_latex_for_math = self._prefer_latex_cb.isChecked()
+        self._settings.latex_bin_path = self._latex_path_edit.text().strip()
+        self._settings.latex_arraycolsep_pt = self._latex_arraycolsep_spin.value()
+        self._settings.latex_arraystretch = self._latex_arraystretch_spin.value()
         # Annotation defaults
         self._settings.default_annotation_font = self._annot_font_combo.currentText()
         self._settings.default_annotation_size = self._annot_size_spin.value()

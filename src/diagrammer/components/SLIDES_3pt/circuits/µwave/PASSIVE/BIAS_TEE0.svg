@@ -53,33 +53,33 @@
   <g id="ports">
     <circle id="port:left" class="st5" cx="90.1" r="3"/>
     <circle id="port:right" class="st5" cx="90" cy="100" r="3"/>
+    <g id="ports1">
+      <circle id="port:right1" class="st5" cy="59.7" r="3"/>
+    </g>
   </g>
   <g id="leads">
     <path class="st3" d="M90,0v9.7"/>
     <path class="st3" d="M90,90v10"/>
-  </g>
-  <g>
-    <g id="artwork">
-      <path class="st1" d="M31.9,60c1.8-13.1,9-13.1,10.7,0,1.7,13.1-3.5,13.1-1.7,0s9-13.1,10.7,0-3.6,13.1-1.8,0,9-13.1,10.7,0-3.5,13.1-1.7,0,9-13.1,10.7,0M69.4,60h0M31.9,60h0"/>
-    </g>
-    <g id="leads1">
-      <line class="st1" x1="31.9" y1="60" x2="20" y2="60"/>
-      <line class="st1" x1="89.5" y1="60" x2="69.4" y2="60"/>
+    <g id="leads2">
+      <path class="st3" d="M20,59.7H0"/>
     </g>
   </g>
-  <rect class="st2" x="20" y="10" width="100" height="80"/>
   <g id="artwork1">
     <g>
       <path class="st0" d="M108.7,35.3h-37.2"/>
       <path class="st0" d="M108.7,24.1h-37.2"/>
     </g>
-  </g>
-  <path class="st0" d="M90.1,9.7v14.4"/>
-  <path class="st0" d="M90.1,90v-54.6"/>
-  <g id="ports1">
-    <circle id="port:right1" class="st5" cy="59.7" r="3"/>
-  </g>
-  <g id="leads2">
-    <path class="st3" d="M20,59.7H0"/>
+    <path class="st0" d="M90.1,9.7v14.4"/>
+    <path class="st0" d="M90.1,90v-54.6"/>
+    <rect class="st2" x="20" y="10" width="100" height="80"/>
+    <g>
+      <g id="artwork">
+        <path class="st1" d="M31.9,60c1.8-13.1,9-13.1,10.7,0,1.7,13.1-3.5,13.1-1.7,0s9-13.1,10.7,0-3.6,13.1-1.8,0,9-13.1,10.7,0-3.5,13.1-1.7,0,9-13.1,10.7,0M69.4,60h0M31.9,60h0"/>
+      </g>
+      <g id="leads1">
+        <line class="st1" x1="31.9" y1="60" x2="20" y2="60"/>
+        <line class="st1" x1="89.5" y1="60" x2="69.4" y2="60"/>
+      </g>
+    </g>
   </g>
 </svg>

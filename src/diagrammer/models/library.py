@@ -46,10 +46,14 @@ class ComponentLibrary:
             if any(part.startswith(".") for part in rel.parts):
                 continue
 
-            # Category is the parent directory path relative to root
+            # Category is the parent directory path relative to root.
+            # Top-level SVGs (no subdirectory) get the root folder's name
+            # as their category, so user libraries with a flat layout
+            # still appear in the panel.
             if len(rel.parts) < 2:
-                continue  # SVGs must be in at least one subdirectory
-            category = str(rel.parent).replace("\\", "/")
+                category = root.name or "user"
+            else:
+                category = str(rel.parent).replace("\\", "/")
 
             try:
                 comp_def = ComponentDef.from_svg(svg_file, category=category)
@@ -62,6 +66,32 @@ class ComponentLibrary:
                 self._categories[category].append(comp_def)
             except Exception as e:
                 print(f"Warning: failed to load {svg_file}: {e}")
+
+    def add_file(self, svg_file: Path, category: str | None = None) -> ComponentDef | None:
+        """Load a single SVG file into the library.
+
+        Used for user-saved compounds that live outside the builtin tree.
+        ``category`` defaults to the file's parent directory name.
+        Returns the loaded ComponentDef, or None on failure / duplicate.
+        """
+        if not svg_file.is_file():
+            return None
+        if category is None:
+            category = svg_file.parent.name or "user"
+        try:
+            comp_def = ComponentDef.from_svg(svg_file, category=category)
+        except Exception as e:
+            print(f"Warning: failed to load {svg_file}: {e}")
+            return None
+        key = f"{category}/{comp_def.name}"
+        if key in self._by_key:
+            # Replace existing entry so re-saving an edited compound updates it.
+            old = self._by_key[key]
+            bucket = self._categories.get(category, [])
+            self._categories[category] = [d for d in bucket if d is not old]
+        self._by_key[key] = comp_def
+        self._categories.setdefault(category, []).append(comp_def)
+        return comp_def
 
     def all_defs(self) -> list[ComponentDef]:
         """Return a flat list of all component definitions."""

@@ -1,0 +1,155 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns:ns0="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 224.0 224.0">
+  <g id="artwork">
+    <g transform="matrix(0.0000,1.0000,-1.0000,0.0000,62.0,22.0)">
+      <defs>
+        <ns0:style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1 {
+        stroke: #c03;
+        stroke-miterlimit: 10;
+        stroke-width: .9px;
+      }
+
+      .st1, .st2, .st3 {
+        fill: none;
+      }
+
+      .st2 {
+        stroke-linecap: round;
+        stroke-width: 3px;
+      }
+
+      .st2, .st4, .st3, .st5 {
+        stroke: #231f20;
+        stroke-linejoin: round;
+      }
+
+      .st4 {
+        stroke-width: 1.9px;
+      }
+
+      .st4, .st5 {
+        fill: #cccbcb;
+      }
+
+      .st3, .st5 {
+        stroke-width: 1.6px;
+      }
+    </ns0:style>
+      </defs>
+      <ns0:g>
+        <ns0:path class="st5" d="M113.5,33.6c-3.8,0-7-6.1-7-13.6s3.1-13.6,7-13.6H8.5c-3.8,0-7,6.1-7,13.6s3.1,13.6,7,13.6h105Z" />
+        <ns0:g>
+          <ns0:path class="st3" d="M120.1,24.1c-.9,5.5-3.5,9.5-6.6,9.5s-7-6.1-7-13.6,3.1-13.6,7-13.6,5.8,4,6.6,9.5" />
+          <ns0:path class="st4" d="M120.1,24.1" />
+        </ns0:g>
+        <ns0:path class="st2" d="M114.3,20" />
+      </ns0:g>
+      <ns0:line class="st2" x1=".5" y1="20" y2="20" />
+      <ns0:line class="st2" x1="120" y1="20" x2="113.2" y2="20" />
+    </g>
+    <g transform="matrix(1.0000,0.0000,0.0000,1.0000,82.0,142.0)">
+      <defs>
+        <ns0:style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1 {
+        stroke: #c03;
+        stroke-miterlimit: 10;
+        stroke-width: .9px;
+      }
+
+      .st1, .st2, .st3 {
+        fill: none;
+      }
+
+      .st2 {
+        stroke-linecap: round;
+        stroke-width: 3px;
+      }
+
+      .st2, .st4, .st3, .st5 {
+        stroke: #231f20;
+        stroke-linejoin: round;
+      }
+
+      .st4 {
+        stroke-width: 1.9px;
+      }
+
+      .st4, .st5 {
+        fill: #cccbcb;
+      }
+
+      .st3, .st5 {
+        stroke-width: 1.6px;
+      }
+    </ns0:style>
+      </defs>
+      <ns0:g>
+        <ns0:path class="st5" d="M113.5,33.6c-3.8,0-7-6.1-7-13.6s3.1-13.6,7-13.6H8.5c-3.8,0-7,6.1-7,13.6s3.1,13.6,7,13.6h105Z" />
+        <ns0:g>
+          <ns0:path class="st3" d="M120.1,24.1c-.9,5.5-3.5,9.5-6.6,9.5s-7-6.1-7-13.6,3.1-13.6,7-13.6,5.8,4,6.6,9.5" />
+          <ns0:path class="st4" d="M120.1,24.1" />
+        </ns0:g>
+        <ns0:path class="st2" d="M114.3,20" />
+      </ns0:g>
+      <ns0:line class="st2" x1=".5" y1="20" y2="20" />
+      <ns0:line class="st2" x1="120" y1="20" x2="113.2" y2="20" />
+    </g>
+    <g transform="matrix(1.0000,0.0000,0.0000,1.0000,22.0,122.0)">
+      <defs>
+        <ns0:style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1, .st2 {
+        fill: #cccbcb;
+      }
+
+      .st2 {
+        stroke-width: 1.9px;
+      }
+
+      .st2, .st3 {
+        stroke: #231f20;
+        stroke-linejoin: round;
+      }
+
+      .st3 {
+        fill: none;
+        stroke-width: 1.6px;
+      }
+
+      .st4 {
+        fill: #c99;
+      }
+
+      .st5 {
+        display: none;
+      }
+    </ns0:style>
+      </defs>
+      <ns0:g>
+        <ns0:path class="st1" d="M6.5,0v39c0,8.1,6.5,14.6,14.6,14.6h58.9s0-27.2,0-27.2h-43.2c-1.7,0-3.1-1.4-3.1-3.1V0" />
+        <ns0:path class="st2" d="M80.8,44.1" />
+        <ns0:path class="st3" d="M80,26.4h-43.2c-1.7,0-3.1-1.4-3.1-3.1V0" />
+        <ns0:path class="st3" d="M6.5,0v39c0,8.1,6.5,14.6,14.6,14.6h58.9" />
+      </ns0:g>
+    </g>
+  </g>
+  <g id="ports">
+    <circle id="port:left" cx="42.0" cy="22.0" r="3" fill="#c66" />
+    <circle id="port:right" cx="42.0" cy="142.0" r="3" fill="#c66" />
+    <circle id="port:right1" cx="42.1" cy="122.0" r="3" fill="#c66" />
+    <circle id="port:left_1" cx="82.0" cy="162.0" r="3" fill="#c66" />
+    <circle id="port:right_1" cx="202.0" cy="162.0" r="3" fill="#c66" />
+  </g>
+</svg>

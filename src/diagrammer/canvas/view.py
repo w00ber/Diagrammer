@@ -1684,7 +1684,30 @@ class DiagramView(QGraphicsView):
             if comp_def is not None:
                 scene_pos = self.mapToScene(event.position().toPoint())
                 snapped = self.snap(scene_pos)
-                self._diagram_scene.place_component(comp_def, snapped)
+                # Compounds: instantiate from the structural manifest so
+                # sub-components keep their stretchability and the placement
+                # can be ungrouped/edited.
+                if getattr(comp_def, "compound_manifest_path", None):
+                    from diagrammer.commands.add_compound_command import (
+                        AddCompoundCommand,
+                    )
+                    from diagrammer.io.compound_manifest import (
+                        load_compound_manifest,
+                    )
+                    manifest = load_compound_manifest(
+                        comp_def.compound_manifest_path)
+                    if manifest is not None:
+                        cmd = AddCompoundCommand(
+                            self._diagram_scene, manifest, snapped,
+                            self._diagram_scene.library, name=comp_def.name,
+                        )
+                        self._diagram_scene.undo_stack.push(cmd)
+                    else:
+                        # Fall back to the static SVG placement if the
+                        # manifest can't be parsed.
+                        self._diagram_scene.place_component(comp_def, snapped)
+                else:
+                    self._diagram_scene.place_component(comp_def, snapped)
                 # Record as recently used
                 main_win = self.window()
                 if hasattr(main_win, '_library_panel'):

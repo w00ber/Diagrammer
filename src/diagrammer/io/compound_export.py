@@ -51,8 +51,20 @@ def export_compound_component(
                     id(item.target_port.component) in selected_ids):
                 connections.append(item)
 
-    # Compute bounding rect
+    # Compute bounding rect — and build the render list in true scene
+    # stacking order so the exported compound matches the on-canvas Z order.
+    # scene.items() returns items top-first; reverse to get bottom-up so the
+    # topmost item is rendered last (and its CSS rules are appended last).
     all_items = components + connections + junctions + annotations + shapes
+    selected_ids_local = {id(i): i for i in all_items}
+    scene_order_top_first = [it for it in scene.items() if id(it) in selected_ids_local]
+    render_items = list(reversed(scene_order_top_first))
+    # Defensive: if scene.items() omits anything, append it at the end so
+    # it isn't silently dropped.
+    rendered_ids = {id(it) for it in render_items}
+    for it in all_items:
+        if id(it) not in rendered_ids:
+            render_items.append(it)
     union = QRectF()
     for item in all_items:
         union = union.united(item.sceneBoundingRect())
@@ -71,31 +83,28 @@ def export_compound_component(
     artwork = ET.SubElement(svg, "g")
     artwork.set("id", "artwork")
 
-    # Render each component as a <use> or inline group
-    for comp in components:
-        _render_component(artwork, comp, ox, oy)
-
-    # Render connections as paths
-    for conn in connections:
-        _render_connection(artwork, conn, ox, oy)
-
-    # Render junctions as dots
-    for junc in junctions:
-        if junc.isVisible():
-            sc = junc.mapToScene(QPointF(0, 0))
-            circle = ET.SubElement(artwork, "circle")
-            circle.set("cx", f"{sc.x() - ox:.1f}")
-            circle.set("cy", f"{sc.y() - oy:.1f}")
-            circle.set("r", "3")
-            circle.set("fill", "#323232")
-
-    # Render annotations as text
-    for annot in annotations:
-        _render_annotation(artwork, annot, ox, oy)
-
-    # Render shapes (rectangles, ellipses, lines)
-    for shape in shapes:
-        _render_shape(artwork, shape, ox, oy)
+    # Render every selected item in true z-order so the exported compound
+    # matches the on-canvas stacking (e.g. an elbow placed on top of a
+    # straight coax stays on top after export+reuse).
+    comp_idx = 0
+    for item in render_items:
+        if isinstance(item, ComponentItem):
+            _render_component(artwork, item, ox, oy, instance_index=comp_idx)
+            comp_idx += 1
+        elif isinstance(item, ConnectionItem):
+            _render_connection(artwork, item, ox, oy)
+        elif isinstance(item, JunctionItem):
+            if item.isVisible():
+                sc = item.mapToScene(QPointF(0, 0))
+                circle = ET.SubElement(artwork, "circle")
+                circle.set("cx", f"{sc.x() - ox:.1f}")
+                circle.set("cy", f"{sc.y() - oy:.1f}")
+                circle.set("r", "3")
+                circle.set("fill", "#323232")
+        elif isinstance(item, AnnotationItem):
+            _render_annotation(artwork, item, ox, oy)
+        elif isinstance(item, (ShapeItem, LineItem)):
+            _render_shape(artwork, item, ox, oy)
 
     # Collect ALL ports from all components in the selection
     all_ports = []
@@ -133,7 +142,8 @@ def export_compound_component(
     return True
 
 
-def _render_component(parent: ET.Element, comp, ox: float, oy: float) -> None:
+def _render_component(parent: ET.Element, comp, ox: float, oy: float,
+                      instance_index: int = 0) -> None:
     """Render a ComponentItem as inline SVG artwork at its scene position.
 
     For stretched components, rebuilds the SVG with stretched coordinates
@@ -269,17 +279,124 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float) -> None:
     g = ET2.SubElement(parent, "g")
     g.set("transform", f"matrix({m11:.4f},{m12:.4f},{m21:.4f},{m22:.4f},{dx_t:.1f},{dy_t:.1f})")
 
-    # Copy defs (styles) if present
+    # Find <defs> (if any) so we can copy *all* its children — clipPaths,
+    # gradients, markers, etc. — not just <style>. Stretchable components
+    # without an explicit <g id="tile"> rely on auto-generated clipPaths in
+    # <defs> to clip the tiled clones; if we drop those, the tiled artwork
+    # references missing clipPaths and renders as nothing.
+    defs_elem = None
     for elem in root.iter():
         tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
         if tag == "defs":
-            # Inline the style
-            for style_elem in elem:
-                style_tag = style_elem.tag.split("}")[-1] if "}" in style_elem.tag else style_elem.tag
-                if style_tag == "style" and style_elem.text:
-                    s = ET2.SubElement(g, "style")
-                    s.text = style_elem.text
+            defs_elem = elem
             break
+
+    # Namespace any ids AND CSS class names found inside this component's
+    # defs/artwork/leads so that multiple components inlined into the same
+    # SVG can't collide. The bundled SVGs all use Adobe-generated class
+    # names like ".st0", ".st1", ... so without prefixing, e.g. the elbow's
+    # ".st1 { fill: gray }" is overridden by the coax's ".st1 { stroke: red;
+    # fill: none }" (whichever <style> block appears later wins), making
+    # the elbow body lose its fill and gain a red stroke.
+    prefix = f"c{instance_index}_"
+    rename_map: dict[str, str] = {}
+    for subtree in (defs_elem, art_elem, leads_elem):
+        if subtree is None:
+            continue
+        for el in subtree.iter():
+            eid = el.get("id")
+            if eid:
+                new_id = prefix + eid
+                el.set("id", new_id)
+                rename_map[eid] = new_id
+
+    if rename_map:
+        import re
+        url_re = re.compile(r"url\(#([^)]+)\)")
+
+        def _rewrite_urls(value: str) -> str:
+            return url_re.sub(
+                lambda m: f"url(#{rename_map.get(m.group(1), m.group(1))})",
+                value,
+            )
+
+        for subtree in (defs_elem, art_elem, leads_elem):
+            if subtree is None:
+                continue
+            for el in subtree.iter():
+                for attr, val in list(el.attrib.items()):
+                    if "url(#" in val:
+                        el.set(attr, _rewrite_urls(val))
+                    elif attr == "href" or attr.endswith("}href"):
+                        if val.startswith("#") and val[1:] in rename_map:
+                            el.set(attr, "#" + rename_map[val[1:]])
+
+    # Collect every CSS class name actually used in this component's
+    # artwork/leads, then prefix all `class="…"` references and rewrite
+    # the `<style>` block selectors to match. We restrict to classes that
+    # are actually referenced so we don't mangle unrelated rules.
+    import re
+    used_classes: set[str] = set()
+    for subtree in (art_elem, leads_elem):
+        if subtree is None:
+            continue
+        for el in subtree.iter():
+            cls = el.get("class")
+            if cls:
+                for token in cls.split():
+                    used_classes.add(token)
+
+    if used_classes:
+        # Rewrite class attributes in artwork/leads.
+        for subtree in (art_elem, leads_elem):
+            if subtree is None:
+                continue
+            for el in subtree.iter():
+                cls = el.get("class")
+                if not cls:
+                    continue
+                new_tokens = [
+                    (prefix + t) if t in used_classes else t
+                    for t in cls.split()
+                ]
+                el.set("class", " ".join(new_tokens))
+
+        # Rewrite class selectors in any <style> blocks inside <defs>.
+        # Only rewrites in the *selector* portion (text before each '{')
+        # so we don't accidentally touch property values.
+        if defs_elem is not None:
+            class_token_re = re.compile(
+                r"\.(" + "|".join(re.escape(c) for c in used_classes) + r")\b"
+            )
+
+            def _prefix_selectors(css: str) -> str:
+                out = []
+                pos = 0
+                while pos < len(css):
+                    brace = css.find("{", pos)
+                    if brace == -1:
+                        out.append(css[pos:])
+                        break
+                    selectors = css[pos:brace]
+                    out.append(class_token_re.sub(lambda m: "." + prefix + m.group(1), selectors))
+                    end = css.find("}", brace)
+                    if end == -1:
+                        out.append(css[brace:])
+                        break
+                    out.append(css[brace:end + 1])
+                    pos = end + 1
+                return "".join(out)
+
+            for el in defs_elem.iter():
+                tag = el.tag.split("}")[-1] if "}" in el.tag else el.tag
+                if tag == "style" and el.text:
+                    el.text = _prefix_selectors(el.text)
+
+    # Copy all defs children into the per-instance group so refs resolve.
+    if defs_elem is not None and len(defs_elem) > 0:
+        defs_copy = ET2.SubElement(g, "defs")
+        for child in defs_elem:
+            defs_copy.append(child)
 
     # Copy artwork elements
     if art_elem is not None:

@@ -70,6 +70,11 @@ class ComponentDef:
     decorative: bool = False  # freely resizable, no ports/leads
     snap_point: tuple[float, float] | None = None  # optional snap anchor (from <g id="snap">)
     category: str = ""
+    # If this def came from a user-saved compound, the path to its sibling
+    # ``.dgmcomp`` manifest. When set, the canvas drop handler instantiates
+    # the manifest as a group instead of placing the SVG as a single item,
+    # which preserves stretchability and lets the user ungroup and edit.
+    compound_manifest_path: Path | None = None
 
     @property
     def width(self) -> float:
@@ -131,6 +136,10 @@ class ComponentDef:
         if not decorative and not ports and snap_point is not None:
             decorative = True
 
+        manifest_path = path.with_suffix(".dgmcomp")
+        if not manifest_path.is_file():
+            manifest_path = None
+
         return cls(
             name=path.stem,
             svg_path=path,
@@ -149,6 +158,7 @@ class ComponentDef:
             decorative=decorative,
             snap_point=snap_point,
             category=category,
+            compound_manifest_path=manifest_path,
         )
 
 

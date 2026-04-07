@@ -57,6 +57,17 @@ class MainWindow(QMainWindow):
             p = Path(custom_path)
             if p.is_dir():
                 self._library.scan(p)
+        # Load individually-registered user compounds (saved via
+        # "Create Component from Selection"). Drop any whose file is gone.
+        surviving: list[str] = []
+        for f in app_settings.user_compound_files:
+            fp = Path(f)
+            if fp.is_file():
+                self._library.add_file(fp)
+                surviving.append(f)
+        if len(surviving) != len(app_settings.user_compound_files):
+            app_settings.user_compound_files = surviving
+            app_settings.save()
 
         # -- Scene and View --
         self._scene = DiagramScene(library=self._library, parent=self)
@@ -659,6 +670,12 @@ class MainWindow(QMainWindow):
         if dlg.exec() == SettingsDialog.DialogCode.Accepted:
             dlg.apply()
             self._apply_settings()
+            # If the user changed the LaTeX bin path, force the next math
+            # render to re-probe so the new path takes effect immediately.
+            from diagrammer.items.annotation_item import (
+                invalidate_latex_availability_cache,
+            )
+            invalidate_latex_availability_cache()
             # Rescan custom library paths (may have changed)
             for custom_path in app_settings.custom_library_paths:
                 p = Path(custom_path)
@@ -2104,8 +2121,26 @@ class MainWindow(QMainWindow):
             app_settings.save()
 
     def _create_component_from_selection(self) -> None:
-        """Export selected items as a reusable SVG component in the library."""
-        from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
+        """Export selected items as a reusable component in the library.
+
+        The user picks one of two formats:
+
+        * **Flattened SVG** — bakes the current geometry into a single static
+          SVG. Smallest, most portable, and renders identically anywhere; but
+          stretchable sub-components lose their stretchability and the
+          placement is a single opaque item that can't be ungrouped.
+
+        * **Structural compound (.dgmcomp + preview .svg)** — writes a JSON
+          manifest of the sub-items alongside a preview SVG. Stretchable
+          sub-components stay stretchable, individual styles round-trip,
+          and the placement can be ungrouped to edit pieces. Requires the
+          original sub-components' library entries to be present on the
+          machine where the file is opened.
+        """
+        from PySide6.QtWidgets import (
+            QDialog, QDialogButtonBox, QFileDialog, QInputDialog, QLabel,
+            QMessageBox, QRadioButton, QVBoxLayout,
+        )
 
         selected = self._scene.selectedItems()
         if not selected:
@@ -2120,9 +2155,58 @@ class MainWindow(QMainWindow):
             return
         name = name.strip()
 
-        # Ask for save location within components directory
-        from diagrammer.models.library import ComponentLibrary
-        comp_dir = Path(__file__).resolve().parent / "components"
+        # Ask which format to save in
+        fmt_dlg = QDialog(self)
+        fmt_dlg.setWindowTitle("Save Compound — Choose Format")
+        fmt_layout = QVBoxLayout(fmt_dlg)
+        intro = QLabel(
+            "Save '<b>{n}</b>' as:".format(n=name))
+        intro.setTextFormat(Qt.TextFormat.RichText)
+        fmt_layout.addWidget(intro)
+
+        rb_compound = QRadioButton("Structural compound (.dgmcomp + preview .svg)")
+        rb_compound.setChecked(True)
+        fmt_layout.addWidget(rb_compound)
+        compound_caveats = QLabel(
+            "  • Stretchable sub-components stay stretchable.\n"
+            "  • Per-instance styles round-trip exactly.\n"
+            "  • Placement can be ungrouped to edit individual pieces.\n"
+            "  • Requires the original sub-component libraries on any\n"
+            "    machine where the file is opened."
+        )
+        compound_caveats.setStyleSheet("color: #555; margin-left: 18px;")
+        fmt_layout.addWidget(compound_caveats)
+
+        rb_svg = QRadioButton("Flattened SVG (single static file)")
+        fmt_layout.addWidget(rb_svg)
+        svg_caveats = QLabel(
+            "  • Self-contained, smallest, most portable.\n"
+            "  • Renders identically anywhere.\n"
+            "  • Sub-components lose their stretchability.\n"
+            "  • Placement is a single opaque item — cannot be ungrouped\n"
+            "    or edited piece-by-piece."
+        )
+        svg_caveats.setStyleSheet("color: #555; margin-left: 18px;")
+        fmt_layout.addWidget(svg_caveats)
+
+        btns = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(fmt_dlg.accept)
+        btns.rejected.connect(fmt_dlg.reject)
+        fmt_layout.addWidget(btns)
+
+        if fmt_dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        write_manifest = rb_compound.isChecked()
+
+        # Default save location: a writable user directory, NOT the builtin
+        # components folder. On macOS the package is shipped inside a signed
+        # .app bundle, so its components/ subdir lives under
+        # Foo.app/Contents/Resources/... which is read-only — opening the
+        # save dialog there causes "New Folder" to silently fail and the
+        # save panel treats the .app as an opaque package, blocking outward
+        # navigation. Use the user's home library dir instead.
+        comp_dir = Path(app_settings.last_directory) if app_settings.last_directory else Path()
         if not comp_dir.is_dir():
             comp_dir = Path.home() / ".diagrammer" / "components"
             comp_dir.mkdir(parents=True, exist_ok=True)
@@ -2137,14 +2221,37 @@ class MainWindow(QMainWindow):
             path += ".svg"
 
         from diagrammer.io.compound_export import export_compound_component
+        from diagrammer.io.compound_manifest import save_compound_manifest
+        # Both formats need the preview SVG (the library scans .svg files
+        # and the panel uses it for the thumbnail). The structural manifest
+        # is the optional sidecar that triggers the manifest-based drop
+        # path; without it, drops fall back to placing the static SVG.
         success = export_compound_component(
             self._scene, selected, Path(path), name
         )
+        if success and write_manifest:
+            manifest_path = Path(path).with_suffix(".dgmcomp")
+            save_compound_manifest(self._scene, selected, manifest_path, name)
+        elif success and not write_manifest:
+            # User explicitly chose flat SVG. If a stale manifest from a
+            # previous save exists at this path, remove it so the drop
+            # handler doesn't keep using the old structural version.
+            stale = Path(path).with_suffix(".dgmcomp")
+            if stale.exists():
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
         if success:
-            # Rescan library to pick up the new component
-            builtin_path = Path(__file__).resolve().parent / "components"
-            if builtin_path.is_dir():
-                self._library.scan(builtin_path)
+            app_settings.last_directory = str(Path(path).parent)
+            # Auto-register the new compound with the library so it appears
+            # in the panel immediately and on next launch. Disable via
+            # Settings → Libraries if undesired.
+            if app_settings.auto_add_saved_compounds:
+                if path not in app_settings.user_compound_files:
+                    app_settings.user_compound_files.append(path)
+                self._library.add_file(Path(path))
+            app_settings.save()
             self._library_panel._refresh_views()
             QMessageBox.information(self, "Component Created",
                                    f"'{name}' saved to:\n{path}")
