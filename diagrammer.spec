@@ -11,6 +11,8 @@ On macOS it creates a .app bundle in dist/Diagrammer.app.
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
 block_cipher = None
 
 # ── Paths ──────────────────────────────────────────────────────────────
@@ -100,6 +102,15 @@ datas = [
     (str(PKG / "defaults.yaml"), "diagrammer"),
 ]
 
+# ziamath / ziafont ship MathML schema files, font metrics, and bundled
+# fonts (STIX Two Math, etc.) inside their package directories. Without
+# pulling those data files in explicitly PyInstaller would only freeze
+# the .py modules and ziamath would fail at import or render time
+# looking for missing resources.
+datas += collect_data_files("ziamath")
+datas += collect_data_files("ziafont")
+datas += collect_data_files("latex2mathml")
+
 # ── Analysis ───────────────────────────────────────────────────────────
 a = Analysis(
     [str(PKG / "__main__.py")],
@@ -127,7 +138,17 @@ a = Analysis(
         "matplotlib.backends.backend_svg",
         "matplotlib.backends.backend_pdf",
         "matplotlib.backends.backend_ps",
-    ],
+        # ziamath is imported lazily inside _render_with_ziamath()
+        # in annotation_item.py via a top-level ``import ziamath``
+        # statement nested in a function. PyInstaller's static
+        # analyzer normally catches these, but we list it (and its
+        # transitive deps) explicitly so the frozen app definitely
+        # has the display-math renderer available without needing
+        # a system LaTeX install.
+        "ziamath",
+        "ziafont",
+        "latex2mathml",
+    ] + collect_submodules("ziamath") + collect_submodules("ziafont"),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

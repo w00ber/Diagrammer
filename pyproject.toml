@@ -15,18 +15,19 @@ authors = [
 dependencies = [
     "PySide6-Essentials>=6.6",
     "matplotlib>=3.5",
+    # Pure-Python LaTeX-math-to-SVG renderer used for display math
+    # (e.g. matrices) in annotations. Bundling it as a base dependency
+    # means users get matrix / display-math rendering in annotations
+    # out of the box without needing a system LaTeX install. The
+    # annotation pipeline still falls back to matplotlib's usetex /
+    # mathtext if ziamath cannot parse a particular expression.
+    "ziamath>=0.9",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "pyinstaller>=6.0",
-]
-# Pure-Python LaTeX-math-to-SVG renderer used for display math
-# (e.g. matrices) in annotations, so users don't need a system LaTeX
-# install. Falls back to matplotlib's usetex / mathtext if absent.
-math = [
-    "ziamath>=0.9",
 ]
 
 [project.scripts]
