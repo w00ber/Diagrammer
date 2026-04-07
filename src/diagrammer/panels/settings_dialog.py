@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -249,6 +250,18 @@ class SettingsDialog(QDialog):
         tabs = QTabWidget()
         layout.addWidget(tabs)
 
+        def _scrollable(content: QWidget) -> QScrollArea:
+            # Wrap a tab's content in a scroll area so that tabs with a lot
+            # of widgets (notably the library category list) don't force the
+            # whole dialog's minimum size to match their natural height,
+            # which otherwise makes the dialog fill the screen vertically
+            # with no way to shrink it.
+            sa = QScrollArea()
+            sa.setWidgetResizable(True)
+            sa.setFrameShape(QScrollArea.Shape.NoFrame)
+            sa.setWidget(content)
+            return sa
+
         # -- Line Styles tab --
         line_tab = QWidget()
         line_layout = QVBoxLayout(line_tab)
@@ -287,7 +300,7 @@ class SettingsDialog(QDialog):
         line_layout.addWidget(line_reset, alignment=Qt.AlignmentFlag.AlignRight)
         line_layout.addStretch()
 
-        tabs.addTab(line_tab, "Line Styles")
+        tabs.addTab(_scrollable(line_tab), "Line Styles")
 
         # -- Snap Behavior tab --
         snap_tab = QWidget()
@@ -320,7 +333,7 @@ class SettingsDialog(QDialog):
         snap_layout.addWidget(snap_reset, alignment=Qt.AlignmentFlag.AlignRight)
         snap_layout.addStretch()
 
-        tabs.addTab(snap_tab, "Snap Behavior")
+        tabs.addTab(_scrollable(snap_tab), "Snap Behavior")
 
         # -- Libraries tab --
         lib_tab = QWidget()
@@ -423,7 +436,7 @@ class SettingsDialog(QDialog):
         lib_layout.addWidget(self._auto_add_compounds_cb)
 
         lib_layout.addStretch()
-        tabs.addTab(lib_tab, "Libraries")
+        tabs.addTab(_scrollable(lib_tab), "Libraries")
 
         # -- Junction tab --
         junc_tab = QWidget()
@@ -455,7 +468,7 @@ class SettingsDialog(QDialog):
         junc_group.setLayout(junc_form)
         junc_layout.addWidget(junc_group)
         junc_layout.addStretch()
-        tabs.addTab(junc_tab, "Junctions")
+        tabs.addTab(_scrollable(junc_tab), "Junctions")
 
         # -- Annotations tab --
         annot_tab = QWidget()
@@ -572,7 +585,7 @@ class SettingsDialog(QDialog):
         reset_all_btn.clicked.connect(self._reset_to_factory)
         annot_layout.addWidget(reset_all_btn, alignment=Qt.AlignmentFlag.AlignRight)
         annot_layout.addStretch()
-        tabs.addTab(annot_tab, "Annotations")
+        tabs.addTab(_scrollable(annot_tab), "Annotations")
 
         # -- OK / Cancel --
         btn_row = QHBoxLayout()
