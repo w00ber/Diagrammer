@@ -107,8 +107,26 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=[
-        # matplotlib backends needed for LaTeX rendering
+        # matplotlib backends needed for LaTeX rendering.
+        #
+        # Since PyInstaller 5.0 the matplotlib hook no longer auto-
+        # collects every backend; it only bundles backends referenced
+        # via a literal ``matplotlib.use("...")`` call or explicit
+        # import. Our annotation math pipeline calls
+        # ``fig.savefig(buf, format="svg")``, which lazily imports
+        # ``matplotlib.backends.backend_svg`` via ``importlib``. Without
+        # listing it here, the import fails at runtime in the frozen
+        # app and both inline ($...$) and display ($$...$$) math
+        # render as nothing. See pyinstaller/pyinstaller#6760.
+        #
+        # backend_pdf / backend_ps are included because matplotlib's
+        # ``text.usetex`` pipeline shells out to latex + dvips/dvipng
+        # and can pull those backends in for PostScript/PDF
+        # post-processing.
         "matplotlib.backends.backend_agg",
+        "matplotlib.backends.backend_svg",
+        "matplotlib.backends.backend_pdf",
+        "matplotlib.backends.backend_ps",
     ],
     hookspath=[],
     hooksconfig={},
