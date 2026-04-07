@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 60 140">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1 {
+        stroke: #933;
+      }
+
+      .st1, .st2, .st3 {
+        fill: none;
+      }
+
+      .st1, .st3 {
+        stroke-miterlimit: 10;
+      }
+
+      .st2, .st4 {
+        stroke: #000;
+        stroke-linejoin: round;
+        stroke-width: 3px;
+      }
+
+      .st4 {
+        fill: #fff;
+      }
+
+      .st5 {
+        display: none;
+      }
+
+      .st3 {
+        stroke: #999;
+        stroke-width: .5px;
+      }
+    </style>
+  </defs>
+  <g id="guides" class="st5">
+    <rect class="st3" x="-6.8" y="58.2" width="50" height="20"/>
+  </g>
+  <g id="ports">
+    <circle id="port:left" class="st0" cx="30.1" r="3"/>
+    <circle id="port:right" class="st0" cx="30.1" cy="140.1" r="3"/>
+  </g>
+  <g id="artwork">
+    <rect class="st2" x="9.8" y="21.8" width="40.5" height="96.5"/>
+  </g>
+  <g id="leads">
+    <path class="st4" d="M30.1,0v21.7"/>
+    <path class="st4" d="M30.1,118.3v21.7"/>
+  </g>
+  <g id="stretch">
+    <line id="stretch:h" class="st1" x1="-52.9" y1="70.1" x2="113.1" y2="70.1"/>
+  </g>
+</svg>

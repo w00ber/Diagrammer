@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 60 140">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1 {
+        stroke-linecap: round;
+      }
+
+      .st1, .st2, .st3 {
+        stroke: #000;
+        stroke-linejoin: round;
+        stroke-width: 2px;
+      }
+
+      .st1, .st2, .st4 {
+        fill: none;
+      }
+
+      .st5 {
+        fill: #666;
+      }
+
+      .st3 {
+        fill: #fff;
+      }
+
+      .st6 {
+        display: none;
+      }
+
+      .st4 {
+        stroke: #999;
+        stroke-miterlimit: 10;
+        stroke-width: .5px;
+      }
+    </style>
+  </defs>
+  <g id="guides" class="st6">
+    <rect class="st4" x="-6.8" y="58.2" width="50" height="20"/>
+  </g>
+  <g id="ports">
+    <circle id="port:left" class="st0" cx="30.1" r="3"/>
+    <circle id="port:right" class="st0" cx="30.1" cy="140.1" r="3"/>
+  </g>
+  <g id="leads">
+    <path class="st3" d="M30.1,0v21.7"/>
+    <path class="st3" d="M30.1,118.3v21.7"/>
+  </g>
+  <circle class="st5" cx="24.7" cy="65" r="1.8"/>
+  <circle class="st5" cx="28.5" cy="54.8" r="1.8"/>
+  <circle class="st5" cx="34.2" cy="47.2" r="1.8"/>
+  <circle class="st5" cx="25.6" cy="76.1" r="1.8"/>
+  <circle class="st5" cx="16.5" cy="63.3" r="1.8"/>
+  <circle class="st5" cx="46.1" cy="114.4" r="1.8"/>
+  <circle class="st5" cx="33.5" cy="94.5" r="1.8"/>
+  <circle class="st5" cx="15.7" cy="83.6" r="1.8"/>
+  <circle class="st5" cx="46.1" cy="59" r="1.8"/>
+  <circle class="st5" cx="42.7" cy="102.3" r="1.8"/>
+  <circle class="st5" cx="31" cy="63.6" r="1.8"/>
+  <circle class="st5" cx="23" cy="35.2" r="1.8"/>
+  <circle class="st5" cx="40.4" cy="47.8" r="1.8"/>
+  <circle class="st5" cx="18.1" cy="95.8" r="1.8"/>
+  <circle class="st5" cx="17.7" cy="50" r="1.8"/>
+  <circle class="st5" cx="39.5" cy="65.7" r="1.8"/>
+  <circle class="st5" cx="16.7" cy="29.2" r="1.8"/>
+  <circle class="st5" cx="17.8" cy="108.4" r="1.8"/>
+  <circle class="st5" cx="13.6" cy="114.4" r="1.8"/>
+  <circle class="st5" cx="14.1" cy="102.3" r="1.8"/>
+  <circle class="st5" cx="38.2" cy="38.3" r="1.8"/>
+  <circle class="st5" cx="13.6" cy="42.6" r="1.8"/>
+  <circle class="st5" cx="24.5" cy="82.7" r="1.8"/>
+  <path class="st5" d="M49.3,47.2"/>
+  <circle class="st5" cx="44" cy="92.2" r="1.8"/>
+  <circle class="st5" cx="12.9" cy="56.4" r="1.8"/>
+  <circle class="st5" cx="32.6" cy="87.4" r="1.8"/>
+  <path class="st5" d="M49.7,27.6c-1,0-1.8-.8-1.8-1.8s.8-1.8,1.8-1.8"/>
+  <circle class="st5" cx="19.3" cy="57.5" r="1.8"/>
+  <circle class="st5" cx="37.3" cy="55.9" r="1.8"/>
+  <circle class="st5" cx="35.5" cy="112" r="1.8"/>
+  <circle class="st5" cx="24" cy="23.6" r="1.8"/>
+  <circle class="st5" cx="13.9" cy="35.7" r="1.8"/>
+  <circle class="st5" cx="29.7" cy="107.8" r="1.8"/>
+  <circle class="st5" cx="14.1" cy="90.8" r="1.8"/>
+  <path class="st5" d="M50.1,94.2c-1,0-1.8-.8-1.8-1.8s.8-1.8,1.8-1.8"/>
+  <circle class="st5" cx="23.6" cy="51.4" r="1.8"/>
+  <circle class="st5" cx="32.3" cy="38.3" r="1.8"/>
+  <circle class="st5" cx="31.1" cy="30.4" r="1.8"/>
+  <circle class="st5" cx="35.2" cy="104.5" r="1.8"/>
+  <circle class="st5" cx="29.7" cy="100.5" r="1.8"/>
+  <circle class="st5" cx="18.9" cy="72.1" r="1.8"/>
+  <circle class="st5" cx="41.4" cy="72.7" r="1.8"/>
+  <circle class="st5" cx="35.2" cy="75.8" r="1.8"/>
+  <circle class="st5" cx="15.1" cy="77.3" r="1.8"/>
+  <circle class="st5" cx="31.4" cy="71.5" r="1.8"/>
+  <circle class="st5" cx="21" cy="88.9" r="1.8"/>
+  <circle class="st5" cx="44.9" cy="51.1" r="1.8"/>
+  <circle class="st5" cx="47.6" cy="79.4" r="1.8"/>
+  <path class="st5" d="M49.3,72.2"/>
+  <circle class="st5" cx="39.4" cy="86.9" r="1.8"/>
+  <circle class="st5" cx="22.5" cy="101.9" r="1.8"/>
+  <circle class="st5" cx="19.3" cy="40.8" r="1.8"/>
+  <circle class="st5" cx="25" cy="43.2" r="1.8"/>
+  <circle class="st5" cx="46.3" cy="108.2" r="1.8"/>
+  <circle class="st5" cx="36.5" cy="103.4" r="1.8"/>
+  <circle class="st5" cx="47.8" cy="85.8" r="1.8"/>
+  <path class="st5" d="M50.1,98.1c-1,0-1.8-.8-1.8-1.8s.8-1.8,1.8-1.8"/>
+  <circle class="st5" cx="45.2" cy="99.3" r="1.8"/>
+  <circle class="st5" cx="36.2" cy="110.3" r="1.8"/>
+  <circle class="st5" cx="24.1" cy="107" r="1.8"/>
+  <circle class="st5" cx="18.9" cy="114.4" r="1.8"/>
+  <circle class="st5" cx="14.7" cy="83.3" r="1.8"/>
+  <circle class="st5" cx="29.8" cy="77.6" r="1.8"/>
+  <circle class="st5" cx="12.3" cy="74.7" r="1.8"/>
+  <circle class="st5" cx="41.1" cy="89.7" r="1.8"/>
+  <circle class="st5" cx="27.1" cy="92" r="1.8"/>
+  <circle class="st5" cx="20.7" cy="37.7" r="1.8"/>
+  <circle class="st5" cx="17.6" cy="58.2" r="1.8"/>
+  <circle class="st5" cx="23.2" cy="49.2" r="1.8"/>
+  <circle class="st5" cx="38.1" cy="58.1" r="1.8"/>
+  <circle class="st5" cx="43.3" cy="65.1" r="1.8"/>
+  <circle class="st5" cx="44" cy="51.4" r="1.8"/>
+  <path class="st5" d="M48.8,69.7"/>
+  <circle class="st5" cx="45.2" cy="24.8" r="1.8"/>
+  <circle class="st5" cx="13.2" cy="30.5" r="1.8"/>
+  <circle class="st5" cx="35.4" cy="31.1" r="1.8"/>
+  <circle class="st5" cx="42.6" cy="37.4" r="1.8"/>
+  <circle class="st5" cx="47.6" cy="35.2" r="1.8"/>
+  <circle class="st5" cx="36" cy="43.5" r="1.8"/>
+  <circle class="st5" cx="29.8" cy="23.7" r="1.8"/>
+  <circle class="st5" cx="44.5" cy="73.2" r="1.8"/>
+  <circle class="st5" cx="31.9" cy="86" r="1.8"/>
+  <circle class="st5" cx="39.9" cy="81.6" r="1.8"/>
+  <circle class="st5" cx="31.3" cy="69.2" r="1.8"/>
+  <circle class="st5" cx="31.3" cy="53.2" r="1.8"/>
+  <circle class="st5" cx="16.4" cy="71.1" r="1.8"/>
+  <circle class="st5" cx="27.8" cy="112.2" r="1.8"/>
+  <g id="artwork">
+    <path class="st1" d="M30,100.6c13.1,2.6,13.1,12.9,0,15.4M30,100.6c-13.1-2.6-13.1,5.1,0,2.6M30,74.9c13.1,2.6,13.1,12.9,0,15.4M30,87.7c13.1,2.6,13.1,12.9,0,15.4M30,74.9c-13.1-2.6-13.1,5.1,0,2.6M30,87.7c-13.1-2.6-13.1,5.1,0,2.6M30,118.9v-2.9h0"/>
+    <rect class="st2" x="9.8" y="21.8" width="40.5" height="96.5"/>
+    <g id="artwork1">
+      <path class="st1" d="M30,23.5c13.1,2.6,13.1,12.9,0,15.4M30,23.5c-1.9-.4-3.6-.5-4.9-.5M30,38.9h0"/>
+      <g id="artwork2">
+        <path class="st1" d="M30,62c13.1,2.6,13.1,12.9,0,15.4M30,62c-13.1-2.6-13.1,5.1,0,2.6M30,36.3c13.1,2.6,13.1,12.9,0,15.4M30,49.1c13.1,2.6,13.1,12.9,0,15.4M30,36.3c-13.1-2.6-13.1,5.1,0,2.6M30,49.1c-13.1-2.6-13.1,5.1,0,2.6M30,77.4h0"/>
+      </g>
+    </g>
+  </g>
+</svg>

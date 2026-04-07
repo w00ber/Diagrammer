@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 40 100">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0, .st1 {
+        fill: none;
+        stroke: #000;
+        stroke-linecap: round;
+        stroke-width: 2px;
+      }
+
+      .st0, .st2 {
+        stroke-miterlimit: 10;
+      }
+
+      .st3 {
+        fill: #c66;
+      }
+
+      .st1 {
+        stroke-linejoin: round;
+      }
+
+      .st2 {
+        fill: #fff;
+        stroke: #999;
+        stroke-width: .5px;
+      }
+
+      .st4 {
+        display: none;
+      }
+    </style>
+  </defs>
+  <g id="guides" class="st4">
+    <rect class="st2" x="-30" y="50" width="50" height="20"/>
+  </g>
+  <g id="ports">
+    <circle id="port:left" class="st3" cx="19.8" r="3"/>
+    <circle id="port:right" class="st3" cx="19.8" cy="100" r="3"/>
+  </g>
+  <g id="artwork">
+    <path class="st1" d="M19.8,23c13.1,2.6,13.1,12.9,0,15.4-13.1,2.5-13.1-5.1,0-2.5,13.1,2.6,13.1,12.9,0,15.4-13.1,2.5-13.1-5.2,0-2.6,13.1,2.6,13.1,12.9,0,15.4-13.1,2.5-13.1-5.1,0-2.5,13.1,2.6,13.1,12.9,0,15.4M19.8,77h0M19.8,23h0"/>
+  </g>
+  <g id="leads">
+    <line class="st1" x1="19.8" y1="23" x2="19.8"/>
+    <line class="st1" x1="19.8" y1="100" x2="19.8" y2="77"/>
+  </g>
+  <g>
+    <line class="st0" x1="6" y1="91.7" x2="34.1" y2="16.2"/>
+    <polygon points="36.9 20.1 38.3 4.9 29.4 17.3 36.9 20.1"/>
+  </g>
+</svg>

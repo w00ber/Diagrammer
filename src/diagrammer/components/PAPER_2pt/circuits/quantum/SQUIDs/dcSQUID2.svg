@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 100">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1, .st2 {
+        stroke-linejoin: round;
+        stroke-width: 2px;
+      }
+
+      .st1, .st2, .st3 {
+        stroke: #000;
+        stroke-linecap: round;
+      }
+
+      .st1, .st3 {
+        fill: none;
+      }
+
+      .st3 {
+        display: none;
+        stroke-linejoin: bevel;
+        stroke-width: 3px;
+      }
+    </style>
+  </defs>
+  <g id="artwork">
+    <g id="artwork1">
+      <circle class="st3" cx="40" cy="50" r="26.5"/>
+      <line class="st1" x1="75.4" y1="54.9" x2="57.7" y2="44.5"/>
+      <line class="st1" x1="57.7" y1="54.9" x2="75.4" y2="44.5"/>
+      <line class="st1" x1="22.3" y1="54.9" x2="4.6" y2="44.5"/>
+      <line class="st1" x1="4.6" y1="54.9" x2="22.3" y2="44.5"/>
+      <rect class="st1" x="13.5" y="23.5" width="53" height="53" rx="1.1" ry="1.1"/>
+    </g>
+  </g>
+  <g id="leads">
+    <path class="st2" d="M40,23.5V0"/>
+    <path class="st2" d="M40,100v-23.3"/>
+  </g>
+  <g id="ports">
+    <circle id="port:bot" class="st0" cx="40.1" r="3"/>
+    <circle id="port:top" class="st0" cx="40.1" cy="100" r="3"/>
+  </g>
+</svg>
