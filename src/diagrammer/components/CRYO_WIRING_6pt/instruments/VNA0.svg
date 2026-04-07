@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 200 100">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        stroke: #51ba65;
+        stroke-width: 1.8px;
+      }
+
+      .st0, .st1, .st2 {
+        stroke-miterlimit: 10;
+      }
+
+      .st0, .st2, .st3 {
+        fill: none;
+      }
+
+      .st1 {
+        fill: #fff;
+        stroke-width: 2.5px;
+      }
+
+      .st1, .st2, .st3 {
+        stroke: #231f20;
+      }
+
+      .st4 {
+        fill: #231f20;
+      }
+
+      .st5 {
+        fill: #cd6666;
+      }
+
+      .st3 {
+        stroke-linejoin: round;
+        stroke-width: .5px;
+      }
+    </style>
+  </defs>
+  <g id="artwork">
+    <rect class="st1" width="200" height="100"/>
+    <rect class="st4" x="8.2" y="9.5" width="95.4" height="73.8" rx="4" ry="4"/>
+    <circle class="st2" cx="126.1" cy="24" r="11.2"/>
+    <rect class="st3" x="153.3" y="16.6" width="9.9" height="9.9" rx="1.9" ry="1.9"/>
+    <rect class="st3" x="165.7" y="16.6" width="9.9" height="9.9" rx="1.9" ry="1.9"/>
+    <rect class="st3" x="178" y="16.6" width="9.9" height="9.9" rx="1.9" ry="1.9"/>
+    <rect class="st3" x="153.3" y="29" width="9.9" height="9.9" rx="1.9" ry="1.9"/>
+    <rect class="st3" x="165.7" y="29" width="9.9" height="9.9" rx="1.9" ry="1.9"/>
+    <rect class="st3" x="178" y="29" width="9.9" height="9.9" rx="1.9" ry="1.9"/>
+    <rect class="st3" x="153.3" y="41.3" width="9.9" height="9.9" rx="1.9" ry="1.9"/>
+    <rect class="st3" x="165.7" y="41.3" width="9.9" height="9.9" rx="1.9" ry="1.9"/>
+    <rect class="st3" x="178" y="41.3" width="9.9" height="9.9" rx="1.9" ry="1.9"/>
+    <circle class="st1" cx="140" cy="80" r="5"/>
+    <circle class="st1" cx="180" cy="80" r="5"/>
+    <path class="st0" d="M9.9,71.4h18.2c6.2,0,11.7-4.8,13.8-12l7.9-27.3c1.2-4.2,6.1-4.2,7.3,0l7.8,27.2c2.1,7.2,7.6,12,13.8,12h23.2"/>
+  </g>
+  <g id="ports">
+    <circle id="port:left" class="st5" cx="140" cy="80" r="3"/>
+    <circle id="port:left1" class="st5" cx="180" cy="80" r="3"/>
+  </g>
+</svg>
