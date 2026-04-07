@@ -430,12 +430,27 @@ def _render_connection(parent: ET.Element, conn, ox: float, oy: float) -> None:
 
 
 def _render_annotation(parent: ET.Element, annot, ox: float, oy: float) -> None:
-    """Render an AnnotationItem as SVG text."""
+    """Render an AnnotationItem as SVG.
+
+    For plain-text annotations we emit a regular ``<text>`` element.
+    For annotations whose source contains LaTeX math (``$...$`` or
+    ``$$...$$``), we re-run the math renderer to get the rendered SVG
+    bytes and inline the resulting paths into the compound — otherwise
+    a flat-SVG compound would just show the raw markdown source after
+    placement.
+    """
+    from diagrammer.items.annotation_item import _has_any_math, _render_latex_svg
+
     sc = annot.mapToScene(QPointF(0, 0))
     x = sc.x() - ox
     y = sc.y() - oy
-
     rotation = annot.rotation()
+
+    if _has_any_math(annot.source_text):
+        if _inline_math_annotation(parent, annot, x, y, rotation,
+                                   _render_latex_svg):
+            return
+        # Fall through to plain-text export if math rendering failed.
 
     text = ET.SubElement(parent, "text")
     text.set("x", f"{x:.1f}")
@@ -451,6 +466,70 @@ def _render_annotation(parent: ET.Element, annot, ox: float, oy: float) -> None:
     if annot.font_italic:
         text.set("font-style", "italic")
     text.text = annot.source_text
+
+
+def _inline_math_annotation(parent: ET.Element, annot, x: float, y: float,
+                            rotation: float, render_latex_svg) -> bool:
+    """Embed a rendered math annotation into the compound SVG.
+
+    Re-runs the math renderer (ziamath / matplotlib usetex / mathtext —
+    same pipeline as on-canvas display) to obtain SVG bytes, parses
+    them, lifts the inner content into a wrapping ``<g>`` placed at the
+    annotation's scene-relative position, and appends it to ``parent``.
+
+    Returns True on success, False if math rendering failed (in which
+    case the caller falls back to plain-text export).
+    """
+    import xml.etree.ElementTree as ET2
+
+    try:
+        svg_bytes = render_latex_svg(
+            annot.source_text, annot.font_size, annot.text_color,
+            font_family=annot.font_family,
+        )
+    except Exception:
+        return False
+    if not svg_bytes:
+        return False
+
+    try:
+        root = ET2.fromstring(svg_bytes)
+    except ET2.ParseError:
+        return False
+
+    # Parse the rendered SVG's viewBox so we can position correctly.
+    # ziamath emits viewBoxes with non-zero (often negative-y) origins;
+    # we shift the inlined content so its top-left lands at (x, y).
+    vb = root.get("viewBox", "")
+    vx = vy = 0.0
+    vw = vh = 0.0
+    if vb:
+        parts = vb.replace(",", " ").split()
+        if len(parts) == 4:
+            try:
+                vx, vy, vw, vh = (float(p) for p in parts)
+            except ValueError:
+                vx = vy = vw = vh = 0.0
+
+    # Build the transform: rotate around (x, y) if needed, then
+    # translate so the viewBox top-left lands at (x, y).
+    transform_parts: list[str] = []
+    if rotation:
+        transform_parts.append(f"rotate({rotation:.1f},{x:.1f},{y:.1f})")
+    transform_parts.append(f"translate({x - vx:.3f},{y - vy:.3f})")
+    transform = " ".join(transform_parts)
+
+    g = ET2.SubElement(parent, "g")
+    g.set("transform", transform)
+    g.set("data-source", "annotation-math")
+
+    # Copy every child of the rendered SVG root into our group. We
+    # include <defs> too — clipPaths/symbols/styles referenced by the
+    # paths must travel with them.
+    for child in list(root):
+        g.append(child)
+
+    return True
 
 
 def _render_shape(parent: ET.Element, shape, ox: float, oy: float) -> None:
