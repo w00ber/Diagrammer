@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 180 120">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        stroke-width: 2.7px;
+      }
+
+      .st0, .st1 {
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .st0, .st1, .st2, .st3, .st4 {
+        fill: none;
+      }
+
+      .st0, .st1, .st2, .st4 {
+        stroke: #000;
+      }
+
+      .st5 {
+        fill: #c66;
+      }
+
+      .st1 {
+        stroke-width: 2.1px;
+      }
+
+      .st2 {
+        stroke-linejoin: bevel;
+        stroke-width: 3px;
+      }
+
+      .st3 {
+        stroke: #999;
+        stroke-width: .2px;
+      }
+
+      .st3, .st4 {
+        stroke-miterlimit: 10;
+      }
+
+      .st4 {
+        stroke-width: 2px;
+      }
+
+      .st6 {
+        display: none;
+      }
+    </style>
+  </defs>
+  <g id="guides" class="st6">
+    <rect class="st3" x="71.8" y="46" width="50" height="50"/>
+  </g>
+  <g id="ports">
+    <circle id="port:2" class="st5" cx="180" cy="20.1" r="3"/>
+    <circle id="port:1" class="st5" cy="20.1" r="3"/>
+    <circle id="port:3" class="st5" cx="54.1" cy="120" r="3"/>
+    <circle id="port:31" class="st5" cx="127" cy="120.2" r="3"/>
+  </g>
+  <g id="artwork">
+    <polyline class="st1" points="60.7 94.5 60.7 104.1 47.5 104.1 47.5 94.5"/>
+    <line class="st2" x1="54.1" y1="104.1" x2="54.1" y2="120.1"/>
+    <polyline class="st1" points="133.6 94.5 133.6 104.1 120.4 104.1 120.4 94.5"/>
+    <line class="st2" x1="127" y1="104.1" x2="127" y2="120.1"/>
+    <g>
+      <polyline class="st1" points="24.1 35.7 15.8 30.9 22.4 19.5 30.7 24.3"/>
+      <polyline class="st2" points="19.1 25.2 10.3 20.1 0 20.1"/>
+    </g>
+    <g>
+      <polyline class="st1" points="150.9 25.8 159.2 21 165.8 32.4 157.5 37.2"/>
+      <polyline class="st2" points="162.5 26.7 173.9 20.1 180 20.1"/>
+    </g>
+    <polygon class="st0" points="90.6 7.9 40.6 7.9 15.6 51.2 40.6 94.5 90.6 94.5 90.5 94.5 140.5 94.5 165.5 51.2 140.5 7.9 90.5 7.9 90.6 7.9"/>
+    <path class="st1" d="M119.7,80.8"/>
+    <path class="st4" d="M68.2,81.2c-16.6,0-30-13.4-30-30s13.4-30,30-30h47.3c16.6,0,30,13.4,30,30s-13.4,30-30,30h-47.3Z"/>
+    <polygon points="144.5 73.6 132.2 76.2 136.1 64.3 144.5 73.6"/>
+    <polygon points="39.2 28.9 51.5 26.3 47.7 38.2 39.2 28.9"/>
+  </g>
+</svg>

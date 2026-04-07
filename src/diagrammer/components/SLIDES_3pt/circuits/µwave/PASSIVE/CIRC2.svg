@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 160 140">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        stroke-width: 2.4px;
+      }
+
+      .st0, .st1, .st2, .st3, .st4, .st5, .st6 {
+        fill: none;
+      }
+
+      .st0, .st1, .st2, .st3, .st4, .st6 {
+        stroke: #000;
+      }
+
+      .st0, .st1, .st2, .st3, .st6 {
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .st1 {
+        stroke-width: 2.5px;
+      }
+
+      .st2, .st4, .st6 {
+        stroke-width: 3px;
+      }
+
+      .st7 {
+        fill: #c66;
+      }
+
+      .st3 {
+        stroke-width: 2.1px;
+      }
+
+      .st4 {
+        stroke-linejoin: bevel;
+      }
+
+      .st5 {
+        stroke: #999;
+        stroke-miterlimit: 10;
+        stroke-width: .2px;
+      }
+
+      .st6, .st8 {
+        display: none;
+      }
+    </style>
+  </defs>
+  <g id="Layer_11">
+    <g id="guides" class="st8">
+      <rect class="st5" x="100.3" y="70.1" width="50" height="50"/>
+    </g>
+    <g id="ports">
+      <circle id="port:2" class="st7" cx="160" cy="29.7" r="3"/>
+      <circle id="port:1" class="st7" cy="29.7" r="3"/>
+      <circle id="port:3" class="st7" cx="80" cy="140" r="3"/>
+    </g>
+    <g id="artwork">
+      <g>
+        <g>
+          <circle class="st6" cx="80" cy="65.2" r="43.2"/>
+          <g>
+            <polygon points="98 52.8 108.4 58.7 108.4 46.8 98 52.8"/>
+            <polygon points="60.2 55.8 60.2 43.8 49.9 49.8 60.2 55.8"/>
+            <g>
+              <path class="st0" d="M80,93"/>
+              <polygon points="81.8 87 71.4 93 81.8 99 81.8 87"/>
+            </g>
+          </g>
+        </g>
+        <polyline class="st3" points="86.6 108.4 86.6 118 73.4 118 73.4 108.4"/>
+        <polyline class="st3" points="114.1 37.9 122.5 33.1 129.1 44.5 120.7 49.3"/>
+        <polyline class="st3" points="39.3 49.3 30.9 44.5 37.5 33.1 45.9 37.9"/>
+        <circle class="st1" cx="80.3" cy="64.9" r="28.1"/>
+      </g>
+      <polygon class="st2" points="105.3 21.6 55.3 21.6 30.3 64.9 55.3 108.2 105.3 108.2 130.3 64.9 105.3 21.6"/>
+    </g>
+    <g id="leads">
+      <path class="st4" d="M160,29.7h-18.7l-15.6,9"/>
+      <g id="leads1">
+        <g id="leads2">
+          <path class="st4" d="M33.4,38.2l-14.6-8.4H0"/>
+        </g>
+      </g>
+      <line class="st4" x1="80" y1="118" x2="80" y2="140"/>
+    </g>
+  </g>
+</svg>
