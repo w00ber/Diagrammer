@@ -38,4 +38,6 @@ diagrammer = [
     "icons/*.png",
     "components/**/*.svg",
     "docs/*.md",
+    "fonts/*.otf",
+    "fonts/OFL.txt",
 ]
