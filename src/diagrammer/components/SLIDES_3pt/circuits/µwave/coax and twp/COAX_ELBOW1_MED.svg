@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 80">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1, .st2 {
+        fill: #cccbcb;
+      }
+
+      .st2 {
+        stroke-width: 1.9px;
+      }
+
+      .st2, .st3 {
+        stroke: #231f20;
+        stroke-linejoin: round;
+      }
+
+      .st3 {
+        fill: none;
+        stroke-width: 1.6px;
+      }
+    </style>
+  </defs>
+  <g id="ports">
+    <circle id="port:right" class="st0" cx="80" cy="40" r="3"/>
+    <g id="ports1" data-name="ports">
+      <circle id="port:right1" data-name="port:right" class="st0" cx="19.8" r="3"/>
+    </g>
+  </g>
+  <g id="artwork">
+    <g>
+      <path class="st1" d="M6.4,0v39c0,8.1,6.5,14.6,14.6,14.6h59.1v-27.2h-43.4c-1.7,0-3.1-1.4-3.1-3.1V0"/>
+      <path class="st2" d="M80.1,44.1"/>
+      <path class="st3" d="M80.1,26.4h-43.4c-1.7,0-3.1-1.4-3.1-3.1V0"/>
+      <path class="st3" d="M6.4,0v39c0,8.1,6.5,14.6,14.6,14.6h59.1"/>
+    </g>
+  </g>
+</svg>
