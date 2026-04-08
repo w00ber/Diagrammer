@@ -3,51 +3,51 @@
   <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
   <defs>
     <style>
-      .st0 {
-        stroke-width: 1.7px;
-      }
-
       .st0, .st1, .st2, .st3, .st4, .st5 {
-        fill: none;
+        stroke: #000;
       }
 
-      .st0, .st1, .st2, .st3, .st6, .st7 {
-        stroke: #231f20;
-      }
-
-      .st0, .st1, .st2, .st3, .st6, .st7, .st5 {
+      .st0, .st1, .st2, .st3, .st4, .st5, .st6 {
         stroke-linejoin: round;
       }
 
-      .st0, .st2, .st3 {
-        stroke-linecap: round;
-      }
-
-      .st8 {
-        fill: #c66;
-      }
-
-      .st2 {
-        stroke-width: 2px;
-      }
-
-      .st3, .st7 {
+      .st0, .st2 {
         stroke-width: 1.9px;
       }
 
-      .st4 {
+      .st0, .st4 {
+        fill: #cccbcb;
+      }
+
+      .st7 {
+        fill: #c66;
+      }
+
+      .st8 {
         stroke: #c03;
         stroke-miterlimit: 10;
         stroke-width: .9px;
       }
 
-      .st6, .st7 {
-        fill: #cccbcb;
+      .st8, .st1, .st2, .st3, .st5, .st6 {
+        fill: none;
       }
 
-      .st5 {
+      .st1 {
+        stroke-width: 2px;
+      }
+
+      .st1, .st2, .st3 {
+        stroke-linecap: round;
+      }
+
+      .st3 {
+        stroke-width: 1.7px;
+      }
+
+      .st6 {
         stroke: #999;
-        stroke-width: .5px;
+        stroke-width: .2px;
       }
 
       .st9 {
@@ -55,31 +55,38 @@
       }
     </style>
   </defs>
-  <g id="Layer_2" class="st9">
-    <rect class="st5" width="8.7" height="20"/>
+  <g id="guide" class="st9">
+    <line class="st6" x1="120" x2="120" y2="40"/>
+    <line class="st6" y1="40"/>
+    <line class="st6" x1="20" x2="20" y2="40"/>
+    <line class="st6" x1="40" x2="40" y2="40"/>
+    <line class="st6" x1="60" x2="60" y2="40"/>
+    <line class="st6" x1="80" x2="80" y2="40"/>
+    <line class="st6" x1="100" x2="100" y2="40"/>
+    <line class="st6" x1="0" x2="120"/>
+    <line class="st6" x1="0" y1="20" x2="120" y2="20"/>
+    <line class="st6" x1="0" y1="40" x2="120" y2="40"/>
   </g>
-  <g id="Layer_11">
-    <g id="ports">
-      <circle id="port:left" class="st8" cy="20" r="3"/>
-      <circle id="port:right" class="st8" cx="120" cy="20" r="3"/>
-    </g>
-    <g id="stretch">
-      <line id="stretch:v" class="st4" x1="60" x2="60" y2="40"/>
-    </g>
-    <g id="leads">
-      <line class="st2" x1="3.2" y1="20" y2="20"/>
-      <line class="st2" x1="120" y1="20" x2="114.2" y2="20"/>
-    </g>
-    <g id="artwork">
+  <g id="ports">
+    <circle id="port:left" class="st7" cy="20" r="3"/>
+    <circle id="port:right" class="st7" cx="120" cy="20" r="3"/>
+  </g>
+  <g id="stretch">
+    <line id="stretch:v" class="st8" x1="60" x2="60" y2="40"/>
+  </g>
+  <g id="leads">
+    <line class="st1" x1="3.2" y1="20" y2="20"/>
+    <line class="st1" x1="120" y1="20" x2="114.2" y2="20"/>
+  </g>
+  <g id="artwork">
+    <g>
+      <path class="st3" d="M2.6,20"/>
+      <path class="st4" d="M114.3,27.5c-2.1,0-3.9-3.4-3.9-7.5s1.7-7.5,3.9-7.5H5.5c-2.1,0-3.9,3.4-3.9,7.5s1.7,7.5,3.9,7.5h108.8Z"/>
       <g>
-        <path class="st0" d="M2.6,20"/>
-        <path class="st6" d="M114.3,27.5c-2.1,0-3.9-3.4-3.9-7.5s1.7-7.5,3.9-7.5H5.5c-2.1,0-3.9,3.4-3.9,7.5s1.7,7.5,3.9,7.5h108.8Z"/>
-        <g>
-          <path class="st1" d="M117.9,22.3c-.5,3-1.9,5.2-3.6,5.2s-3.9-3.4-3.9-7.5,1.7-7.5,3.9-7.5,3.2,2.2,3.6,5.2"/>
-          <path class="st7" d="M117.9,22.3"/>
-        </g>
-        <path class="st3" d="M114.8,20"/>
+        <path class="st5" d="M117.9,22.3c-.5,3-1.9,5.2-3.6,5.2s-3.9-3.4-3.9-7.5,1.7-7.5,3.9-7.5,3.2,2.2,3.6,5.2"/>
+        <path class="st0" d="M117.9,22.3"/>
       </g>
+      <path class="st2" d="M114.8,20"/>
     </g>
   </g>
 </svg>

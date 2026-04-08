@@ -1,24 +1,50 @@
 # Diagrammer
 
-A tool for building diagrams — flowcharts, circuit schematics, and more — using a drag-and-drop interface with user-created SVG components.
+Diagrammer is a desktop app for building technical diagrams — circuit
+schematics, flowcharts, block diagrams, and anything else you can express
+with reusable SVG parts and routed connections — using a drag-and-drop
+canvas. The current version focuses on electrical and wiring diagrams from the context of cryogenic microwave circuits and quantum measurement, but the approach is general and should work for any domain where you can define a library of components with connection points, including flowcharts, data pipelines, software architecture diagrams, and whatever else you might cook up.
 
-Built with PySide6 (Qt for Python).
+Components are plain SVG files that you can easily author yourself, so the library grows with whatever domain you work in.
+
+![](docs/screenshot.png)
+
+## What it does
+
+Drop components from a library onto a snapping grid, wire them
+together with KiCad-style orthogonal autorouting, and annotate the result
+with text and LaTeX math. Components rotate, flip, and stretch; wires
+auto-shorten leads into rounded corners; selections cut, copy, and paste
+with their connection topology intact. Everything is undoable.
+
+Components are simple SVGs with named layers (`artwork`,
+`leads`, `ports`, `labels`, `stretch`). While Diagrammer ships with a lot of built-in components, you can also create your own in Inkscape or any SVG editor by following the spec in [docs/svg-component-spec.md](docs/svg-component-spec.md). Just drop your SVG files into categorized subdirectories under `components/` and they will appear in the library panel, or you can simply point to your library directory in the settings.
 
 ## Features
 
-- **SVG component library** with drag-and-drop placement, search, favorites, and recently used tracking
-- **KiCad-style wire routing** with orthogonal and 45-degree autorouting, waypoint placement, and segment dragging
-- **Port-based connections** with snap-to-port, snap-to-grid, and snap-to-angle
-- **Component transforms** — rotation (90° and fine 15° increments), flip H/V, stretchable components
-- **Rounded wire corners** with dynamic lead shortening for seamless component junctions
-- **Wire-to-wire junctions** for T-connections and branches
-- **Simple shape drawing** — rectangles, ellipses, lines with editable properties and resize handles
-- **Undo/redo** for all operations
-- **Cut/copy/paste** with connection topology preserved
-- **Zoom** — scroll wheel, Ctrl+/-, zoom window (Z key), zoom all (A key)
-- **Grid** — configurable spacing, snap toggle, visual grid with major/minor lines
-- **Settings** — persistent style preferences, routing options, library visibility
-- **LaTeX math in annotations** — inline `$...$` and display `$$...$$` (matrices, `align`, etc.) rendered as resolution-independent SVG via the bundled ziamath backend; optional system LaTeX path for full `usetex` support
+- **SVG component library** — drag-and-drop placement, search, favorites,
+  and recently-used tracking. Components are plain SVG files you author.
+- **KiCad-style wire routing** — orthogonal and 45° autorouting, manual
+  waypoint placement, segment dragging, and wire-to-wire T-junctions.
+- **Port-based connections** with snap-to-port, snap-to-grid, and
+  snap-to-angle.
+- **Component transforms** — 90° rotation, fine 15° rotation, horizontal
+  and vertical flip, and stretchable bodies for variable-length parts.
+- **Rounded wire corners** with dynamic lead shortening so junctions
+  meet components seamlessly.
+- **Simple shape drawing** — rectangles, ellipses, and lines with
+  editable properties and resize handles.
+- **Annotations with LaTeX math** — inline `$...$` and display `$$...$$`
+  (matrices, `align`, etc.) rendered as resolution-independent SVG. See
+  [docs/math-annotations.md](docs/math-annotations.md) for the rendering
+  backends and optional system-LaTeX setup.
+- **Undo/redo** for every operation, plus cut/copy/paste that preserves
+  connection topology.
+- **Zoom & pan** — scroll-wheel zoom at cursor, zoom-window mode, fit-all,
+  and middle-click pan.
+- **Configurable grid** with snap toggle and major/minor visual lines.
+- **Persistent settings** for style preferences, routing options, and
+  library visibility.
 
 ## Installation
 
@@ -34,154 +60,20 @@ pip install -e .
 python -m diagrammer
 ```
 
-Or if installed:
+... but the package also provides an entry point:
 
 ```bash
 diagrammer
 ```
 
-## Math in Annotations
+that you can execute directly from the command line.
 
-Annotations support LaTeX math via dollar-delimiter syntax. Double-click an
-annotation to edit it, then wrap math in delimiters:
-
-| Syntax | Mode | Example |
-|--------|------|---------|
-| `$...$` | Inline math | `Voltage is $V = IR$` |
-| `$$...$$` | Display math (centered, larger) | `$$\begin{bmatrix}A & B \\ C & D\end{bmatrix}$$` |
-
-When you finish editing, the math expressions are rasterized to vector SVG
-and rendered into the diagram at any zoom level without quality loss. The
-original LaTeX source is preserved so you can re-edit by double-clicking.
-
-### Rendering backends
-
-Diagrammer picks a renderer in this order:
-
-1. **ziamath** (pure-Python, bundled by default) — used for "pure" display
-   math expressions, including `bmatrix`, `pmatrix`, `align`, etc. No system
-   install required. This is the default for `$$...$$` blocks and is what
-   ships with the standalone macOS / Windows builds.
-2. **matplotlib mathtext** (built into matplotlib) — used for inline `$...$`
-   math and as a fallback. Supports a fixed subset of LaTeX (`\frac`,
-   `\sqrt`, `\sum`, Greek letters, etc.) but no environments like
-   `bmatrix`. No system install required.
-3. **matplotlib usetex** (shells out to a real LaTeX install) — optional
-   path for users who want to render the full LaTeX language with their
-   own preamble, fonts, and packages. Requires a system LaTeX
-   distribution and Ghostscript on `PATH`.
-
-### Optional: system LaTeX (`usetex` mode)
-
-You only need this if you want matplotlib's full LaTeX pipeline — most
-users can ignore it because ziamath already covers display math and
-matrices. Enable it via **Settings → Annotations → "Prefer system LaTeX
-over ziamath"**.
-
-`usetex` mode shells out to three external programs that must all be
-visible on the process `PATH`:
-
-- `latex` (from MacTeX, TeX Live, or MiKTeX)
-- `dvips`
-- `gs` (Ghostscript)
-
-**On macOS**, GUI apps launched from a `.app` bundle (Finder, Dock,
-Spotlight) **do not inherit your shell `PATH`**, so even though
-`/Library/TeX/texbin` works in Terminal, the bundled Diagrammer cannot
-see it. Tell Diagrammer where to look explicitly:
-
-1. Install MacTeX (`brew install --cask mactex` or
-   <https://tug.org/mactex/>) and Ghostscript (`brew install ghostscript`).
-2. Open **Settings → Annotations → LaTeX bin path** and set it to the
-   directory containing the `latex` binary. For MacTeX this is usually:
-   ```
-   /Library/TeX/texbin
-   ```
-3. If `gs` lives in a different directory than `latex` (e.g.
-   `/opt/homebrew/bin` or `/usr/local/bin`), make sure that directory is
-   also reachable. The simplest fix is to symlink `gs` into the LaTeX
-   bin directory, or to launch the app from a Terminal with the right
-   `PATH` exported.
-4. Click OK; the cache is invalidated automatically and the next math
-   render picks up the new path. No restart needed.
-
-**On Windows**, set **Settings → Annotations → LaTeX bin path** to the
-directory containing `latex.exe`. For TeX Live this is usually:
-
-```
-C:\texlive\2024\bin\windows
-```
-
-For MiKTeX it's typically:
-
-```
-C:\Users\<you>\AppData\Local\Programs\MiKTeX\miktex\bin\x64
-```
-
-Ghostscript must also be installed separately (<https://ghostscript.com/>)
-and either added to the system `PATH` or placed alongside `latex.exe`.
-
-**On Linux**, install `texlive-latex-extra` (or equivalent) and
-`ghostscript` from your package manager — they're already on `PATH` for
-GUI launches, so you typically do not need to set the LaTeX bin path.
-
-### Matrix typography knobs
-
-When `usetex` mode is active, matrix layout uses two settings exposed in
-**Settings → Annotations**:
-
-- **`\arraycolsep`** — inter-column spacing inside `bmatrix`/`pmatrix`/
-  `array`. The LaTeX default of 5 pt looks cramped after matplotlib's
-  tight-bbox cropping; Diagrammer defaults to 48 pt.
-- **`\arraystretch`** — row-height multiplier. LaTeX defaults to 1.0;
-  Diagrammer defaults to 1.15.
-
-These only affect `usetex` output. ziamath has its own internal layout
-and ignores them.
-
-### Troubleshooting
-
-- *"Display math (`$$...$$`) was detected, but no renderer is
-  available"* — ziamath should be bundled with the standalone builds
-  and the `pip install` path. If you see this on a `pip` install,
-  re-run `pip install -e .` to pick up the ziamath dependency.
-- *Math annotations show nothing in a compiled `.app`* — ensure you
-  are running a build of `claude/fix-swift-math-rendering-ix5uW` or
-  later: earlier builds were missing `matplotlib.backends.backend_svg`
-  in the PyInstaller spec, which silently broke all math rendering.
-- *`usetex` mode does nothing after setting the LaTeX bin path* — open
-  the app from a Terminal (`/Applications/Diagrammer.app/Contents/MacOS/Diagrammer`)
-  to surface the matplotlib stderr, which usually says exactly which
-  binary it could not find (`latex`, `dvips`, or `gs`).
-
-## Creating Components
-
-Components are standard SVG files with named layers. See [docs/svg-component-spec.md](docs/svg-component-spec.md) for the full specification.
-
-Quick summary — an SVG component has these layers:
-
-| Layer | Purpose |
-|-------|---------|
-| `artwork` | Component body (rendered) |
-| `leads` | Connection stems (dynamically shortened for rounded corners) |
-| `ports` | Connection points (`<circle id="port:name" .../>`) |
-| `labels` | Text label placeholders |
-| `stretch` | Break lines for stretchable components |
-
-Place component SVGs in categorized subdirectories:
-
-```
-components/
-  electrical/
-    resistor.svg
-    capacitor.svg
-  flowchart/
-    process.svg
-```
+Press **Ctrl+?** in the app for the in-app help reference.
 
 ## Keyboard Shortcuts
 
-See [docs/help.md](docs/help.md) for the full reference, or press **F1** in the app.
+The full reference lives in [docs/help.md](docs/help.md) (also reachable
+via **F1**). The most-used bindings:
 
 | Key | Action |
 |-----|--------|
@@ -219,6 +111,42 @@ See [docs/help.md](docs/help.md) for the full reference, or press **F1** in the 
 | Ctrl+C / X / V | Copy / Cut / Paste |
 | Ctrl+, | Settings |
 | Escape | Cancel current operation |
+
+## Creating Components
+
+Components are standard SVG files with named layers. See
+[docs/svg-component-spec.md](docs/svg-component-spec.md) for the full
+specification. You can open any of the built-in components in Inkscape or Adobe Illustrator to see how they are structured, or as a starting point to create your own.
+
+Quick summary — an SVG component has these layers:
+
+| Layer | Purpose |
+|-------|---------|
+| `artwork` | Component body (rendered) |
+| `leads` | Connection stems (dynamically shortened for rounded corners) |
+| `ports` | Connection points (`<circle id="port:name" .../>`) |
+| `labels` | Text label placeholders |
+| `stretch` | Break lines for stretchable components |
+
+Place component SVGs in categorized subdirectories:
+
+```
+components/
+  electrical/
+    resistor.svg
+    capacitor.svg
+  flowchart/
+    process.svg
+```
+
+## Further reading
+
+- [docs/math-annotations.md](docs/math-annotations.md) — LaTeX math
+  syntax, rendering backends, and system-LaTeX setup.
+- [docs/svg-component-spec.md](docs/svg-component-spec.md) — full SVG
+  component specification.
+- [docs/help.md](docs/help.md) — in-app help and complete shortcut
+  reference.
 
 ## License
 

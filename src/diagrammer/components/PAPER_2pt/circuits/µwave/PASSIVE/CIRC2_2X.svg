@@ -56,14 +56,14 @@
   <g id="ports">
     <circle id="port:2" class="st0" cx="180" cy="20.1" r="3"/>
     <circle id="port:1" class="st0" cy="20.1" r="3"/>
-    <circle id="port:3" class="st0" cx="54.1" cy="120" r="3"/>
-    <circle id="port:31" class="st0" cx="127" cy="120.2" r="3"/>
+    <circle id="port:3" class="st0" cx="60" cy="119.9" r="3"/>
+    <circle id="port:31" class="st0" cx="120" cy="120" r="3"/>
   </g>
   <g id="artwork">
-    <polyline class="st5" points="60.7 94.5 60.7 104.1 47.5 104.1 47.5 94.5"/>
-    <line class="st3" x1="54.1" y1="104.1" x2="54.1" y2="120.1"/>
-    <polyline class="st5" points="133.6 94.5 133.6 104.1 120.4 104.1 120.4 94.5"/>
-    <line class="st3" x1="127" y1="104.1" x2="127" y2="120.1"/>
+    <polyline class="st5" points="66.6 95.2 66.6 104.8 53.4 104.8 53.4 95.2"/>
+    <line class="st3" x1="60" y1="104.8" x2="60" y2="120"/>
+    <polyline class="st5" points="126.6 95.2 126.6 104.8 113.4 104.8 113.4 95.2"/>
+    <line class="st3" x1="120" y1="104.8" x2="120" y2="120"/>
     <g>
       <polyline class="st5" points="24.1 35.7 15.8 30.9 22.4 19.5 30.7 24.3"/>
       <polyline class="st3" points="19.1 25.2 10.3 20.1 0 20.1"/>

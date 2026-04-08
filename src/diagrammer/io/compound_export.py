@@ -497,6 +497,51 @@ def _inline_math_annotation(parent: ET.Element, annot, x: float, y: float,
     except ET2.ParseError:
         return False
 
+    # Matplotlib's SVG output declares the SVG namespace, which causes
+    # ElementTree to tag every element as ``{http://www.w3.org/2000/svg}foo``.
+    # When appended into the parent compound SVG (which uses the SVG
+    # namespace as the *default* xmlns), ElementTree serializes them with a
+    # ``ns0:`` prefix. Most browsers' SVG renderers only draw unprefixed
+    # elements via the default xmlns and silently skip prefixed ones, so the
+    # math becomes invisible. Strip the namespace from every tag here so
+    # they serialize unprefixed and inherit the parent's default xmlns.
+    _SVG_NS = "{http://www.w3.org/2000/svg}"
+    _XLINK_NS = "{http://www.w3.org/1999/xlink}"
+    for el in root.iter():
+        if isinstance(el.tag, str) and el.tag.startswith(_SVG_NS):
+            el.tag = el.tag[len(_SVG_NS):]
+        # Rewrite xlink:href -> plain href (SVG2). ElementTree serializes
+        # the xlink namespace under an auto-generated prefix like ns4:,
+        # which some renderers don't honor for <use> resolution.
+        for attr_name in list(el.attrib.keys()):
+            if attr_name.startswith(_XLINK_NS):
+                local = attr_name[len(_XLINK_NS):]
+                if local == "href":
+                    el.set("href", el.attrib.pop(attr_name))
+
+    # Avoid id collisions across multiple math annotations in the same
+    # compound. Each matplotlib render defines paths like ``id="Cmsy10-a1"``
+    # inside its own <defs>. Three annotations -> three duplicate ids,
+    # which the SVG spec forbids and many renderers refuse to draw. Prefix
+    # every id in this annotation's tree with a per-annotation token, and
+    # rewrite local ``href="#..."`` references to match.
+    import uuid as _uuid
+    prefix = f"a{_uuid.uuid4().hex[:8]}_"
+    id_map: dict[str, str] = {}
+    for el in root.iter():
+        eid = el.get("id")
+        if eid:
+            new_id = prefix + eid
+            el.set("id", new_id)
+            id_map[eid] = new_id
+    if id_map:
+        for el in root.iter():
+            href = el.get("href")
+            if href and href.startswith("#"):
+                target = href[1:]
+                if target in id_map:
+                    el.set("href", "#" + id_map[target])
+
     # Parse the rendered SVG's viewBox so we can position correctly.
     # ziamath emits viewBoxes with non-zero (often negative-y) origins;
     # we shift the inlined content so its top-left lands at (x, y).

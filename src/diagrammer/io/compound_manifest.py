@@ -67,14 +67,56 @@ def save_compound_manifest(
     if not (components or annotations or shapes):
         return False
 
-    # Pull in any connection that lives between two selected components,
-    # even if the user didn't select the connection itself.
+    # Pull in connections that live "inside" the selection — including
+    # connections that touch JunctionItems the user did not explicitly
+    # select. We do this with a fixed-point loop because newly-added
+    # junctions can themselves qualify additional connections (e.g.
+    # junction → bottom_inductor or junction → terminal chains). A single
+    # pass over scene.items() would be order-dependent and silently drop
+    # any connection visited before its junction endpoint was reachable.
     selected_ids = {id(i) for i in selected_items}
-    for item in scene.items():
-        if isinstance(item, ConnectionItem) and item not in connections:
-            if (id(item.source_port.component) in selected_ids and
-                    id(item.target_port.component) in selected_ids):
+    # Seed: any connections the user explicitly selected contribute their
+    # JunctionItem endpoints up front so the loop can chain through them.
+    for conn in list(connections):
+        for endpoint in (conn.source_port.component, conn.target_port.component):
+            if isinstance(endpoint, JunctionItem):
+                if endpoint not in junctions:
+                    junctions.append(endpoint)
+                selected_ids.add(id(endpoint))
+
+    all_scene_connections = [
+        it for it in scene.items() if isinstance(it, ConnectionItem)
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for item in all_scene_connections:
+            if item in connections:
+                continue
+            src_comp = item.source_port.component
+            tgt_comp = item.target_port.component
+            src_in = id(src_comp) in selected_ids
+            tgt_in = id(tgt_comp) in selected_ids
+            # Pull in if both endpoints are already part of the compound.
+            if src_in and tgt_in:
                 connections.append(item)
+                changed = True
+                continue
+            # Otherwise, if one endpoint is in the compound and the other
+            # is a free JunctionItem, auto-include that junction and the
+            # connection. The next pass may then chain further.
+            if src_in and isinstance(tgt_comp, JunctionItem):
+                connections.append(item)
+                if tgt_comp not in junctions:
+                    junctions.append(tgt_comp)
+                selected_ids.add(id(tgt_comp))
+                changed = True
+            elif tgt_in and isinstance(src_comp, JunctionItem):
+                connections.append(item)
+                if src_comp not in junctions:
+                    junctions.append(src_comp)
+                selected_ids.add(id(src_comp))
+                changed = True
 
     # Compute a local origin so saved positions are relative to (0, 0).
     all_items = components + junctions + connections + annotations + shapes
