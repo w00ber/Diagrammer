@@ -1620,11 +1620,16 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------- Cut / Copy / Paste
 
     def _copy(self) -> None:
-        """Copy selected components, junctions, annotations, and connections to clipboard."""
+        """Copy selected components, junctions, annotations, shapes, and connections to clipboard."""
         from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.items.shape_item import (
+            EllipseItem,
+            LineItem,
+            RectangleItem,
+        )
 
         selected_comps = [
             item for item in self._scene.selectedItems()
@@ -1637,6 +1642,10 @@ class MainWindow(QMainWindow):
         selected_annots = [
             item for item in self._scene.selectedItems()
             if isinstance(item, AnnotationItem)
+        ]
+        selected_shapes = [
+            item for item in self._scene.selectedItems()
+            if isinstance(item, (RectangleItem, EllipseItem, LineItem))
         ]
         selected_conns_direct = [
             item for item in self._scene.selectedItems()
@@ -1651,7 +1660,8 @@ class MainWindow(QMainWindow):
                 if isinstance(comp, JunctionItem) and comp not in selected_juncs:
                     selected_juncs.append(comp)
 
-        if not selected_comps and not selected_juncs and not selected_annots:
+        if (not selected_comps and not selected_juncs
+                and not selected_annots and not selected_shapes):
             return
 
         # Auto-include connected junctions (invisible T-junction markers)
@@ -1709,6 +1719,39 @@ class MainWindow(QMainWindow):
                 "rotation": annot.rotation(),
                 "group": list(annot._group_ids),
             })
+        for shape in selected_shapes:
+            if isinstance(shape, LineItem):
+                self._clipboard.append({
+                    "type": "line",
+                    "pos": (shape.pos().x(), shape.pos().y()),
+                    "start": (shape.line_start.x(), shape.line_start.y()),
+                    "end": (shape.line_end.x(), shape.line_end.y()),
+                    "stroke_color": shape.stroke_color.name(QColor.NameFormat.HexArgb),
+                    "stroke_width": shape.stroke_width,
+                    "dash_style": shape.dash_style,
+                    "cap_style": shape.cap_style,
+                    "arrow_style": shape.arrow_style,
+                    "arrow_type": shape.arrow_type,
+                    "arrow_scale": shape.arrow_scale,
+                    "arrow_extend": shape.arrow_extend,
+                    "group": list(shape._group_ids),
+                })
+            else:
+                shape_type = "rectangle" if isinstance(shape, RectangleItem) else "ellipse"
+                entry = {
+                    "type": shape_type,
+                    "pos": (shape.pos().x(), shape.pos().y()),
+                    "width": shape.shape_width,
+                    "height": shape.shape_height,
+                    "stroke_color": shape.stroke_color.name(QColor.NameFormat.HexArgb),
+                    "fill_color": shape.fill_color.name(QColor.NameFormat.HexArgb),
+                    "stroke_width": shape.stroke_width,
+                    "dash_style": shape.dash_style,
+                    "group": list(shape._group_ids),
+                }
+                if isinstance(shape, RectangleItem):
+                    entry["corner_radius"] = shape.corner_radius
+                self._clipboard.append(entry)
         for conn in selected_conns:
             src_idx = id_map.get(conn.source_port.component.instance_id)
             tgt_idx = id_map.get(conn.target_port.component.instance_id)
@@ -1743,6 +1786,11 @@ class MainWindow(QMainWindow):
         from diagrammer.commands.connect_command import CreateConnectionCommand
         from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.items.shape_item import (
+            EllipseItem,
+            LineItem,
+            RectangleItem,
+        )
 
         # Remap group_ids so pasted items form new groups (not shared with originals)
         old_gid_to_new: dict[str, str] = {}
@@ -1825,6 +1873,51 @@ class MainWindow(QMainWindow):
                 self._scene.addItem(annot)
                 _remap_group(annot, entry)
                 pasted_annotations.append(annot)
+            elif entry["type"] in ("rectangle", "ellipse", "line"):
+                pos = QPointF(entry["pos"][0] + PASTE_OFFSET, entry["pos"][1] + PASTE_OFFSET)
+                if entry["type"] == "rectangle":
+                    shape = RectangleItem(
+                        width=entry.get("width", 100),
+                        height=entry.get("height", 60),
+                    )
+                    if "fill_color" in entry:
+                        shape.fill_color = QColor(entry["fill_color"])
+                    if "corner_radius" in entry:
+                        shape.corner_radius = entry["corner_radius"]
+                elif entry["type"] == "ellipse":
+                    shape = EllipseItem(
+                        width=entry.get("width", 80),
+                        height=entry.get("height", 80),
+                    )
+                    if "fill_color" in entry:
+                        shape.fill_color = QColor(entry["fill_color"])
+                else:  # line
+                    shape = LineItem(
+                        start=QPointF(entry["start"][0], entry["start"][1]),
+                        end=QPointF(entry["end"][0], entry["end"][1]),
+                    )
+                    if "cap_style" in entry:
+                        shape.cap_style = entry["cap_style"]
+                    if "arrow_style" in entry:
+                        shape.arrow_style = entry["arrow_style"]
+                    if "arrow_type" in entry:
+                        shape.arrow_type = entry["arrow_type"]
+                    if "arrow_scale" in entry:
+                        shape.arrow_scale = entry["arrow_scale"]
+                    if "arrow_extend" in entry:
+                        shape.arrow_extend = entry["arrow_extend"]
+                if "stroke_color" in entry:
+                    shape.stroke_color = QColor(entry["stroke_color"])
+                if "stroke_width" in entry:
+                    shape.stroke_width = entry["stroke_width"]
+                if "dash_style" in entry:
+                    shape.dash_style = entry["dash_style"]
+                shape._skip_snap = True
+                shape.setPos(pos)
+                shape._skip_snap = False
+                self._scene.addItem(shape)
+                _remap_group(shape, entry)
+                pasted_annotations.append(shape)
 
         # Second pass: create connections
         for entry in self._clipboard:

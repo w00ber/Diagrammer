@@ -640,8 +640,16 @@ class DiagramView(QGraphicsView):
                         return
 
             # -- Option/Alt+click → duplicate and drag (selected items or single item) --
+            from diagrammer.items.shape_item import (
+                LineItem as _AltLineItem,
+                ShapeItem as _AltShapeItem,
+            )
             if event.modifiers() & Qt.KeyboardModifier.AltModifier and (
-                isinstance(item, (ComponentItem, AnnotationItem, ConnectionItem))
+                isinstance(
+                    item,
+                    (ComponentItem, AnnotationItem, ConnectionItem,
+                     _AltShapeItem, _AltLineItem),
+                )
             ):
                 # For grouped wires, redirect to a component in the group
                 if isinstance(item, ConnectionItem) and getattr(item, '_group_id', None):
@@ -1438,15 +1446,17 @@ class DiagramView(QGraphicsView):
     def _duplicate_selection(self, clicked_item, scene_pos) -> list:
         """Duplicate all selected items (or just the clicked item) for Alt+drag.
 
-        Clones components, annotations, junctions, and recreates internal
-        connections between the cloned items. All clones are flagged for
-        manual drag positioning.
+        Clones components, annotations, junctions, shapes (rectangle/
+        ellipse/line/arrow), and recreates internal connections between
+        the cloned items. All clones are flagged for manual drag
+        positioning.
         """
         from diagrammer.commands.connect_command import CreateConnectionCommand
 
         # Determine what to clone: expand from clicked item's group first,
         # then merge with any other selected items
         from diagrammer.commands.group_command import get_top_group
+        from diagrammer.items.shape_item import LineItem, ShapeItem
 
         # Start with the clicked item's group (or just the clicked item)
         gid = get_top_group(clicked_item)
@@ -1456,7 +1466,11 @@ class DiagramView(QGraphicsView):
         else:
             selected = [
                 i for i in self._diagram_scene.selectedItems()
-                if isinstance(i, (ComponentItem, JunctionItem, AnnotationItem))
+                if isinstance(
+                    i,
+                    (ComponentItem, JunctionItem, AnnotationItem,
+                     ShapeItem, LineItem),
+                )
             ]
             # If clicked item is a free ConnectionItem, include its endpoint junctions
             if isinstance(clicked_item, ConnectionItem):
@@ -1611,9 +1625,66 @@ class DiagramView(QGraphicsView):
             clone.font_bold = item.font_bold
             clone.font_italic = item.font_italic
             clone.text_color = item.text_color
+            # Preserve rotation — setTransformOriginPoint must be called
+            # before setRotation so the clone rotates around its center
+            # like the original, otherwise the copy pivots around (0,0).
+            if item.rotation():
+                clone.setTransformOriginPoint(clone.boundingRect().center())
+                clone.setRotation(item.rotation())
             clone.setPos(item.pos())
             clone.setZValue(item.zValue() + 0.01)
             self._diagram_scene.addItem(clone)
+        else:
+            from diagrammer.items.shape_item import (
+                EllipseItem,
+                LineItem,
+                RectangleItem,
+            )
+            if isinstance(item, RectangleItem):
+                clone = RectangleItem(
+                    width=item.shape_width, height=item.shape_height
+                )
+                clone.stroke_color = QColor(item.stroke_color)
+                clone.fill_color = QColor(item.fill_color)
+                clone.stroke_width = item.stroke_width
+                clone.dash_style = item.dash_style
+                clone.corner_radius = item.corner_radius
+                clone._skip_snap = True
+                clone.setPos(item.pos())
+                clone._skip_snap = False
+                clone.setZValue(item.zValue() + 0.01)
+                self._diagram_scene.addItem(clone)
+            elif isinstance(item, EllipseItem):
+                clone = EllipseItem(
+                    width=item.shape_width, height=item.shape_height
+                )
+                clone.stroke_color = QColor(item.stroke_color)
+                clone.fill_color = QColor(item.fill_color)
+                clone.stroke_width = item.stroke_width
+                clone.dash_style = item.dash_style
+                clone._skip_snap = True
+                clone.setPos(item.pos())
+                clone._skip_snap = False
+                clone.setZValue(item.zValue() + 0.01)
+                self._diagram_scene.addItem(clone)
+            elif isinstance(item, LineItem):
+                clone = LineItem(
+                    start=QPointF(item.line_start),
+                    end=QPointF(item.line_end),
+                )
+                clone.stroke_color = QColor(item.stroke_color)
+                clone.stroke_width = item.stroke_width
+                clone.dash_style = item.dash_style
+                clone.cap_style = item.cap_style
+                clone.arrow_style = item.arrow_style
+                clone.arrow_type = item.arrow_type
+                clone.arrow_scale = item.arrow_scale
+                clone.arrow_extend = item.arrow_extend
+                clone._skip_snap = True
+                clone.setPos(item.pos())
+                clone._skip_snap = False
+                clone.setZValue(item.zValue() + 0.01)
+                self._diagram_scene.addItem(clone)
 
         if clone is not None:
             clone._alt_drag_clone = True
