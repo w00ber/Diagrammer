@@ -157,21 +157,33 @@ class HelpWindow(QWidget):
         except ImportError:
             html = self._basic_md_to_html(md_text)
 
-        # Add some basic styling
+        # Add some basic styling. The help window is rendered as a
+        # "paper" document with an explicit white background and black
+        # text regardless of the chrome theme — otherwise the hard-coded
+        # light-gray element backgrounds (table headers, code blocks)
+        # become invisible under a dark-mode palette.
         styled = f"""
         <html><head><style>
             body {{ font-family: Helvetica, Arial, sans-serif;
-                   font-size: 13px; padding: 20px; line-height: 1.5; }}
-            h1 {{ font-size: 20px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }}
-            h2 {{ font-size: 16px; margin-top: 20px; border-bottom: 1px solid #eee; padding-bottom: 4px; }}
-            h3 {{ font-size: 14px; margin-top: 16px; }}
+                   font-size: 13px; padding: 20px; line-height: 1.5;
+                   background: #ffffff; color: #000000; }}
+            h1 {{ font-size: 20px; color: #000000;
+                  border-bottom: 1px solid #ddd; padding-bottom: 6px; }}
+            h2 {{ font-size: 16px; margin-top: 20px; color: #000000;
+                  border-bottom: 1px solid #eee; padding-bottom: 4px; }}
+            h3 {{ font-size: 14px; margin-top: 16px; color: #000000; }}
+            p, li {{ color: #000000; }}
             table {{ border-collapse: collapse; margin: 8px 0; }}
-            th, td {{ border: 1px solid #ddd; padding: 4px 10px; text-align: left; }}
-            th {{ background: #f5f5f5; }}
-            code {{ background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 12px; }}
-            pre {{ background: #f0f0f0; padding: 10px; border-radius: 4px; overflow-x: auto; }}
+            th, td {{ border: 1px solid #ddd; padding: 4px 10px;
+                      text-align: left; color: #000000; }}
+            th {{ background: #f5f5f5; color: #000000; }}
+            code {{ background: #f0f0f0; color: #000000; padding: 1px 4px;
+                    border-radius: 3px; font-size: 12px; }}
+            pre {{ background: #f0f0f0; color: #000000; padding: 10px;
+                   border-radius: 4px; overflow-x: auto; }}
             hr {{ border: none; border-top: 1px solid #ddd; margin: 16px 0; }}
-            kbd {{ background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px;
+            kbd {{ background: #f0f0f0; color: #000000;
+                   border: 1px solid #ccc; border-radius: 3px;
                    padding: 1px 5px; font-size: 12px; font-family: monospace; }}
         </style></head><body>
         {html}

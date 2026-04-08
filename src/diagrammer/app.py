@@ -127,6 +127,23 @@ def _build_dark_palette() -> QPalette:
     return palette
 
 
+def hint_text_color() -> str:
+    """Return a hex color string for muted hint/caveat text.
+
+    Returns a medium-gray that's legible against both light and dark
+    chrome backgrounds, picked by inspecting the current application
+    palette. Callers use this in inline stylesheets instead of hard-
+    coding ``color: #555``, which disappears on a dark Window color.
+    """
+    from PySide6.QtGui import QPalette as _QPalette
+    app = QApplication.instance()
+    if app is None:
+        return "#555555"
+    window = app.palette().color(_QPalette.ColorRole.Window)
+    # Window.lightness() is 0..255; <128 = dark-mode chrome.
+    return "#a8a8a8" if window.lightness() < 128 else "#555555"
+
+
 # Keep a handle on the style we saw at startup so "system" mode can
 # restore the native look after switching away from Fusion.
 _native_style_name: str | None = None

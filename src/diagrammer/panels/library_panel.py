@@ -520,6 +520,12 @@ class _CategorySection(QWidget):
         header_layout.addWidget(self._toggle_btn)
 
         label = QLabel(f"<b>{category.replace('/', ' / ').replace('_', ' ')}</b>")
+        # Pin the header text to black. The header sits on a light-gray
+        # pill (`#f0f0f0`, set below) regardless of the chrome theme, so
+        # it needs explicit black text to stay legible in dark mode —
+        # otherwise the label would inherit the dark-mode palette text
+        # (near-white) and vanish on the light pill.
+        label.setStyleSheet("color: #000000; background: transparent;")
         header_layout.addWidget(label)
         header_layout.addStretch()
 

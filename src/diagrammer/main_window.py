@@ -722,6 +722,10 @@ class MainWindow(QMainWindow):
             self._library_panel.apply_light_surface(CANVAS_BACKGROUND)
         except Exception:
             pass
+        try:
+            self._annotations_panel.apply_light_surface(CANVAS_BACKGROUND)
+        except Exception:
+            pass
 
     def _toggle_snap(self, enabled: bool) -> None:
         self._view.snap_enabled = enabled
@@ -2332,7 +2336,9 @@ class MainWindow(QMainWindow):
             "  • Requires the original sub-component libraries on any\n"
             "    machine where the file is opened."
         )
-        compound_caveats.setStyleSheet("color: #555; margin-left: 18px;")
+        from diagrammer.app import hint_text_color as _htc
+        compound_caveats.setStyleSheet(
+            f"color: {_htc()}; margin-left: 18px;")
         fmt_layout.addWidget(compound_caveats)
 
         rb_svg = QRadioButton("Flattened SVG (single static file)")
@@ -2344,7 +2350,7 @@ class MainWindow(QMainWindow):
             "  • Placement is a single opaque item — cannot be ungrouped\n"
             "    or edited piece-by-piece."
         )
-        svg_caveats.setStyleSheet("color: #555; margin-left: 18px;")
+        svg_caveats.setStyleSheet(f"color: {_htc()}; margin-left: 18px;")
         fmt_layout.addWidget(svg_caveats)
 
         btns = QDialogButtonBox(
