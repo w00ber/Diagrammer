@@ -42,6 +42,14 @@ class AppSettings:
         """Reset all settings to factory defaults from defaults.yaml."""
         from diagrammer.defaults import get as _d
 
+        # Appearance / theme
+        # One of: "system", "light", "dark". "system" lets the OS style
+        # decide (native look, honors Windows dark mode); "light"/"dark"
+        # force a Fusion palette in that mode. The canvas and library
+        # panel always render on a light background regardless of the
+        # chrome theme, because the diagram artwork is authored that way.
+        self.theme: str = "system"
+
         # Line styles (wiring)
         self.default_line_width = _d("wiring", "line_width", 3.0)
         self.default_line_color = QColor(_d("wiring", "line_color", "#323232"))
@@ -188,6 +196,7 @@ class AppSettings:
                 "default_shape_arrow_type": self.default_shape_arrow_type,
                 "default_shape_arrow_scale": self.default_shape_arrow_scale,
                 "default_shape_arrow_extend": self.default_shape_arrow_extend,
+                "theme": self.theme,
             }
             import json
             _SETTINGS_FILE.write_text(json.dumps(data, indent=2))
@@ -273,6 +282,9 @@ class AppSettings:
                 self.default_shape_arrow_type = data.get("default_shape_arrow_type", self.default_shape_arrow_type)
                 self.default_shape_arrow_scale = data.get("default_shape_arrow_scale", self.default_shape_arrow_scale)
                 self.default_shape_arrow_extend = data.get("default_shape_arrow_extend", self.default_shape_arrow_extend)
+                theme = data.get("theme", self.theme)
+                if theme in ("system", "light", "dark"):
+                    self.theme = theme
         except Exception:
             pass
 

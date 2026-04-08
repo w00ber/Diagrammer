@@ -10,6 +10,17 @@ from PySide6.QtWidgets import QApplication, QStyleFactory
 
 from diagrammer.main_window import MainWindow
 
+# Background color used for the canvas and the library panel regardless
+# of the chrome theme. Diagrammer's grid, component SVGs, connection
+# colors, and annotation text defaults are all authored for a white
+# background, so even in dark mode we pin these surfaces to light.
+CANVAS_BACKGROUND = QColor(255, 255, 255)
+
+# Valid theme values. "system" uses the platform-native style (honors
+# macOS/Windows dark mode for the chrome); "light" and "dark" force a
+# Fusion palette in the corresponding mode.
+THEMES = ("system", "light", "dark")
+
 
 def _load_app_icon() -> QIcon:
     """Load the application icon from the iconset directory."""
@@ -35,14 +46,7 @@ def _register_bundled_fonts() -> None:
 
 
 def _build_light_palette() -> QPalette:
-    """Return an explicit light QPalette.
-
-    Qt on Windows will otherwise follow the system color scheme, which
-    turns the canvas, library panel, and various dialogs dark and makes
-    the diagram hard to read. Diagrammer's canvas, grid, and component
-    artwork are all authored against a white background, so we pin the
-    whole UI to a light palette regardless of the OS theme.
-    """
+    """Return an explicit light QPalette (Fusion-style)."""
     palette = QPalette()
     white = QColor(255, 255, 255)
     near_white = QColor(245, 245, 245)
@@ -67,26 +71,101 @@ def _build_light_palette() -> QPalette:
     palette.setColor(QPalette.ColorRole.HighlightedText, white)
     palette.setColor(QPalette.ColorRole.Link, highlight)
 
-    # Disabled state — keep things readable but clearly inactive.
-    palette.setColor(
-        QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, mid_gray
-    )
-    palette.setColor(
-        QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, mid_gray
-    )
-    palette.setColor(
-        QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, mid_gray
-    )
-    palette.setColor(
-        QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base, near_white
-    )
-    palette.setColor(
-        QPalette.ColorGroup.Disabled, QPalette.ColorRole.Highlight, mid_gray
-    )
-    palette.setColor(
-        QPalette.ColorGroup.Disabled, QPalette.ColorRole.HighlightedText, white
-    )
+    for role, color in (
+        (QPalette.ColorRole.WindowText, mid_gray),
+        (QPalette.ColorRole.Text, mid_gray),
+        (QPalette.ColorRole.ButtonText, mid_gray),
+        (QPalette.ColorRole.Base, near_white),
+        (QPalette.ColorRole.Highlight, mid_gray),
+        (QPalette.ColorRole.HighlightedText, white),
+    ):
+        palette.setColor(QPalette.ColorGroup.Disabled, role, color)
     return palette
+
+
+def _build_dark_palette() -> QPalette:
+    """Return an explicit dark QPalette (Fusion-style).
+
+    Loosely based on the commonly-used Qt Fusion dark recipe.
+    """
+    palette = QPalette()
+    window_bg = QColor(53, 53, 53)
+    base_bg = QColor(42, 42, 42)
+    alt_base = QColor(66, 66, 66)
+    button_bg = QColor(53, 53, 53)
+    text = QColor(220, 220, 220)
+    disabled_text = QColor(127, 127, 127)
+    bright_text = QColor(255, 80, 80)
+    highlight = QColor(42, 130, 218)
+    white = QColor(255, 255, 255)
+    black = QColor(0, 0, 0)
+
+    palette.setColor(QPalette.ColorRole.Window, window_bg)
+    palette.setColor(QPalette.ColorRole.WindowText, text)
+    palette.setColor(QPalette.ColorRole.Base, base_bg)
+    palette.setColor(QPalette.ColorRole.AlternateBase, alt_base)
+    palette.setColor(QPalette.ColorRole.ToolTipBase, window_bg)
+    palette.setColor(QPalette.ColorRole.ToolTipText, text)
+    palette.setColor(QPalette.ColorRole.Text, text)
+    palette.setColor(QPalette.ColorRole.PlaceholderText, disabled_text)
+    palette.setColor(QPalette.ColorRole.Button, button_bg)
+    palette.setColor(QPalette.ColorRole.ButtonText, text)
+    palette.setColor(QPalette.ColorRole.BrightText, bright_text)
+    palette.setColor(QPalette.ColorRole.Highlight, highlight)
+    palette.setColor(QPalette.ColorRole.HighlightedText, black)
+    palette.setColor(QPalette.ColorRole.Link, QColor(100, 170, 255))
+
+    for role, color in (
+        (QPalette.ColorRole.WindowText, disabled_text),
+        (QPalette.ColorRole.Text, disabled_text),
+        (QPalette.ColorRole.ButtonText, disabled_text),
+        (QPalette.ColorRole.Base, window_bg),
+        (QPalette.ColorRole.Highlight, QColor(80, 80, 80)),
+        (QPalette.ColorRole.HighlightedText, white),
+    ):
+        palette.setColor(QPalette.ColorGroup.Disabled, role, color)
+    return palette
+
+
+# Keep a handle on the style we saw at startup so "system" mode can
+# restore the native look after switching away from Fusion.
+_native_style_name: str | None = None
+
+
+def apply_theme(app: QApplication, mode: str) -> None:
+    """Apply a theme to the running QApplication.
+
+    ``mode`` is one of :data:`THEMES`. Safe to call at startup and at
+    runtime (e.g. from a menu toggle) — calling it again reapplies the
+    requested style and palette so existing widgets repaint.
+    """
+    if mode not in THEMES:
+        mode = "system"
+
+    global _native_style_name
+    if _native_style_name is None:
+        current = app.style()
+        if current is not None:
+            _native_style_name = current.objectName()
+
+    if mode == "system":
+        # Hand control back to the platform style. We deliberately
+        # re-instantiate it so any palette we previously set on the
+        # app gets replaced by the style's standardPalette().
+        style_name = _native_style_name or "Fusion"
+        style = QStyleFactory.create(style_name)
+        if style is not None:
+            app.setStyle(style)
+            app.setPalette(style.standardPalette())
+        return
+
+    fusion = QStyleFactory.create("Fusion")
+    if fusion is not None:
+        app.setStyle(fusion)
+    if mode == "dark":
+        app.setPalette(_build_dark_palette())
+    else:
+        app.setPalette(_build_light_palette())
 
 
 def create_app(argv: list[str] | None = None) -> tuple[QApplication, MainWindow]:
@@ -104,17 +183,11 @@ def create_app(argv: list[str] | None = None) -> tuple[QApplication, MainWindow]
     app.setApplicationName("Diagrammer")
     app.setOrganizationName("Diagrammer")
 
-    # Pin the UI to a light theme. Diagrammer's canvas and component
-    # artwork are designed for a white background, and on Windows the
-    # native style otherwise follows the system dark/light setting,
-    # which leaves the canvas and library panel illegible in dark mode.
-    # Fusion is a self-contained Qt style that ignores the OS color
-    # scheme, so combining it with an explicit light palette gives a
-    # consistent look on every platform.
-    fusion = QStyleFactory.create("Fusion")
-    if fusion is not None:
-        app.setStyle(fusion)
-    app.setPalette(_build_light_palette())
+    # Apply the user's saved theme preference. Default is "system".
+    # Chrome (menus, dialogs, dock frames) follows this choice; the
+    # canvas and library panel remain on CANVAS_BACKGROUND regardless.
+    from diagrammer.panels.settings_dialog import app_settings
+    apply_theme(app, app_settings.theme)
 
     app.setWindowIcon(_load_app_icon())
     _register_bundled_fonts()

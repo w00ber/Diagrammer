@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QAction, QColor, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
     QDoubleSpinBox,
@@ -108,6 +108,11 @@ class MainWindow(QMainWindow):
 
         # -- Panels --
         self._create_panels()
+
+        # -- Pin canvas + library to a light background regardless of
+        # the current chrome theme, so grid and component artwork stay
+        # legible in dark mode.
+        self._reassert_light_surfaces()
 
         # -- Restore state from settings --
         self._restore_from_settings()
@@ -385,6 +390,31 @@ class MainWindow(QMainWindow):
 
         view_menu.addSeparator()
 
+        # ---- Appearance ----
+        appearance_menu = view_menu.addMenu("&Appearance")
+        self._theme_group = QActionGroup(self)
+        self._theme_group.setExclusive(True)
+        self._theme_actions: dict[str, QAction] = {}
+        for mode, label in (
+            ("system", "&System"),
+            ("light", "&Light"),
+            ("dark", "&Dark"),
+        ):
+            act = QAction(label, self)
+            act.setCheckable(True)
+            act.setData(mode)
+            act.triggered.connect(
+                lambda _checked=False, m=mode: self._on_theme_selected(m)
+            )
+            self._theme_group.addAction(act)
+            appearance_menu.addAction(act)
+            self._theme_actions[mode] = act
+        current = app_settings.theme if app_settings.theme in self._theme_actions \
+            else "system"
+        self._theme_actions[current].setChecked(True)
+
+        view_menu.addSeparator()
+
         close_tab_act = QAction("Close Tab", self)
         self._register_shortcut(close_tab_act, "view.close_tab")
         close_tab_act.triggered.connect(self.close_active_tab)
@@ -656,6 +686,42 @@ class MainWindow(QMainWindow):
 
     def _toggle_grid(self, visible: bool) -> None:
         self._view.grid_visible = visible
+
+    def _on_theme_selected(self, mode: str) -> None:
+        """Handle Appearance submenu selection: live-switch the theme."""
+        from PySide6.QtWidgets import QApplication
+        from diagrammer.app import apply_theme
+
+        app = QApplication.instance()
+        if app is None:
+            return
+        apply_theme(app, mode)
+        app_settings.theme = mode
+        app_settings.save()
+        # The canvas and library panel are pinned to a light background
+        # regardless of theme; re-assert that pin so a style change
+        # can't leak a dark Base palette into their viewports.
+        self._reassert_light_surfaces()
+
+    def _reassert_light_surfaces(self) -> None:
+        """Re-pin canvas + library panel to the light surface color.
+
+        Called after a live theme switch. Qt propagates the new app
+        palette to every widget, but we want the diagram canvas and the
+        library dock to stay on a white background so the grid and
+        component artwork remain legible.
+        """
+        from diagrammer.app import CANVAS_BACKGROUND
+        from PySide6.QtGui import QBrush
+        try:
+            self._view.setBackgroundBrush(QBrush(CANVAS_BACKGROUND))
+            self._view.viewport().update()
+        except Exception:
+            pass
+        try:
+            self._library_panel.apply_light_surface(CANVAS_BACKGROUND)
+        except Exception:
+            pass
 
     def _toggle_snap(self, enabled: bool) -> None:
         self._view.snap_enabled = enabled

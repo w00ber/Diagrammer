@@ -126,6 +126,40 @@ class LibraryPanel(QDockWidget):
             Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
         )
 
+    def apply_light_surface(self, color) -> None:  # noqa: ANN001
+        """Pin the library views to a light surface color.
+
+        Called at startup and after a theme switch so the tree, grid,
+        and scroll area stay on a light background regardless of the
+        current app palette. The diagram artwork and component SVGs are
+        authored for a light background, so previewing them on a dark
+        surface would hurt legibility.
+
+        ``color`` is a ``QColor``; we accept it untyped to avoid having
+        to import ``QColor`` at module scope just for a type hint.
+        """
+        hex_color = color.name()
+        alt_color = "#f5f5f5"
+        text_color = "#000000"
+        # Stylesheet rules take precedence over QPalette, so setting
+        # them on the dock widget reliably overrides any dark palette
+        # that QApplication.setPalette() pushed down the widget tree.
+        # The selector list covers:
+        #   QTreeWidget        — the "List" tab (_DragTree)
+        #   QListWidget        — favorites / recents list in the tree tab
+        #   QScrollArea        — the "Grid" tab (_GroupedGrid) frame
+        #   QScrollArea > QWidget > QWidget
+        #                       — the grid's inner viewport widget
+        self.setStyleSheet(
+            f"QTreeWidget, QListWidget {{"
+            f" background-color: {hex_color};"
+            f" color: {text_color};"
+            f" alternate-background-color: {alt_color}; }}"
+            f"QScrollArea {{ background-color: {hex_color}; }}"
+            f"QScrollArea > QWidget > QWidget {{"
+            f" background-color: {hex_color}; color: {text_color}; }}"
+        )
+
     def record_use(self, key: str) -> None:
         if key in self._recents:
             self._recents.remove(key)
