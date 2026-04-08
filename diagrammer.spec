@@ -81,12 +81,15 @@ EXCLUDE_QT = [
     "PySide6.QtXml",
 ]
 
-# Other large modules we don't need
+# Other large modules we don't need. IMPORTANT: do not exclude stdlib
+# modules that third-party packages might import at regular import time
+# (e.g. ``unittest.mock``, ``xmlrpc.client``). matplotlib in particular
+# pulls ``unittest`` in via its dependency chain and will fail to import
+# in the frozen app with ``No module named 'unittest'`` if we strip it.
+# ``tkinter`` is safe to drop because matplotlib only touches it from
+# its TkAgg backend, which we don't bundle.
 EXCLUDE_MISC = [
     "tkinter",
-    "unittest",
-    "xmlrpc",
-    "pydoc",
 ]
 
 EXCLUDES = EXCLUDE_QT + EXCLUDE_MISC
