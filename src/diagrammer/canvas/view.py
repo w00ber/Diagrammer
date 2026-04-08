@@ -63,6 +63,11 @@ class DiagramView(QGraphicsView):
             QPainter.RenderHint.Antialiasing
             | QPainter.RenderHint.SmoothPixmapTransform
         )
+        # Force a white canvas regardless of the OS color scheme. The
+        # diagram artwork, grid, and component SVGs are all authored
+        # against a white background, so following Windows dark mode
+        # leaves the canvas illegible.
+        self.setBackgroundBrush(QBrush(QColor(255, 255, 255)))
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
