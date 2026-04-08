@@ -117,7 +117,13 @@ class AppSettings:
         # system LaTeX install) in preference to the pure-Python ziamath
         # backend. Useful when ziamath's bracket sizing or layout falls
         # short and the user has MacTeX/TeX Live available.
-        self.prefer_system_latex_for_math: bool = False
+        # Default to True so users with a system LaTeX install get the
+        # highest-quality output (real TeX typesetting) without having
+        # to discover the setting. If LaTeX isn't available the renderer
+        # in annotation_item.py automatically falls back to ziamath /
+        # mathtext, so this default is safe even on machines without
+        # MacTeX/TeX Live.
+        self.prefer_system_latex_for_math: bool = True
         # Optional explicit path to the directory containing the ``latex``
         # binary (and friends like ``dvips``, ``gs``). Needed on macOS
         # when launching from a .app bundle, because GUI processes don't

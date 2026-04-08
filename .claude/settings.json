@@ -10,7 +10,13 @@
       "Bash(python3 -c \"import ast; ast.parse\\(open\\('src/diagrammer/panels/settings_dialog.py'\\).read\\(\\)\\); ast.parse\\(open\\('src/diagrammer/shortcuts.py'\\).read\\(\\)\\); print\\('ok'\\)\")",
       "Bash(python3 -c ':*)",
       "Bash(python3 -c \"import ast; ast.parse\\(open\\('src/diagrammer/panels/settings_dialog.py'\\).read\\(\\)\\); print\\('ok'\\)\")",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Read(//Users/joe/Downloads/**)",
+      "Bash(ls *.sh build_*.*)",
+      "Bash(pyinstaller diagrammer.spec --noconfirm)",
+      "Bash(du -sh /Applications/Diagrammer.app/Contents/*)",
+      "Read(//Users/joe/.Trash//**)",
+      "Bash(git log:*)"
     ]
   }
 }

@@ -1660,13 +1660,28 @@ class DiagramView(QGraphicsView):
                     cmd = EditWaypointsCommand(si, old_wps, new_wps)
                     self._diagram_scene.undo_stack.push(cmd)
 
-        # Shift waypoints of explicitly selected connections
+        # Shift waypoints of explicitly selected connections. For free
+        # wires, also nudge the endpoint JunctionItems so they stay
+        # anchored to the wire — otherwise arrow-key nudging leaves
+        # trailing stubs because the junctions don't move with the
+        # waypoints.
+        from diagrammer.items.junction_item import JunctionItem
+        already_moved_ids = set(id(i) for i in movable)
         for conn in selected_conns:
             old_wps = [QPointF(w) for w in conn.vertices]
             if old_wps:
                 new_wps = [QPointF(w.x() + dx, w.y() + dy) for w in old_wps]
                 cmd = EditWaypointsCommand(conn, old_wps, new_wps)
                 self._diagram_scene.undo_stack.push(cmd)
+            for port_item in (conn.source_port, conn.target_port):
+                pc = port_item.component if port_item else None
+                if isinstance(pc, JunctionItem) and id(pc) not in already_moved_ids:
+                    old_pos = pc.pos()
+                    new_pos = QPointF(old_pos.x() + dx, old_pos.y() + dy)
+                    self._diagram_scene.undo_stack.push(
+                        MoveComponentCommand(pc, old_pos, new_pos)
+                    )
+                    already_moved_ids.add(id(pc))
 
         self._diagram_scene.undo_stack.endMacro()
         self._diagram_scene.update_connections()

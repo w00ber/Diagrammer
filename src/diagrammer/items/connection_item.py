@@ -601,13 +601,17 @@ class ConnectionItem(QGraphicsPathItem):
         if 0 in selected:
             comp = self._source_port.component if self._source_port else None
             if isinstance(comp, JunctionItem):
+                comp._skip_snap = True
                 comp.setPos(self._waypoints[0])
+                comp._skip_snap = False
         # Last waypoint → target junction
         last_idx = len(self._waypoints) - 1
         if last_idx in selected:
             comp = self._target_port.component if self._target_port else None
             if isinstance(comp, JunctionItem):
+                comp._skip_snap = True
                 comp.setPos(self._waypoints[last_idx])
+                comp._skip_snap = False
 
     # =====================================================================
     # Hit-testing helpers
@@ -846,10 +850,23 @@ class ConnectionItem(QGraphicsPathItem):
         # --- Waypoint drag (single or group, snaps to grid) ---
         if self._dragging_waypoint is not None:
             if self._dragging_group and self._selected_waypoints and self._drag_start_pos:
-                # Group drag: move all selected waypoints by the same snapped delta
-                snapped_pos = self._snap_to_grid(pos)
-                snapped_start = self._snap_to_grid(self._drag_start_pos)
-                delta = snapped_pos - snapped_start
+                # Group drag: snap the GRABBED handle to grid (not the
+                # mouse), so a wire whose handles sit off-grid gets
+                # pulled onto the grid by the drag instead of sliding in
+                # rigid grid-sized increments.
+                raw_delta = pos - self._drag_start_pos
+                anchor_idx = self._dragging_waypoint
+                if (self._drag_start_waypoints
+                        and anchor_idx is not None
+                        and 0 <= anchor_idx < len(self._drag_start_waypoints)):
+                    anchor_orig = self._drag_start_waypoints[anchor_idx]
+                    anchor_new = self._snap_to_grid(
+                        QPointF(anchor_orig.x() + raw_delta.x(),
+                                anchor_orig.y() + raw_delta.y())
+                    )
+                    delta = anchor_new - anchor_orig
+                else:
+                    delta = self._snap_to_grid(pos) - self._snap_to_grid(self._drag_start_pos)
                 if self._drag_start_waypoints:
                     for si in self._selected_waypoints:
                         if 0 <= si < len(self._waypoints) and si < len(self._drag_start_waypoints):
@@ -890,31 +907,26 @@ class ConnectionItem(QGraphicsPathItem):
             # coincide with a junction's original position.  This is
             # robust against duplicate/degenerate points and approach
             # segments in the expanded route.
+            # Always sync endpoint junctions to the new first/last
+            # expanded points. For internal segment drags these are
+            # unchanged, so setPos is a no-op; for endpoint drags this
+            # keeps the junction anchored to the wire end and prevents
+            # trailing stubs. Use _skip_snap to avoid the junction
+            # snapping away from the (already snapped) waypoint.
             from diagrammer.items.junction_item import JunctionItem
             src_comp = self._source_port.component if self._source_port else None
             tgt_comp = self._target_port.component if self._target_port else None
             junctions_moved = False
-            seg = self._dragging_segment
-            base_a = self._drag_start_expanded[seg]
-            base_b = self._drag_start_expanded[seg + 1]
-            if isinstance(src_comp, JunctionItem):
-                src_orig = self._drag_start_junction_pos.get(src_comp.instance_id)
-                if src_orig is not None:
-                    if point_distance(base_a, src_orig) < 2.0:
-                        src_comp.setPos(new_expanded[seg])
-                        junctions_moved = True
-                    elif point_distance(base_b, src_orig) < 2.0:
-                        src_comp.setPos(new_expanded[seg + 1])
-                        junctions_moved = True
-            if isinstance(tgt_comp, JunctionItem):
-                tgt_orig = self._drag_start_junction_pos.get(tgt_comp.instance_id)
-                if tgt_orig is not None:
-                    if point_distance(base_a, tgt_orig) < 2.0:
-                        tgt_comp.setPos(new_expanded[seg])
-                        junctions_moved = True
-                    elif point_distance(base_b, tgt_orig) < 2.0:
-                        tgt_comp.setPos(new_expanded[seg + 1])
-                        junctions_moved = True
+            if isinstance(src_comp, JunctionItem) and new_expanded:
+                src_comp._skip_snap = True
+                src_comp.setPos(new_expanded[0])
+                src_comp._skip_snap = False
+                junctions_moved = True
+            if isinstance(tgt_comp, JunctionItem) and new_expanded:
+                tgt_comp._skip_snap = True
+                tgt_comp.setPos(new_expanded[-1])
+                tgt_comp._skip_snap = False
+                junctions_moved = True
             self._store_expanded_as_waypoints(new_expanded)
             # Update other connections attached to moved junctions
             if junctions_moved:

@@ -90,6 +90,13 @@ EXCLUDE_QT = [
 # its TkAgg backend, which we don't bundle.
 EXCLUDE_MISC = [
     "tkinter",
+    # Stdlib modules nothing in our dependency tree imports at load
+    # time. ``unittest`` MUST stay (matplotlib uses ``unittest.mock``
+    # via its dependency chain), but ``xmlrpc`` and ``pydoc`` are pure
+    # collateral and reclaim ~2 MB.
+    "xmlrpc",
+    "pydoc",
+    "pydoc_data",
 ]
 
 EXCLUDES = EXCLUDE_QT + EXCLUDE_MISC
@@ -159,6 +166,35 @@ a = Analysis(
     noarchive=False,
     cipher=block_cipher,
 )
+
+
+# ── Strip unused matplotlib data ─────────────────────────────────────
+# matplotlib's mpl-data ships ~9 MB of resources, much of which we
+# never touch because Diagrammer only renders SVG via the agg backend
+# and never opens an interactive figure window.
+#
+#   * sample_data/   — PNG/CSV examples for matplotlib's own gallery
+#   * fonts/afm/     — Adobe Font Metrics, only used by the PS backend
+#   * fonts/pdfcorefonts/ — only used by the PDF backend's "core fonts"
+#                          mode; our usetex path never invokes it
+#   * images/        — toolbar icons for the interactive figure window
+#
+# fonts/ttf/ MUST stay (mathtext fontsets cm/stix/dejavusans live
+# there and the settings dialog lets users switch between them).
+_MPL_STRIP_PREFIXES = (
+    "matplotlib/mpl-data/sample_data",
+    "matplotlib/mpl-data/fonts/afm",
+    "matplotlib/mpl-data/fonts/pdfcorefonts",
+    "matplotlib/mpl-data/images",
+)
+
+
+def _keep(entry):
+    dest = entry[0].replace("\\", "/")
+    return not dest.startswith(_MPL_STRIP_PREFIXES)
+
+
+a.datas = [e for e in a.datas if _keep(e)]
 
 pyz = PYZ(a.pure, cipher=block_cipher)
 
