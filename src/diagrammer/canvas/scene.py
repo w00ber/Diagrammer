@@ -873,15 +873,33 @@ class DiagramScene(QGraphicsScene):
         self._drag_start_positions[instance_id] = QPointF(pos)
 
     def record_move_end(self, item, update: bool = True) -> None:
-        """Record the end of a component/junction drag and push a MoveCommand if it moved.
+        """Record the end of a drag and push a MoveCommand if it moved.
+
+        Supports components, junctions, annotations, and shape/line
+        items — anything whose move needs to round-trip through the
+        undo stack. Without the shape/annotation branches, moving a
+        group that mixes components with shapes or annotations would
+        undo only the component moves and leave the other pieces
+        stranded at their new positions, breaking relative alignment.
 
         Args:
-            update: If True (default), update connections and check auto-join.
-                   Set to False during group moves to defer updates.
+            update: If True (default), update connections and check
+                auto-join. Set to False during group moves to defer
+                updates.
         """
+        from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.junction_item import JunctionItem
-        if not isinstance(item, (ComponentItem, JunctionItem)):
+        from diagrammer.items.shape_item import (
+            EllipseItem,
+            LineItem,
+            RectangleItem,
+        )
+        if not isinstance(
+            item,
+            (ComponentItem, JunctionItem, AnnotationItem,
+             RectangleItem, EllipseItem, LineItem),
+        ):
             return
         old_pos = self._drag_start_positions.pop(item.instance_id, None)
         if old_pos is None or old_pos == item.pos():

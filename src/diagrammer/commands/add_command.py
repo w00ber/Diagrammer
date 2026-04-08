@@ -46,7 +46,7 @@ class AddComponentCommand(QUndoCommand):
 
 
 class MoveComponentCommand(QUndoCommand):
-    """Record a component or junction move for undo/redo."""
+    """Record a component, junction, annotation, or shape move for undo/redo."""
 
     def __init__(
         self,
@@ -59,7 +59,10 @@ class MoveComponentCommand(QUndoCommand):
         self._item = item
         self._old_pos = old_pos
         self._new_pos = new_pos
-        label = item.component_def.name if hasattr(item, 'component_def') else "Junction"
+        if hasattr(item, 'component_def'):
+            label = item.component_def.name
+        else:
+            label = type(item).__name__
         self.setText(f"Move {label}")
 
     def redo(self) -> None:

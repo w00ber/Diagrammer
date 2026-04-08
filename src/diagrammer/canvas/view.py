@@ -687,18 +687,9 @@ class DiagramView(QGraphicsView):
                 event.accept()
                 return
 
-            # -- Click on an annotation → set up drag --
-            elif isinstance(item, AnnotationItem):
-                selected = self._expand_group_selection(item)
-                self._dragging_components = selected
-                self._drag_anchor_item = item
-                self._drag_anchor_start_pos = QPointF(item.pos())
-                self._drag_mouse_start = QPointF(scene_pos)
-                for comp in selected:
-                    self._diagram_scene.record_move_start(comp.instance_id, comp.pos())
-                self._drag_internal_conns = []
-                self._drag_conn_waypoints = {}
-                self.setDragMode(QGraphicsView.DragMode.NoDrag)
+            # (Annotation/shape/line drags are handled by the unified
+            # "movable item" branch below — see the isinstance() check
+            # that also covers ComponentItem and JunctionItem.)
 
             # -- Click on a grouped connection → redirect to group drag --
             elif isinstance(item, ConnectionItem) and getattr(item, '_group_id', None):
@@ -783,106 +774,132 @@ class DiagramView(QGraphicsView):
                         event.accept()
                         return
 
-            # -- Click on a component or junction → set up snap anchor and record move start --
-            elif isinstance(item, (ComponentItem, JunctionItem)):
-                if isinstance(item, ComponentItem):
-                    item.set_snap_anchor_closest_to(scene_pos)
-
-                # Expand selection to include group members
-                from diagrammer.commands.group_command import get_top_group as _gtg_drag
-                selected = self._expand_group_selection(item)
-
-                # Detect explicit multi-selection (user rubber-banded or
-                # shift-clicked, as opposed to clicking a single unselected
-                # item).  When multi-selecting, the user's selection is
-                # authoritative — don't auto-include extra junctions.
-                _is_explicit_multiselect = (
-                    not _gtg_drag(item)
-                    and len(selected) > 1
-                    and item in self._diagram_scene.selectedItems()
+            # -- Click on a movable item → set up group-aware drag --
+            # Covers ComponentItem, JunctionItem, AnnotationItem, and
+            # ShapeItem/LineItem so that grouped shapes and annotations
+            # move in lockstep with the rest of the group instead of
+            # drifting off on their own via Qt's default item drag.
+            else:
+                from diagrammer.items.shape_item import (
+                    LineItem as _DragLineItem,
+                    ShapeItem as _DragShapeItem,
                 )
+                _movable_types = (
+                    ComponentItem, JunctionItem, AnnotationItem,
+                    _DragShapeItem, _DragLineItem,
+                )
+                # If the click lands on a shape's resize handle or a
+                # line's endpoint, defer to the item's own mousePress
+                # so resize / endpoint-edit gestures still work.
+                _handle_hit = False
+                if isinstance(item, _DragShapeItem) and item.isSelected():
+                    _local = item.mapFromScene(scene_pos)
+                    if item._handle_at(_local) is not None:
+                        _handle_hit = True
+                elif isinstance(item, _DragLineItem) and item.isSelected():
+                    _local = item.mapFromScene(scene_pos)
+                    if item._endpoint_at(_local) is not None:
+                        _handle_hit = True
 
-                # Only the clicked item should snap — disable snap on group siblings
-                for s in selected:
-                    if s is not item and hasattr(s, '_skip_snap'):
-                        s._skip_snap = True
+                if isinstance(item, _movable_types) and not _handle_hit:
+                    if isinstance(item, ComponentItem):
+                        item.set_snap_anchor_closest_to(scene_pos)
 
-                # Auto-include connected junctions not in the selection,
-                # but only for single-item or group drags — not when the
-                # user has built an explicit multi-selection.
-                selected_ids = set(id(c) for c in selected)
-                self._drag_auto_junctions = []
-                if not _is_explicit_multiselect:
+                    # Expand selection to include group members
+                    from diagrammer.commands.group_command import get_top_group as _gtg_drag
+                    selected = self._expand_group_selection(item)
+
+                    # Detect explicit multi-selection (user rubber-banded or
+                    # shift-clicked, as opposed to clicking a single unselected
+                    # item).  When multi-selecting, the user's selection is
+                    # authoritative — don't auto-include extra junctions.
+                    _is_explicit_multiselect = (
+                        not _gtg_drag(item)
+                        and len(selected) > 1
+                        and item in self._diagram_scene.selectedItems()
+                    )
+
+                    # Only the clicked item should snap — disable snap on group siblings
+                    for s in selected:
+                        if s is not item and hasattr(s, '_skip_snap'):
+                            s._skip_snap = True
+
+                    # Auto-include connected junctions not in the selection,
+                    # but only for single-item or group drags — not when the
+                    # user has built an explicit multi-selection.
+                    selected_ids = set(id(c) for c in selected)
+                    self._drag_auto_junctions = []
+                    if not _is_explicit_multiselect:
+                        for si in self._diagram_scene.items():
+                            if not isinstance(si, ConnectionItem):
+                                continue
+                            src_comp = si.source_port.component
+                            tgt_comp = si.target_port.component
+                            if id(src_comp) in selected_ids and isinstance(tgt_comp, JunctionItem) and id(tgt_comp) not in selected_ids:
+                                selected.append(tgt_comp)
+                                selected_ids.add(id(tgt_comp))
+                                self._drag_auto_junctions.append(tgt_comp)
+                            elif id(tgt_comp) in selected_ids and isinstance(src_comp, JunctionItem) and id(src_comp) not in selected_ids:
+                                selected.append(src_comp)
+                                selected_ids.add(id(src_comp))
+                                self._drag_auto_junctions.append(src_comp)
+
+                    self._dragging_components = selected
+                    self._drag_anchor_item = item
+                    self._drag_anchor_start_pos = QPointF(item.pos())
+                    self._drag_mouse_start = QPointF(scene_pos)
+                    for comp in selected:
+                        self._diagram_scene.record_move_start(comp.instance_id, comp.pos())
+
+                    # Capture internal connections: group-member connections first,
+                    # then endpoint-detected connections for non-grouped selections
+                    comp_ids = set(id(c) for c in selected)
+                    self._drag_internal_conns = []
+                    self._drag_conn_waypoints = {}
+                    seen_conn_ids = set()
+
+                    # 1) Connections that are group members
+                    from diagrammer.commands.group_command import get_top_group
+                    gid = get_top_group(item)
+                    if gid:
+                        for si in self._diagram_scene.get_group_members(gid):
+                            if isinstance(si, ConnectionItem) and id(si) not in seen_conn_ids:
+                                self._drag_internal_conns.append(si)
+                                self._drag_conn_waypoints[si.instance_id] = [
+                                    QPointF(w) for w in si.vertices
+                                ]
+                                seen_conn_ids.add(id(si))
+                                # Also ensure the connection's endpoint junctions are in the drag set
+                                for port_item in (si.source_port, si.target_port):
+                                    pc = port_item.component
+                                    if isinstance(pc, JunctionItem) and id(pc) not in comp_ids:
+                                        selected.append(pc)
+                                        comp_ids.add(id(pc))
+                                        self._drag_auto_junctions.append(pc)
+                                        self._diagram_scene.record_move_start(pc.instance_id, pc.pos())
+
+                    # 2) Endpoint-detected connections (for non-grouped multi-select)
                     for si in self._diagram_scene.items():
-                        if not isinstance(si, ConnectionItem):
-                            continue
-                        src_comp = si.source_port.component
-                        tgt_comp = si.target_port.component
-                        if id(src_comp) in selected_ids and isinstance(tgt_comp, JunctionItem) and id(tgt_comp) not in selected_ids:
-                            selected.append(tgt_comp)
-                            selected_ids.add(id(tgt_comp))
-                            self._drag_auto_junctions.append(tgt_comp)
-                        elif id(tgt_comp) in selected_ids and isinstance(src_comp, JunctionItem) and id(src_comp) not in selected_ids:
-                            selected.append(src_comp)
-                            selected_ids.add(id(src_comp))
-                            self._drag_auto_junctions.append(src_comp)
-
-                self._dragging_components = selected
-                self._drag_anchor_item = item
-                self._drag_anchor_start_pos = QPointF(item.pos())
-                self._drag_mouse_start = QPointF(scene_pos)
-                for comp in selected:
-                    self._diagram_scene.record_move_start(comp.instance_id, comp.pos())
-
-                # Capture internal connections: group-member connections first,
-                # then endpoint-detected connections for non-grouped selections
-                comp_ids = set(id(c) for c in selected)
-                self._drag_internal_conns = []
-                self._drag_conn_waypoints = {}
-                seen_conn_ids = set()
-
-                # 1) Connections that are group members
-                from diagrammer.commands.group_command import get_top_group
-                gid = get_top_group(item)
-                if gid:
-                    for si in self._diagram_scene.get_group_members(gid):
                         if isinstance(si, ConnectionItem) and id(si) not in seen_conn_ids:
-                            self._drag_internal_conns.append(si)
-                            self._drag_conn_waypoints[si.instance_id] = [
-                                QPointF(w) for w in si.vertices
+                            src_in = id(si.source_port.component) in comp_ids
+                            tgt_in = id(si.target_port.component) in comp_ids
+                            if src_in and tgt_in:
+                                self._drag_internal_conns.append(si)
+                                self._drag_conn_waypoints[si.instance_id] = [
+                                    QPointF(w) for w in si.vertices
+                                ]
+                                seen_conn_ids.add(id(si))
+
+                    self.setDragMode(QGraphicsView.DragMode.NoDrag)
+
+                    # If waypoints are also selected, activate unified drag
+                    if self._selected_waypoint_set:
+                        self._unified_drag_active = True
+                        self._unified_drag_waypoint_starts = {}
+                        for conn_id, conn in self._selected_waypoint_conns.items():
+                            self._unified_drag_waypoint_starts[conn_id] = [
+                                QPointF(w) for w in conn.vertices
                             ]
-                            seen_conn_ids.add(id(si))
-                            # Also ensure the connection's endpoint junctions are in the drag set
-                            for port_item in (si.source_port, si.target_port):
-                                pc = port_item.component
-                                if isinstance(pc, JunctionItem) and id(pc) not in comp_ids:
-                                    selected.append(pc)
-                                    comp_ids.add(id(pc))
-                                    self._drag_auto_junctions.append(pc)
-                                    self._diagram_scene.record_move_start(pc.instance_id, pc.pos())
-
-                # 2) Endpoint-detected connections (for non-grouped multi-select)
-                for si in self._diagram_scene.items():
-                    if isinstance(si, ConnectionItem) and id(si) not in seen_conn_ids:
-                        src_in = id(si.source_port.component) in comp_ids
-                        tgt_in = id(si.target_port.component) in comp_ids
-                        if src_in and tgt_in:
-                            self._drag_internal_conns.append(si)
-                            self._drag_conn_waypoints[si.instance_id] = [
-                                QPointF(w) for w in si.vertices
-                            ]
-                            seen_conn_ids.add(id(si))
-
-                self.setDragMode(QGraphicsView.DragMode.NoDrag)
-
-                # If waypoints are also selected, activate unified drag
-                if self._selected_waypoint_set:
-                    self._unified_drag_active = True
-                    self._unified_drag_waypoint_starts = {}
-                    for conn_id, conn in self._selected_waypoint_conns.items():
-                        self._unified_drag_waypoint_starts[conn_id] = [
-                            QPointF(w) for w in conn.vertices
-                        ]
 
         # Save selection before Qt's default handler clears it (Qt deselects
         # everything on a plain click, but we need multi-select to survive).
@@ -1424,6 +1441,7 @@ class DiagramView(QGraphicsView):
         the clicked item.
         """
         from diagrammer.commands.group_command import get_top_group
+        from diagrammer.items.shape_item import LineItem, ShapeItem
 
         gid = get_top_group(clicked_item)
         if gid:
@@ -1437,7 +1455,11 @@ class DiagramView(QGraphicsView):
         # No group — use current multi-selection or just the clicked item
         selected = [
             i for i in self._diagram_scene.selectedItems()
-            if isinstance(i, (ComponentItem, JunctionItem, AnnotationItem))
+            if isinstance(
+                i,
+                (ComponentItem, JunctionItem, AnnotationItem,
+                 ShapeItem, LineItem),
+            )
         ]
         if clicked_item not in selected:
             selected = [clicked_item]
