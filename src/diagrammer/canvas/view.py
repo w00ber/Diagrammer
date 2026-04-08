@@ -97,9 +97,24 @@ class DiagramView(QGraphicsView):
                 self._selected_waypoint_conns[item.instance_id] = item
 
     def _on_scene_selection_changed(self) -> None:
-        """Remove stale entries when connections are deselected."""
+        """Remove stale entries when connections are deselected.
+
+        Guarded against a shutdown race: during window close Qt can
+        emit ``selectionChanged`` one last time while the scene's C++
+        object is being torn down (e.g. as child items are deleted
+        and their selection state flips). At that point the Python
+        wrapper ``self._diagram_scene`` points at an already-deleted
+        C++ object, and calling ``selectedItems()`` on it raises
+        ``RuntimeError: Internal C++ object (DiagramScene) already
+        deleted.`` We swallow that specific case and bail out — the
+        view is about to go away anyway.
+        """
+        try:
+            scene_items = self._diagram_scene.selectedItems()
+        except RuntimeError:
+            return
         selected_conn_ids = set()
-        for item in self._diagram_scene.selectedItems():
+        for item in scene_items:
             if isinstance(item, ConnectionItem):
                 selected_conn_ids.add(item.instance_id)
         stale = [cid for cid in self._selected_waypoint_set if cid not in selected_conn_ids]
