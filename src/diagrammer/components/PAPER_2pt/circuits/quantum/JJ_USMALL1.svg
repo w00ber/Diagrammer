@@ -7,10 +7,6 @@
         fill: #c66;
       }
 
-      .st1 {
-        stroke-width: 2px;
-      }
-
       .st1, .st2, .st3 {
         fill: none;
         stroke-linecap: round;
@@ -24,6 +20,10 @@
         stroke: #000;
       }
 
+      .st1, .st4 {
+        stroke-width: 2px;
+      }
+
       .st2 {
         stroke: #999;
         stroke-width: .5px;
@@ -31,10 +31,6 @@
 
       .st3 {
         stroke-width: 1.8px;
-      }
-
-      .st4 {
-        stroke-width: 3px;
       }
 
       .st5 {

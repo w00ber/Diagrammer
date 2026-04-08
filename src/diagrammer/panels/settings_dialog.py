@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QBrush, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
@@ -15,10 +15,14 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QKeySequenceEdit,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -49,6 +53,9 @@ class AppSettings:
         self.snap_to_angle = _d("snap", "snap_to_angle", False)
         self.snap_to_grid = _d("snap", "snap_to_grid", True)
         self.angle_snap_increment = _d("snap", "angle_snap_increment", 15.0)
+        # Arrow-key nudge step as a fraction of the current grid spacing.
+        # Shift+Arrow uses half this value for fine nudge.
+        self.nudge_fraction = _d("snap", "nudge_fraction", 0.2)
 
         # Junction appearance
         self.show_junctions = _d("junction", "show", True)
@@ -83,7 +90,15 @@ class AppSettings:
         # Library
         self.hidden_libraries: set[str] = set()
         self.library_view_mode = "tree"  # "tree" or "grid"
-        self.custom_library_paths: list[str] = []  # additional library directories
+        # Additional library directories. Each entry: {"path": str, "enabled": bool}.
+        self.custom_library_paths: list[dict] = []
+
+        # Keyboard shortcut user overrides: {action_id: portable_key_string}
+        self.keyboard_shortcuts: dict[str, str] = {}
+
+        # Library tab UI state: parent group names whose child list is expanded.
+        # Default empty = everything collapsed on first run.
+        self.library_tab_expanded: list[str] = []
 
         # Session
         self.last_opened_file: str = ""
@@ -120,6 +135,9 @@ class AppSettings:
     def save(self) -> None:
         """Persist settings to disk."""
         try:
+            # Pull live keyboard overrides from the registry
+            from diagrammer import shortcuts as _sc
+            self.keyboard_shortcuts = _sc.dump_user_overrides()
             _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
             data = {
                 "default_line_width": self.default_line_width,
@@ -130,6 +148,7 @@ class AppSettings:
                 "snap_to_angle": self.snap_to_angle,
                 "snap_to_grid": self.snap_to_grid,
                 "angle_snap_increment": self.angle_snap_increment,
+                "nudge_fraction": self.nudge_fraction,
                 "show_junctions": self.show_junctions,
                 "junction_color": self.junction_color.name(),
                 "junction_outline": self.junction_outline,
@@ -138,6 +157,8 @@ class AppSettings:
                 "hidden_libraries": sorted(self.hidden_libraries),
                 "library_view_mode": self.library_view_mode,
                 "custom_library_paths": self.custom_library_paths,
+                "keyboard_shortcuts": self.keyboard_shortcuts,
+                "library_tab_expanded": self.library_tab_expanded,
                 "last_opened_file": self.last_opened_file,
                 "last_directory": self.last_directory,
                 "recent_files": self.recent_files[:10],
@@ -183,6 +204,7 @@ class AppSettings:
                 self.snap_to_angle = data.get("snap_to_angle", self.snap_to_angle)
                 self.snap_to_grid = data.get("snap_to_grid", self.snap_to_grid)
                 self.angle_snap_increment = data.get("angle_snap_increment", self.angle_snap_increment)
+                self.nudge_fraction = data.get("nudge_fraction", self.nudge_fraction)
                 self.show_junctions = data.get("show_junctions", self.show_junctions)
                 jc = data.get("junction_color")
                 if jc:
@@ -192,7 +214,24 @@ class AppSettings:
                 self.discrete_angle_routing = data.get("discrete_angle_routing", self.discrete_angle_routing)
                 self.hidden_libraries = set(data.get("hidden_libraries", []))
                 self.library_view_mode = data.get("library_view_mode", self.library_view_mode)
-                self.custom_library_paths = data.get("custom_library_paths", [])
+                raw_paths = data.get("custom_library_paths", [])
+                migrated: list[dict] = []
+                for entry in raw_paths:
+                    if isinstance(entry, str):
+                        migrated.append({"path": entry, "enabled": True})
+                    elif isinstance(entry, dict) and "path" in entry:
+                        migrated.append({
+                            "path": entry["path"],
+                            "enabled": bool(entry.get("enabled", True)),
+                        })
+                self.custom_library_paths = migrated
+                # Keyboard shortcut overrides
+                self.keyboard_shortcuts = dict(data.get("keyboard_shortcuts", {}))
+                self.library_tab_expanded = list(
+                    data.get("library_tab_expanded", []))
+                from diagrammer import shortcuts as _sc
+                _sc.reset_all_overrides()
+                _sc.load_user_overrides(self.keyboard_shortcuts)
                 self.last_opened_file = data.get("last_opened_file", "")
                 self.last_directory = data.get("last_directory", "")
                 self.recent_files = data.get("recent_files", [])[:10]
@@ -230,6 +269,15 @@ class AppSettings:
                 self.default_shape_arrow_extend = data.get("default_shape_arrow_extend", self.default_shape_arrow_extend)
         except Exception:
             pass
+
+
+    def enabled_custom_library_paths(self) -> list[str]:
+        """Return only the custom library paths the user has enabled."""
+        return [
+            entry["path"]
+            for entry in self.custom_library_paths
+            if entry.get("enabled", True)
+        ]
 
 
 # Singleton instance
@@ -324,6 +372,17 @@ class SettingsDialog(QDialog):
         self._angle_increment_spin.setSingleStep(5.0)
         snap_form.addRow("Angle increment:", self._angle_increment_spin)
 
+        self._nudge_fraction_spin = QDoubleSpinBox()
+        self._nudge_fraction_spin.setRange(0.01, 5.0)
+        self._nudge_fraction_spin.setSingleStep(0.05)
+        self._nudge_fraction_spin.setDecimals(2)
+        self._nudge_fraction_spin.setValue(settings.nudge_fraction)
+        self._nudge_fraction_spin.setToolTip(
+            "Arrow-key nudge step as a fraction of the current grid spacing. "
+            "Shift+Arrow uses half this value."
+        )
+        snap_form.addRow("Nudge step (× grid):", self._nudge_fraction_spin)
+
         snap_group.setLayout(snap_form)
         snap_layout.addWidget(snap_group)
 
@@ -340,8 +399,10 @@ class SettingsDialog(QDialog):
         lib_layout = QVBoxLayout(lib_tab)
         lib_group = QGroupBox("Visible Component Libraries")
         lib_form = QVBoxLayout()
-        self._lib_checkboxes: dict[str, QCheckBox] = {}
-        self._parent_checkboxes: dict[str, QCheckBox] = {}
+        # Maps category name → QTreeWidgetItem (leaf items: actual categories;
+        # parent items: synthetic group rows)
+        self._lib_checkboxes: dict[str, QTreeWidgetItem] = {}
+        self._parent_checkboxes: dict[str, QTreeWidgetItem] = {}
         if library:
             # Group categories by parent
             parents: dict[str, list[str]] = {}
@@ -354,66 +415,97 @@ class SettingsDialog(QDialog):
                 else:
                     top_level.append(cat)
 
-            def _update_parent(parent_cb, children_cbs):
-                """When parent is toggled, set all children to match."""
-                checked = parent_cb.isChecked()
-                for ccb in children_cbs:
-                    ccb.setChecked(checked)
-                    if not checked:
-                        ccb.setEnabled(False)
-                        ccb.setStyleSheet("color: #999;")
-                    else:
-                        ccb.setEnabled(True)
-                        ccb.setStyleSheet("")
+            # Native QTreeWidget with checkable items + auto tri-state parents
+            self._lib_tree = QTreeWidget()
+            self._lib_tree.setHeaderHidden(True)
+            self._lib_tree.setRootIsDecorated(True)
+            self._lib_tree.setUniformRowHeights(True)
+            self._lib_tree.setMinimumHeight(220)
+            lib_form.addWidget(self._lib_tree)
 
-            # Top-level categories (no parent)
+            expanded_set = set(settings.library_tab_expanded)
+
+            def _make_checkable(item: QTreeWidgetItem, checked: bool) -> None:
+                item.setFlags(
+                    item.flags()
+                    | Qt.ItemFlag.ItemIsUserCheckable
+                )
+                item.setCheckState(
+                    0,
+                    Qt.CheckState.Checked if checked
+                    else Qt.CheckState.Unchecked,
+                )
+
+            # Top-level categories (no children) — leaf items at root
             for cat in top_level:
-                cb = QCheckBox(cat.replace("_", " ").title())
-                cb.setChecked(cat not in settings.hidden_libraries)
-                lib_form.addWidget(cb)
-                self._lib_checkboxes[cat] = cb
+                item = QTreeWidgetItem(self._lib_tree)
+                item.setText(0, cat.replace("_", " ").title())
+                _make_checkable(item, cat not in settings.hidden_libraries)
+                self._lib_checkboxes[cat] = item
 
-            # Parent groups with children
+            # Parent groups with children — tri-state via ItemIsAutoTristate
             for parent, children in sorted(parents.items()):
-                # Parent checkbox
-                all_visible = all(c not in settings.hidden_libraries for c in children)
-                none_visible = all(c in settings.hidden_libraries for c in children)
-                parent_cb = QCheckBox(f"{parent.replace('_', ' ').title()}")
-                parent_cb.setStyleSheet("font-weight: bold; margin-top: 4px;")
-                parent_cb.setChecked(not none_visible)
-                lib_form.addWidget(parent_cb)
-                self._parent_checkboxes[parent] = parent_cb
+                parent_item = QTreeWidgetItem(self._lib_tree)
+                parent_item.setText(0, parent.replace("_", " ").title())
+                font = parent_item.font(0)
+                font.setBold(True)
+                parent_item.setFont(0, font)
+                parent_item.setFlags(
+                    parent_item.flags()
+                    | Qt.ItemFlag.ItemIsUserCheckable
+                    | Qt.ItemFlag.ItemIsAutoTristate
+                )
+                self._parent_checkboxes[parent] = parent_item
 
-                # Child checkboxes
-                child_cbs = []
                 for cat in children:
                     display = cat.split("/")[-1].replace("_", " ").title()
-                    cb = QCheckBox(f"    {display}")
-                    cb.setChecked(cat not in settings.hidden_libraries)
-                    if none_visible:
-                        cb.setEnabled(False)
-                        cb.setStyleSheet("color: #999;")
-                    lib_form.addWidget(cb)
-                    self._lib_checkboxes[cat] = cb
-                    child_cbs.append(cb)
+                    child_item = QTreeWidgetItem(parent_item)
+                    child_item.setText(0, display)
+                    _make_checkable(
+                        child_item, cat not in settings.hidden_libraries)
+                    self._lib_checkboxes[cat] = child_item
 
-                # Connect parent to children
-                parent_cb.toggled.connect(
-                    lambda checked, p=parent_cb, cs=child_cbs: _update_parent(p, cs)
+                # Set the parent's check state explicitly (it'll be auto-managed
+                # afterward by ItemIsAutoTristate as the user toggles children)
+                n_total = parent_item.childCount()
+                n_checked = sum(
+                    1 for i in range(n_total)
+                    if parent_item.child(i).checkState(0) == Qt.CheckState.Checked
                 )
+                if n_checked == 0:
+                    parent_item.setCheckState(0, Qt.CheckState.Unchecked)
+                elif n_checked == n_total:
+                    parent_item.setCheckState(0, Qt.CheckState.Checked)
+                else:
+                    parent_item.setCheckState(0, Qt.CheckState.PartiallyChecked)
+
+                parent_item.setExpanded(parent in expanded_set)
         else:
             lib_form.addWidget(QLabel("No library loaded"))
         lib_group.setLayout(lib_form)
         lib_layout.addWidget(lib_group)
 
         # Custom library paths
-        from PySide6.QtWidgets import QListWidget, QFileDialog as _FD
+        from PySide6.QtWidgets import QListWidget, QListWidgetItem
         paths_group = QGroupBox("Additional Library Folders")
         paths_layout = QVBoxLayout()
+        paths_hint = QLabel(
+            "Check a folder to include it in the library. "
+            "Removing a folder also clears its visibility selections."
+        )
+        paths_hint.setStyleSheet("color: #666; font-size: 11px;")
+        paths_hint.setWordWrap(True)
+        paths_layout.addWidget(paths_hint)
         self._lib_paths_list = QListWidget()
-        self._lib_paths_list.setMaximumHeight(100)
-        for p in settings.custom_library_paths:
-            self._lib_paths_list.addItem(p)
+        self._lib_paths_list.setMaximumHeight(120)
+        for entry in settings.custom_library_paths:
+            item = QListWidgetItem(entry["path"])
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(
+                Qt.CheckState.Checked if entry.get("enabled", True)
+                else Qt.CheckState.Unchecked
+            )
+            self._lib_paths_list.addItem(item)
         paths_layout.addWidget(self._lib_paths_list)
         paths_btn_row = QHBoxLayout()
         add_path_btn = QPushButton("Add...")
@@ -587,18 +679,23 @@ class SettingsDialog(QDialog):
         annot_layout.addStretch()
         tabs.addTab(_scrollable(annot_tab), "Annotations")
 
+        # -- Keyboard Shortcuts tab --
+        tabs.addTab(self._build_shortcuts_tab(), "Keyboard Shortcuts")
+
         # -- OK / Cancel --
         btn_row = QHBoxLayout()
-        ok_btn = QPushButton("OK")
-        ok_btn.setAutoDefault(False)
-        ok_btn.clicked.connect(self.accept)
+        self._ok_btn = QPushButton("OK")
+        self._ok_btn.setAutoDefault(False)
+        self._ok_btn.clicked.connect(self.accept)
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setAutoDefault(False)
         cancel_btn.clicked.connect(self.reject)
         btn_row.addStretch()
-        btn_row.addWidget(ok_btn)
+        btn_row.addWidget(self._ok_btn)
         btn_row.addWidget(cancel_btn)
         layout.addLayout(btn_row)
+        # Initial conflict pass
+        self._refresh_shortcut_conflicts()
 
     def _update_color_btn(self, btn: QPushButton, color: QColor) -> None:
         btn.setStyleSheet(f"background-color: {color.name()}; border: 1px solid #888;")
@@ -619,6 +716,7 @@ class SettingsDialog(QDialog):
         self._snap_to_port_cb.setChecked(True)
         self._snap_to_angle_cb.setChecked(False)
         self._angle_increment_spin.setValue(15.0)
+        self._nudge_fraction_spin.setValue(0.2)
 
     def _pick_junc_color(self) -> None:
         c = QColorDialog.getColor(self._junc_color, self, "Junction Color")
@@ -637,19 +735,55 @@ class SettingsDialog(QDialog):
             self._latex_path_edit.setText(path)
 
     def _add_library_path(self) -> None:
-        from PySide6.QtWidgets import QFileDialog
+        from PySide6.QtWidgets import QFileDialog, QListWidgetItem
         path = QFileDialog.getExistingDirectory(self, "Select Library Folder")
-        if path:
-            # Don't add duplicates
-            existing = [self._lib_paths_list.item(i).text()
-                        for i in range(self._lib_paths_list.count())]
-            if path not in existing:
-                self._lib_paths_list.addItem(path)
+        if not path:
+            return
+        existing = [self._lib_paths_list.item(i).text()
+                    for i in range(self._lib_paths_list.count())]
+        if path in existing:
+            return
+        item = QListWidgetItem(path)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(Qt.CheckState.Checked)
+        self._lib_paths_list.addItem(item)
 
     def _remove_library_path(self) -> None:
         row = self._lib_paths_list.currentRow()
-        if row >= 0:
-            self._lib_paths_list.takeItem(row)
+        if row < 0:
+            return
+        item = self._lib_paths_list.item(row)
+        removed_path = item.text()
+        self._lib_paths_list.takeItem(row)
+        # Strip any hidden_libraries entries that came from this path's
+        # categories. We re-derive them by scanning the directory now (cheap;
+        # the user just removed it). Categories also present in another
+        # source are left alone.
+        try:
+            from pathlib import Path
+            from diagrammer.models.library import ComponentLibrary
+            removed_lib = ComponentLibrary()
+            p = Path(removed_path)
+            if p.is_dir():
+                removed_lib.scan(p)
+            removed_cats = set(removed_lib.categories.keys())
+            # Categories still provided by other enabled sources
+            other_cats: set[str] = set()
+            if self._library is not None:
+                other_cats |= set(self._library.categories.keys())
+            # Subtract: only purge from hidden_libraries the cats unique to removed path
+            unique_to_removed = removed_cats - other_cats
+            # But _library may already include the removed path's cats — also
+            # purge any hidden cat that lives under removed_cats since the
+            # user explicitly removed the source.
+            for cat in list(self._lib_checkboxes.keys()):
+                if cat in removed_cats and cat not in (other_cats - removed_cats):
+                    # If the same category exists from another source, leave it.
+                    pass
+            for cat in unique_to_removed:
+                self._settings.hidden_libraries.discard(cat)
+        except Exception:
+            pass
 
     def _reset_to_factory(self) -> None:
         """Reset ALL settings to factory defaults from defaults.yaml."""
@@ -679,6 +813,194 @@ class SettingsDialog(QDialog):
             self._annot_color = c
             self._update_color_btn(self._annot_color_btn, c)
 
+    # ----------------------- Keyboard Shortcuts tab -----------------------
+
+    def _build_shortcuts_tab(self) -> QWidget:
+        from diagrammer import shortcuts as _sc
+
+        tab = QWidget()
+        v = QVBoxLayout(tab)
+
+        hint = QLabel(
+            "Customize keyboard shortcuts. Conflicts must be resolved before "
+            "you can save."
+        )
+        hint.setStyleSheet("color: #555;")
+        hint.setWordWrap(True)
+        v.addWidget(hint)
+
+        # Search box
+        search_row = QHBoxLayout()
+        search_row.addWidget(QLabel("Search:"))
+        self._sc_search = QLineEdit()
+        self._sc_search.setPlaceholderText("Filter by action, category, or key…")
+        self._sc_search.setClearButtonEnabled(True)
+        self._sc_search.textChanged.connect(self._filter_shortcut_rows)
+        search_row.addWidget(self._sc_search, 1)
+        v.addLayout(search_row)
+
+        # Tree
+        self._sc_tree = QTreeWidget()
+        self._sc_tree.setColumnCount(4)
+        self._sc_tree.setHeaderLabels(["Action", "Shortcut", "Default", ""])
+        self._sc_tree.setRootIsDecorated(True)
+        self._sc_tree.setUniformRowHeights(False)
+        self._sc_tree.setAlternatingRowColors(True)
+        v.addWidget(self._sc_tree, 1)
+
+        # action_id -> {item, edit, reset_btn, default_str, group_item, description}
+        self._sc_rows: dict[str, dict] = {}
+
+        for category, shortcuts in _sc.shortcuts_by_category().items():
+            group = QTreeWidgetItem(self._sc_tree, [category])
+            font = group.font(0)
+            font.setBold(True)
+            group.setFont(0, font)
+            group.setFirstColumnSpanned(True)
+            group.setExpanded(True)
+            for s in shortcuts:
+                item = QTreeWidgetItem(group)
+                label = s.description or s.action_id
+                item.setText(0, label)
+                item.setToolTip(0, s.action_id)
+                # Shortcut editor
+                edit = QKeySequenceEdit(s.key_sequence)
+                edit.keySequenceChanged.connect(self._refresh_shortcut_conflicts)
+                self._sc_tree.setItemWidget(item, 1, edit)
+                # Default column
+                item.setText(2, s.default_display_text or "—")
+                item.setForeground(2, QBrush(QColor("#888")))
+                # Per-row reset
+                reset_btn = QPushButton("Reset")
+                reset_btn.setAutoDefault(False)
+                reset_btn.setFixedWidth(60)
+                reset_btn.clicked.connect(
+                    lambda _=False, aid=s.action_id: self._reset_one_shortcut(aid))
+                self._sc_tree.setItemWidget(item, 3, reset_btn)
+
+                self._sc_rows[s.action_id] = {
+                    "item": item,
+                    "edit": edit,
+                    "reset_btn": reset_btn,
+                    "default_str": s.default_key_sequence.toString(
+                        QKeySequence.SequenceFormat.PortableText),
+                    "group_item": group,
+                    "description": s.description or s.action_id,
+                    "category": category,
+                }
+
+        for col in (0, 2, 3):
+            self._sc_tree.resizeColumnToContents(col)
+
+        # Status + reset all
+        bottom_row = QHBoxLayout()
+        self._sc_status = QLabel("")
+        self._sc_status.setStyleSheet("color: #b00;")
+        bottom_row.addWidget(self._sc_status, 1)
+        reset_all_btn = QPushButton("Reset Keyboard Shortcuts")
+        reset_all_btn.setAutoDefault(False)
+        reset_all_btn.clicked.connect(self._reset_all_shortcuts)
+        bottom_row.addWidget(reset_all_btn)
+        v.addLayout(bottom_row)
+
+        return tab
+
+    def _current_proposed_shortcuts(self) -> dict[str, str]:
+        """Snapshot of every row's editor as {action_id: portable_string}."""
+        out: dict[str, str] = {}
+        for aid, row in self._sc_rows.items():
+            seq = row["edit"].keySequence()
+            out[aid] = seq.toString(QKeySequence.SequenceFormat.PortableText)
+        return out
+
+    def _refresh_shortcut_conflicts(self) -> None:
+        from diagrammer import shortcuts as _sc
+
+        if not hasattr(self, "_sc_rows"):
+            return
+        proposed = self._current_proposed_shortcuts()
+        conflicts = _sc.find_conflicts(proposed)
+
+        # Map action_id -> list of other action_ids it conflicts with
+        conflict_partners: dict[str, list[str]] = {}
+        for _key, ids in conflicts.items():
+            for aid in ids:
+                conflict_partners[aid] = [o for o in ids if o != aid]
+
+        red = QBrush(QColor("#ffd5d5"))
+        clear = QBrush(Qt.GlobalColor.transparent)
+        for aid, row in self._sc_rows.items():
+            item = row["item"]
+            if aid in conflict_partners:
+                others = conflict_partners[aid]
+                others_desc = ", ".join(
+                    self._sc_rows[o]["description"] for o in others
+                    if o in self._sc_rows
+                )
+                tip = f"Conflicts with: {others_desc}"
+                for c in range(self._sc_tree.columnCount()):
+                    item.setBackground(c, red)
+                    item.setToolTip(c, tip)
+            else:
+                for c in range(self._sc_tree.columnCount()):
+                    item.setBackground(c, clear)
+                item.setToolTip(0, aid)
+
+        n = len({a for ids in conflicts.values() for a in ids})
+        if n:
+            self._sc_status.setText(
+                f"{n} shortcut conflict{'s' if n != 1 else ''} — resolve before saving"
+            )
+            if hasattr(self, "_ok_btn"):
+                self._ok_btn.setEnabled(False)
+        else:
+            self._sc_status.setText("")
+            if hasattr(self, "_ok_btn"):
+                self._ok_btn.setEnabled(True)
+
+    def _filter_shortcut_rows(self, text: str) -> None:
+        text = text.strip().lower()
+        for row in self._sc_rows.values():
+            item = row["item"]
+            if not text:
+                item.setHidden(False)
+                continue
+            haystack = " ".join([
+                row["description"].lower(),
+                row["category"].lower(),
+                row["edit"].keySequence().toString(
+                    QKeySequence.SequenceFormat.NativeText).lower(),
+                row["default_str"].lower(),
+            ])
+            item.setHidden(text not in haystack)
+        # Hide group rows whose children are all hidden
+        root = self._sc_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            group = root.child(i)
+            visible_children = any(
+                not group.child(j).isHidden() for j in range(group.childCount())
+            )
+            group.setHidden(not visible_children)
+
+    def _reset_one_shortcut(self, action_id: str) -> None:
+        from diagrammer import shortcuts as _sc
+        s = _sc.SHORTCUTS.get(action_id)
+        if s is None:
+            return
+        row = self._sc_rows.get(action_id)
+        if row is None:
+            return
+        row["edit"].setKeySequence(s.default_key_sequence)
+        self._refresh_shortcut_conflicts()
+
+    def _reset_all_shortcuts(self) -> None:
+        from diagrammer import shortcuts as _sc
+        for aid, row in self._sc_rows.items():
+            s = _sc.SHORTCUTS.get(aid)
+            if s is not None:
+                row["edit"].setKeySequence(s.default_key_sequence)
+        self._refresh_shortcut_conflicts()
+
     def apply(self) -> None:
         """Write dialog values into the settings object."""
         self._settings.default_line_width = self._line_width_spin.value()
@@ -687,26 +1009,32 @@ class SettingsDialog(QDialog):
         self._settings.snap_to_port = self._snap_to_port_cb.isChecked()
         self._settings.snap_to_angle = self._snap_to_angle_cb.isChecked()
         self._settings.angle_snap_increment = self._angle_increment_spin.value()
+        self._settings.nudge_fraction = self._nudge_fraction_spin.value()
         # Junction appearance
         self._settings.junction_color = QColor(self._junc_color)
         self._settings.junction_outline = self._junc_outline_cb.isChecked()
         self._settings.junction_radius = self._junc_radius_spin.value()
-        # Library visibility
-        self._settings.hidden_libraries = set()
-        for cat, cb in self._lib_checkboxes.items():
-            if not cb.isChecked():
-                self._settings.hidden_libraries.add(cat)
-        # Also hide all children of unchecked parents
-        for parent, pcb in self._parent_checkboxes.items():
-            if not pcb.isChecked():
-                for cat in self._lib_checkboxes:
-                    if cat.startswith(parent + "/"):
-                        self._settings.hidden_libraries.add(cat)
-        # Custom library paths
-        self._settings.custom_library_paths = [
-            self._lib_paths_list.item(i).text()
-            for i in range(self._lib_paths_list.count())
-        ]
+        # Library visibility (children are independently controllable;
+        # parent items use auto tri-state purely as a UI convenience)
+        self._settings.hidden_libraries = {
+            cat for cat, item in self._lib_checkboxes.items()
+            if item.checkState(0) != Qt.CheckState.Checked
+        }
+        # Library tab UI state: which parent groups are currently expanded
+        if self._parent_checkboxes:
+            self._settings.library_tab_expanded = sorted(
+                p for p, item in self._parent_checkboxes.items()
+                if item.isExpanded()
+            )
+        # Custom library paths (each entry: {"path": str, "enabled": bool})
+        new_paths: list[dict] = []
+        for i in range(self._lib_paths_list.count()):
+            item = self._lib_paths_list.item(i)
+            new_paths.append({
+                "path": item.text(),
+                "enabled": item.checkState() == Qt.CheckState.Checked,
+            })
+        self._settings.custom_library_paths = new_paths
         # Auto-add toggle for compounds saved via "Create Component"
         self._settings.auto_add_saved_compounds = self._auto_add_compounds_cb.isChecked()
         # Prefer system LaTeX over ziamath for display math
@@ -718,5 +1046,11 @@ class SettingsDialog(QDialog):
         self._settings.default_annotation_font = self._annot_font_combo.currentText()
         self._settings.default_annotation_size = self._annot_size_spin.value()
         self._settings.default_annotation_color = QColor(self._annot_color)
-        # Persist to disk
+        # Keyboard shortcut overrides
+        from diagrammer import shortcuts as _sc
+        for aid, row in self._sc_rows.items():
+            s = _sc.SHORTCUTS.get(aid)
+            if s is not None:
+                s.set_override(row["edit"].keySequence())
+        # Persist to disk (save() also dumps live overrides)
         self._settings.save()

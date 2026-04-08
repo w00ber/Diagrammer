@@ -33,12 +33,12 @@
         stroke-width: 1.8px;
       }
 
-      .st4 {
-        stroke-width: 3px;
-      }
-
       .st5 {
         display: none;
+      }
+
+      .st4 {
+        stroke-width: 2px;
       }
     </style>
   </defs>

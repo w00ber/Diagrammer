@@ -16,7 +16,7 @@ import re
 import uuid
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QTextCursor
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPicture, QTextCursor
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QGraphicsItem,
@@ -1043,7 +1043,18 @@ class AnnotationItem(QGraphicsTextItem):
             vs = self._math_renderer.viewBoxF()
             painter.save()
             painter.translate(-vs.x(), -vs.y())
-            self._math_renderer.render(painter, vs)
+            # Render via an intermediate QPicture so the math SVG content
+            # serializes correctly into vector targets like QSvgGenerator.
+            # Calling QSvgRenderer.render() directly onto a QSvgGenerator
+            # painter drops the nested SVG content; QPicture records the
+            # primitive draw commands, which the SVG generator then handles.
+            pic = QPicture()
+            ppainter = QPainter(pic)
+            ppainter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            ppainter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+            self._math_renderer.render(ppainter, vs)
+            ppainter.end()
+            pic.play(painter)
             painter.restore()
             # Selection highlight (suppressed for grouped items)
             if self.isSelected() and not self._group_id:

@@ -27,6 +27,11 @@ class ComponentLibrary:
     def categories(self) -> dict[str, list[ComponentDef]]:
         return self._categories
 
+    def clear(self) -> None:
+        """Remove all loaded categories and definitions."""
+        self._categories.clear()
+        self._by_key.clear()
+
     def get(self, key: str) -> ComponentDef | None:
         """Look up a component by its library key (e.g. 'flowchart/process')."""
         return self._by_key.get(key)
