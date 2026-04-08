@@ -22,8 +22,23 @@ PLATFORM: str = (
 )
 
 
+def _to_key_sequence(val) -> QKeySequence:
+    """Coerce a binding value (StandardKey/QKeySequence/str/int) to QKeySequence."""
+    if val is None:
+        return QKeySequence()
+    if isinstance(val, QKeySequence.StandardKey):
+        return QKeySequence(val)
+    if isinstance(val, QKeySequence):
+        return val
+    if isinstance(val, str):
+        return QKeySequence(val)
+    if isinstance(val, int):
+        return QKeySequence(val)
+    return QKeySequence()
+
+
 class Shortcut:
-    """A keyboard shortcut with platform-aware key binding."""
+    """A keyboard shortcut with platform-aware default and optional user override."""
 
     def __init__(
         self,
@@ -44,20 +59,20 @@ class Shortcut:
             "win": win if win is not None else mac,
             "linux": linux if linux is not None else (win if win is not None else mac),
         }
+        # User override (portable string form). None = use default.
+        self._user_override: str | None = None
+
+    @property
+    def default_key_sequence(self) -> QKeySequence:
+        """Return the platform default QKeySequence (ignoring user override)."""
+        return _to_key_sequence(self._bindings[PLATFORM])
 
     @property
     def key_sequence(self) -> QKeySequence:
-        """Return the QKeySequence for the current platform."""
-        val = self._bindings[PLATFORM]
-        if isinstance(val, QKeySequence.StandardKey):
-            return QKeySequence(val)
-        if isinstance(val, QKeySequence):
-            return val
-        if isinstance(val, str):
-            return QKeySequence(val)
-        if isinstance(val, int):
-            return QKeySequence(val)
-        return QKeySequence()
+        """Return the active QKeySequence (override if set, else default)."""
+        if self._user_override is not None:
+            return QKeySequence(self._user_override)
+        return self.default_key_sequence
 
     @property
     def display_text(self) -> str:
@@ -67,8 +82,40 @@ class Shortcut:
         return text if text else ""
 
     @property
+    def default_display_text(self) -> str:
+        text = self.default_key_sequence.toString(QKeySequence.SequenceFormat.NativeText)
+        return text if text else ""
+
+    @property
     def has_binding(self) -> bool:
         return not self.key_sequence.isEmpty()
+
+    @property
+    def is_overridden(self) -> bool:
+        return self._user_override is not None
+
+    def set_override(self, sequence) -> None:
+        """Set a user override (QKeySequence or str). Pass None/empty to clear."""
+        if sequence is None:
+            self._user_override = None
+            return
+        if isinstance(sequence, QKeySequence):
+            s = sequence.toString(QKeySequence.SequenceFormat.PortableText)
+        else:
+            s = str(sequence)
+        if not s:
+            self._user_override = None
+            return
+        # If override matches the default, store as None so it stays in sync.
+        default_portable = self.default_key_sequence.toString(
+            QKeySequence.SequenceFormat.PortableText)
+        if s == default_portable:
+            self._user_override = None
+        else:
+            self._user_override = s
+
+    def reset(self) -> None:
+        self._user_override = None
 
 
 def _ks(key_str: str) -> QKeySequence:
@@ -145,6 +192,7 @@ _reg("view.fit_all",   _ks("A"),                           description="Zoom All
 _reg("view.fit_all2",  _ks("Ctrl+0"),                      description="Zoom All / Fit",    category="View")
 _reg("view.zoom_window", _ks("Z"),                         description="Zoom Window",       category="View")
 _reg("view.close_tab",  QKeySequence.StandardKey.Close,    description="Close Tab",         category="View")
+_reg("view.toggle_grid", _ks("G"),                          description="Show / Hide Grid",  category="View")
 
 # ----- Routing -----
 _reg("routing.trace",  _ks("W"),                           description="Trace Routing Mode", category="Routing")
@@ -185,3 +233,53 @@ def shortcuts_by_category() -> dict[str, list[Shortcut]]:
     for s in all_shortcuts():
         result.setdefault(s.category, []).append(s)
     return result
+
+
+# =====================================================================
+# User overrides: persistence & conflict detection
+# =====================================================================
+
+def load_user_overrides(overrides: dict) -> None:
+    """Apply a {action_id: portable_key_string} dict of user overrides."""
+    if not overrides:
+        return
+    for action_id, seq_str in overrides.items():
+        s = SHORTCUTS.get(action_id)
+        if s is not None:
+            s.set_override(seq_str)
+
+
+def dump_user_overrides() -> dict[str, str]:
+    """Return only non-default user overrides as a serializable dict."""
+    out: dict[str, str] = {}
+    for action_id, s in SHORTCUTS.items():
+        if s._user_override is not None:
+            out[action_id] = s._user_override
+    return out
+
+
+def reset_all_overrides() -> None:
+    for s in SHORTCUTS.values():
+        s.reset()
+
+
+def find_conflicts(
+    proposed: dict[str, str] | None = None,
+) -> dict[str, list[str]]:
+    """Return key_string → [action_id, ...] for any sequence used by 2+ actions.
+
+    If ``proposed`` is given, it overrides the registry's current state for
+    conflict checking (used by the Settings tab while the user is editing).
+    Empty strings are skipped.
+    """
+    by_key: dict[str, list[str]] = {}
+    for action_id, s in SHORTCUTS.items():
+        if proposed is not None and action_id in proposed:
+            seq_str = proposed[action_id]
+        else:
+            seq = s.key_sequence
+            seq_str = seq.toString(QKeySequence.SequenceFormat.PortableText)
+        if not seq_str:
+            continue
+        by_key.setdefault(seq_str, []).append(action_id)
+    return {k: ids for k, ids in by_key.items() if len(ids) > 1}

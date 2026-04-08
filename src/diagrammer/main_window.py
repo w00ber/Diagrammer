@@ -47,16 +47,14 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Diagrammer")
         self.resize(1200, 800)
 
+        # Action → list of shortcut ids (populated as menus are built;
+        # used to re-apply shortcuts when the user customizes them)
+        self._shortcut_actions: list[tuple[QAction, list[str], list[QKeySequence]]] = []
+
         # -- Component library --
         self._library = ComponentLibrary()
-        builtin_path = _find_builtin_components()
-        if builtin_path.is_dir():
-            self._library.scan(builtin_path)
-        # Scan custom library paths from settings
-        for custom_path in app_settings.custom_library_paths:
-            p = Path(custom_path)
-            if p.is_dir():
-                self._library.scan(p)
+        self._builtin_components_path = _find_builtin_components()
+        self._rebuild_library()
         # Load individually-registered user compounds (saved via
         # "Create Component from Selection"). Drop any whose file is gone.
         surviving: list[str] = []
@@ -123,22 +121,22 @@ class MainWindow(QMainWindow):
         file_menu = menu_bar.addMenu("&File")
 
         new_act = QAction("&New", self)
-        new_act.setShortcut(get_shortcut("file.new"))
+        self._register_shortcut(new_act, "file.new")
         new_act.triggered.connect(self._file_new)
         file_menu.addAction(new_act)
 
         open_act = QAction("&Open...", self)
-        open_act.setShortcut(get_shortcut("file.open"))
+        self._register_shortcut(open_act, "file.open")
         open_act.triggered.connect(self._file_open)
         file_menu.addAction(open_act)
 
         save_act = QAction("&Save", self)
-        save_act.setShortcut(get_shortcut("file.save"))
+        self._register_shortcut(save_act, "file.save")
         save_act.triggered.connect(self._file_save)
         file_menu.addAction(save_act)
 
         save_as_act = QAction("Save &As...", self)
-        save_as_act.setShortcut(get_shortcut("file.save_as"))
+        self._register_shortcut(save_as_act, "file.save_as")
         save_as_act.triggered.connect(self._file_save_as)
         file_menu.addAction(save_as_act)
 
@@ -176,7 +174,7 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
 
         quit_act = QAction("&Quit", self)
-        quit_act.setShortcut(get_shortcut("file.quit"))
+        self._register_shortcut(quit_act, "file.quit")
         quit_act.triggered.connect(self.close)
         file_menu.addAction(quit_act)
 
@@ -184,47 +182,47 @@ class MainWindow(QMainWindow):
         edit_menu = menu_bar.addMenu("&Edit")
 
         undo_act = self._scene.undo_stack.createUndoAction(self, "&Undo")
-        undo_act.setShortcut(get_shortcut("edit.undo"))
+        self._register_shortcut(undo_act, "edit.undo")
         edit_menu.addAction(undo_act)
 
         redo_act = self._scene.undo_stack.createRedoAction(self, "&Redo")
-        redo_act.setShortcut(get_shortcut("edit.redo"))
+        self._register_shortcut(redo_act, "edit.redo")
         edit_menu.addAction(redo_act)
 
         edit_menu.addSeparator()
 
         cut_act = QAction("Cu&t", self)
-        cut_act.setShortcut(get_shortcut("edit.cut"))
+        self._register_shortcut(cut_act, "edit.cut")
         cut_act.triggered.connect(self._cut)
         edit_menu.addAction(cut_act)
 
         copy_act = QAction("&Copy", self)
-        copy_act.setShortcut(get_shortcut("edit.copy"))
+        self._register_shortcut(copy_act, "edit.copy")
         copy_act.triggered.connect(self._copy)
         edit_menu.addAction(copy_act)
 
         paste_act = QAction("&Paste", self)
-        paste_act.setShortcut(get_shortcut("edit.paste"))
+        self._register_shortcut(paste_act, "edit.paste")
         paste_act.triggered.connect(self._paste)
         edit_menu.addAction(paste_act)
 
         copy_image_act = QAction("Copy Selection as &Image", self)
-        copy_image_act.setShortcut(get_shortcut("edit.copy_as_image"))
+        self._register_shortcut(copy_image_act, "edit.copy_as_image")
         copy_image_act.triggered.connect(self._copy_selection_as_image)
         edit_menu.addAction(copy_image_act)
 
         edit_menu.addSeparator()
 
         select_all_act = QAction("Select &All", self)
-        select_all_act.setShortcut(get_shortcut("edit.select_all"))
+        self._register_shortcut(select_all_act, "edit.select_all")
         select_all_act.triggered.connect(self._select_all)
         edit_menu.addAction(select_all_act)
 
         delete_act = QAction("&Delete", self)
-        delete_act.setShortcuts([
-            get_shortcut("edit.delete"),
-            QKeySequence(Qt.Key.Key_Backspace),
-        ])
+        self._register_shortcut(
+            delete_act, "edit.delete",
+            extra=[QKeySequence(Qt.Key.Key_Backspace)],
+        )
         delete_act.triggered.connect(self._delete_selected)
         edit_menu.addAction(delete_act)
 
@@ -232,34 +230,34 @@ class MainWindow(QMainWindow):
 
         # -- Rotation (90°, center) --
         rotate_ccw_act = QAction("Rotate CCW (&90\u00b0)", self)
-        rotate_ccw_act.setShortcut(get_shortcut("edit.rotate_ccw"))
+        self._register_shortcut(rotate_ccw_act, "edit.rotate_ccw")
         rotate_ccw_act.triggered.connect(lambda: self._rotate_selected(90))
         edit_menu.addAction(rotate_ccw_act)
 
         rotate_cw_act = QAction("Rotate CW (9&0\u00b0)", self)
-        rotate_cw_act.setShortcut(get_shortcut("edit.rotate_cw"))
+        self._register_shortcut(rotate_cw_act, "edit.rotate_cw")
         rotate_cw_act.triggered.connect(lambda: self._rotate_selected(-90))
         edit_menu.addAction(rotate_cw_act)
 
         # -- Fine rotation (15°, around first port) --
         fine_cw_act = QAction("Fine Rotate C&W (15\u00b0)", self)
-        fine_cw_act.setShortcut(get_shortcut("edit.fine_cw"))
+        self._register_shortcut(fine_cw_act, "edit.fine_cw")
         fine_cw_act.triggered.connect(lambda: self._fine_rotate_selected(-15))
         edit_menu.addAction(fine_cw_act)
 
         fine_ccw_act = QAction("Fine Rotate CC&W (15\u00b0)", self)
-        fine_ccw_act.setShortcut(get_shortcut("edit.fine_ccw"))
+        self._register_shortcut(fine_ccw_act, "edit.fine_ccw")
         fine_ccw_act.triggered.connect(lambda: self._fine_rotate_selected(15))
         edit_menu.addAction(fine_ccw_act)
 
         # -- Flip --
         flip_h_act = QAction("Flip &Horizontal", self)
-        flip_h_act.setShortcut(get_shortcut("edit.flip_h"))
+        self._register_shortcut(flip_h_act, "edit.flip_h")
         flip_h_act.triggered.connect(lambda: self._flip_selected(horizontal=True))
         edit_menu.addAction(flip_h_act)
 
         flip_v_act = QAction("Flip &Vertical", self)
-        flip_v_act.setShortcut(get_shortcut("edit.flip_v"))
+        self._register_shortcut(flip_v_act, "edit.flip_v")
         flip_v_act.triggered.connect(lambda: self._flip_selected(horizontal=False))
         edit_menu.addAction(flip_v_act)
 
@@ -269,80 +267,80 @@ class MainWindow(QMainWindow):
 
         # -- Alignment --
         align_h_act = QAction("Align Hori&zontally", self)
-        align_h_act.setShortcut(get_shortcut("edit.align_h"))
+        self._register_shortcut(align_h_act, "edit.align_h")
         align_h_act.triggered.connect(lambda: self._align_selected("horizontal"))
         edit_menu.addAction(align_h_act)
 
         align_v_act = QAction("Align Vert&ically", self)
-        align_v_act.setShortcut(get_shortcut("edit.align_v"))
+        self._register_shortcut(align_v_act, "edit.align_v")
         align_v_act.triggered.connect(lambda: self._align_selected("vertical"))
         edit_menu.addAction(align_v_act)
 
         edit_menu.addSeparator()
 
         hide_layer_act = QAction("&Hide Active Layer", self)
-        hide_layer_act.setShortcut(get_shortcut("edit.hide_layer"))
+        self._register_shortcut(hide_layer_act, "edit.hide_layer")
         hide_layer_act.triggered.connect(self._hide_active_layer)
         edit_menu.addAction(hide_layer_act)
 
         show_layer_act = QAction("S&how Active Layer", self)
-        show_layer_act.setShortcut(get_shortcut("edit.show_layer"))
+        self._register_shortcut(show_layer_act, "edit.show_layer")
         show_layer_act.triggered.connect(self._show_active_layer)
         edit_menu.addAction(show_layer_act)
 
         lock_layer_act = QAction("&Lock Active Layer", self)
-        lock_layer_act.setShortcut(get_shortcut("edit.lock_layer"))
+        self._register_shortcut(lock_layer_act, "edit.lock_layer")
         lock_layer_act.triggered.connect(self._lock_active_layer)
         edit_menu.addAction(lock_layer_act)
 
         unlock_layer_act = QAction("&Unlock Active Layer", self)
-        unlock_layer_act.setShortcut(get_shortcut("edit.unlock_layer"))
+        self._register_shortcut(unlock_layer_act, "edit.unlock_layer")
         unlock_layer_act.triggered.connect(self._unlock_active_layer)
         edit_menu.addAction(unlock_layer_act)
 
         edit_menu.addSeparator()
 
         bring_fwd_act = QAction("Bring For&ward", self)
-        bring_fwd_act.setShortcut(get_shortcut("edit.bring_fwd"))
+        self._register_shortcut(bring_fwd_act, "edit.bring_fwd")
         bring_fwd_act.triggered.connect(self._bring_forward)
         edit_menu.addAction(bring_fwd_act)
 
         send_bwd_act = QAction("Send Back&ward", self)
-        send_bwd_act.setShortcut(get_shortcut("edit.send_bwd"))
+        self._register_shortcut(send_bwd_act, "edit.send_bwd")
         send_bwd_act.triggered.connect(self._send_backward)
         edit_menu.addAction(send_bwd_act)
 
         bring_front_act = QAction("Bring to &Front", self)
-        bring_front_act.setShortcut(get_shortcut("edit.bring_front"))
+        self._register_shortcut(bring_front_act, "edit.bring_front")
         bring_front_act.triggered.connect(self._bring_to_front)
         edit_menu.addAction(bring_front_act)
 
         send_back_act = QAction("Send to &Back", self)
-        send_back_act.setShortcut(get_shortcut("edit.send_back"))
+        self._register_shortcut(send_back_act, "edit.send_back")
         send_back_act.triggered.connect(self._send_to_back)
         edit_menu.addAction(send_back_act)
 
         edit_menu.addSeparator()
 
         group_act = QAction("&Group", self)
-        group_act.setShortcut(get_shortcut("edit.group"))
+        self._register_shortcut(group_act, "edit.group")
         group_act.triggered.connect(self._group_selected)
         edit_menu.addAction(group_act)
 
         ungroup_act = QAction("U&ngroup", self)
-        ungroup_act.setShortcut(get_shortcut("edit.ungroup"))
+        self._register_shortcut(ungroup_act, "edit.ungroup")
         ungroup_act.triggered.connect(self._ungroup_selected)
         edit_menu.addAction(ungroup_act)
 
         join_wires_act = QAction("&Join Wires", self)
-        join_wires_act.setShortcut(get_shortcut("edit.join_wires"))
+        self._register_shortcut(join_wires_act, "edit.join_wires")
         join_wires_act.triggered.connect(self._join_wires)
         edit_menu.addAction(join_wires_act)
 
         edit_menu.addSeparator()
 
         settings_act = QAction("Se&ttings\u2026", self)
-        settings_act.setShortcut(get_shortcut("edit.settings"))
+        self._register_shortcut(settings_act, "edit.settings")
         settings_act.triggered.connect(self._open_settings)
         edit_menu.addAction(settings_act)
 
@@ -350,20 +348,17 @@ class MainWindow(QMainWindow):
         view_menu = menu_bar.addMenu("&View")
 
         zoom_in_act = QAction("Zoom &In", self)
-        zoom_in_act.setShortcut(get_shortcut("view.zoom_in"))
+        self._register_shortcut(zoom_in_act, "view.zoom_in")
         zoom_in_act.triggered.connect(lambda: self._zoom_active_view(1.25))
         view_menu.addAction(zoom_in_act)
 
         zoom_out_act = QAction("Zoom &Out", self)
-        zoom_out_act.setShortcut(get_shortcut("view.zoom_out"))
+        self._register_shortcut(zoom_out_act, "view.zoom_out")
         zoom_out_act.triggered.connect(lambda: self._zoom_active_view(0.8))
         view_menu.addAction(zoom_out_act)
 
         fit_act = QAction("Zoom &All / Fit", self)
-        fit_act.setShortcuts([
-            get_shortcut("view.fit_all"),
-            get_shortcut("view.fit_all2"),
-        ])
+        self._register_shortcut(fit_act, "view.fit_all", "view.fit_all2")
         fit_act.triggered.connect(self._fit_active_view)
         view_menu.addAction(fit_act)
 
@@ -372,6 +367,7 @@ class MainWindow(QMainWindow):
         toggle_grid_act = QAction("Show &Grid", self)
         toggle_grid_act.setCheckable(True)
         toggle_grid_act.setChecked(True)
+        self._register_shortcut(toggle_grid_act, "view.toggle_grid")
         toggle_grid_act.toggled.connect(self._toggle_grid)
         view_menu.addAction(toggle_grid_act)
 
@@ -386,7 +382,7 @@ class MainWindow(QMainWindow):
         view_menu.addSeparator()
 
         close_tab_act = QAction("Close Tab", self)
-        close_tab_act.setShortcut(get_shortcut("view.close_tab"))
+        self._register_shortcut(close_tab_act, "view.close_tab")
         close_tab_act.triggered.connect(self.close_active_tab)
         view_menu.addAction(close_tab_act)
 
@@ -459,7 +455,7 @@ class MainWindow(QMainWindow):
         draw_menu.addSeparator()
 
         draw_text_act = QAction("&Text", self)
-        draw_text_act.setShortcut(get_shortcut("draw.text"))
+        self._register_shortcut(draw_text_act, "draw.text")
         draw_text_act.triggered.connect(self._add_annotation)
         draw_menu.addAction(draw_text_act)
 
@@ -467,9 +463,13 @@ class MainWindow(QMainWindow):
         help_menu = menu_bar.addMenu("&Help")
 
         help_act = QAction("&Help", self)
-        help_act.setShortcut(get_shortcut("help.help"))
+        self._register_shortcut(help_act, "help.help")
         help_act.triggered.connect(self._show_help)
         help_menu.addAction(help_act)
+
+        tutorial_act = QAction("&Tutorial", self)
+        tutorial_act.triggered.connect(self._show_tutorial)
+        help_menu.addAction(tutorial_act)
 
     # ---------------------------------------------------------------- Toolbar
 
@@ -580,13 +580,18 @@ class MainWindow(QMainWindow):
                 self._tab_widget.setCurrentIndex(i)
                 return
 
-        # Collect component defs for this category and subcategories
+        # Collect component defs for this category and subcategories,
+        # skipping any categories the user has hidden in Settings.
+        hidden = app_settings.hidden_libraries
         defs_by_subcat: dict[str, list] = {}
         if category == "__all__":
-            # All categories
-            defs_by_subcat = dict(self._library.categories)
+            for cat, cat_defs in self._library.categories.items():
+                if cat not in hidden:
+                    defs_by_subcat[cat] = cat_defs
         else:
             for cat, cat_defs in self._library.categories.items():
+                if cat in hidden:
+                    continue
                 if cat == category or cat.startswith(category + "/"):
                     defs_by_subcat[cat] = cat_defs
 
@@ -665,6 +670,46 @@ class MainWindow(QMainWindow):
         self._grid_spin.setValue(DEFAULT_GRID_SPACING)
         self._view.grid_spacing = DEFAULT_GRID_SPACING
 
+    def _register_shortcut(self, action: QAction, *ids: str, extra=None) -> None:
+        """Apply shortcut(s) by id and remember them for later refresh."""
+        seqs = [get_shortcut(i) for i in ids]
+        if extra:
+            seqs.extend(extra)
+        if len(seqs) == 1:
+            action.setShortcut(seqs[0])
+        else:
+            action.setShortcuts(seqs)
+        self._shortcut_actions.append((action, list(ids), list(extra or [])))
+
+    def _refresh_action_shortcuts(self) -> None:
+        """Re-apply shortcuts from the registry to all menu actions."""
+        for action, ids, extra in self._shortcut_actions:
+            seqs = [get_shortcut(i) for i in ids] + list(extra)
+            if len(seqs) == 1:
+                action.setShortcut(seqs[0])
+            else:
+                action.setShortcuts(seqs)
+
+    def _rebuild_library(self) -> None:
+        """Wipe and re-scan: built-ins + enabled custom paths + user compounds."""
+        self._library.clear()
+        if self._builtin_components_path.is_dir():
+            self._library.scan(self._builtin_components_path)
+        for custom_path in app_settings.enabled_custom_library_paths():
+            p = Path(custom_path)
+            if p.is_dir():
+                self._library.scan(p)
+        # Individually-registered user compounds
+        surviving: list[str] = []
+        for f in app_settings.user_compound_files:
+            fp = Path(f)
+            if fp.is_file():
+                self._library.add_file(fp)
+                surviving.append(f)
+        if len(surviving) != len(app_settings.user_compound_files):
+            app_settings.user_compound_files = surviving
+            app_settings.save()
+
     def _open_settings(self) -> None:
         dlg = SettingsDialog(app_settings, self, library=self._library)
         if dlg.exec() == SettingsDialog.DialogCode.Accepted:
@@ -676,12 +721,19 @@ class MainWindow(QMainWindow):
                 invalidate_latex_availability_cache,
             )
             invalidate_latex_availability_cache()
-            # Rescan custom library paths (may have changed)
-            for custom_path in app_settings.custom_library_paths:
-                p = Path(custom_path)
-                if p.is_dir():
-                    self._library.scan(p)
+            # Rebuild library from scratch (handles add/remove + enable/disable)
+            self._rebuild_library()
             self._apply_library_visibility()
+            # Re-apply keyboard shortcuts (may have been customized)
+            self._refresh_action_shortcuts()
+            # Refresh help window if open so the live shortcut table updates
+            try:
+                from diagrammer.panels.help_window import HelpWindow
+                for inst in HelpWindow._instances.values():
+                    if inst.isVisible():
+                        inst._load_help()
+            except Exception:
+                pass
 
     def _apply_settings(self) -> None:
         """Push current app_settings into the scene/view."""
@@ -1946,6 +1998,10 @@ class MainWindow(QMainWindow):
     def _show_help(self) -> None:
         from diagrammer.panels.help_window import HelpWindow
         HelpWindow.show_help(self)
+
+    def _show_tutorial(self) -> None:
+        from diagrammer.panels.help_window import HelpWindow
+        HelpWindow.show_tutorial(self)
 
     def _update_title(self) -> None:
         name = Path(self._current_file).name if self._current_file else "Untitled"

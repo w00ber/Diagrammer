@@ -1285,13 +1285,25 @@ class DiagramView(QGraphicsView):
         self._diagram_scene.clear_alignment_ports()
 
     def keyPressEvent(self, event) -> None:
-        # Escape always returns to Select mode; V does too unless editing text
-        if event.key() == Qt.Key.Key_Escape:
+        # Escape and the user-configured "select mode" key both return
+        # to Select mode. Compared against the live registry so user
+        # overrides take effect.
+        from diagrammer.shortcuts import get_shortcut as _gs
+        from PySide6.QtGui import QKeySequence as _KS
+        ev_seq = _KS(int(event.key()) | int(event.modifiers().value))
+        ev_portable = ev_seq.toString(_KS.SequenceFormat.PortableText)
+
+        escape_seq = _gs("canvas.escape").key_sequence.toString(
+            _KS.SequenceFormat.PortableText)
+        select_seq = _gs("canvas.select_mode").key_sequence.toString(
+            _KS.SequenceFormat.PortableText)
+
+        if ev_portable and ev_portable == escape_seq:
             self._enter_select_mode()
             event.accept()
             return
-        if event.key() == Qt.Key.Key_V and not event.modifiers():
-            # V without modifiers = select mode (guards against Ctrl+V = Paste)
+        if ev_portable and ev_portable == select_seq:
+            # Don't steal the key while editing an annotation
             editing = any(isinstance(i, AnnotationItem) and i.is_editing
                           for i in self._diagram_scene.selectedItems())
             if not editing:
@@ -1606,7 +1618,9 @@ class DiagramView(QGraphicsView):
         from diagrammer.commands.add_command import MoveComponentCommand
         from diagrammer.commands.connect_command import EditWaypointsCommand
 
-        step = self._grid_spacing * (0.1 if fine else 0.2)
+        from diagrammer.panels.settings_dialog import app_settings
+        frac = app_settings.nudge_fraction
+        step = self._grid_spacing * (frac * 0.5 if fine else frac)
         dx, dy = 0.0, 0.0
         if key == Qt.Key.Key_Left:
             dx = -step

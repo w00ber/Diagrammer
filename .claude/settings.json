@@ -5,7 +5,11 @@
       "Bash(git push:*)",
       "Read(//Users/joe/Desktop/test components/**)",
       "Read(//Users/joe/Documents/PROGRAMMING/python/MY_PACKAGES.nosync/Diagrammer/**)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('src/diagrammer/main_window.py'\\).read\\(\\)\\); print\\('ok'\\)\")",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('src/diagrammer/panels/settings_dialog.py'\\).read\\(\\)\\); ast.parse\\(open\\('src/diagrammer/shortcuts.py'\\).read\\(\\)\\); print\\('ok'\\)\")",
+      "Bash(python3 -c ':*)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('src/diagrammer/panels/settings_dialog.py'\\).read\\(\\)\\); print\\('ok'\\)\")"
     ]
   }
 }

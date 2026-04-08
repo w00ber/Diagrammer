@@ -73,7 +73,10 @@ Press **Ctrl+?** in the app for the in-app help reference.
 ## Keyboard Shortcuts
 
 The full reference lives in [docs/help.md](docs/help.md) (also reachable
-via **F1**). The most-used bindings:
+via **F1**). The bindings below are the **defaults** — they can be
+overridden per-user in **Settings → Keyboard Shortcuts**, and the in-app
+help reflects whatever the user has currently bound. The most-used
+defaults:
 
 | Key | Action |
 |-----|--------|

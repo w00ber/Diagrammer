@@ -18,22 +18,53 @@ from PySide6.QtWidgets import (
 
 
 class HelpWindow(QWidget):
-    """A modeless, always-on-top window that renders help.md."""
+    """A modeless, always-on-top window that renders a Markdown doc.
 
-    _instance: HelpWindow | None = None
+    Used for both the in-app Help (help.md, with the auto-generated
+    shortcuts table) and the Tutorial (tutorial.md, no shortcuts table).
+    Each (filename) gets its own singleton instance so Help and Tutorial
+    can be open simultaneously.
+    """
+
+    _instances: dict[str, "HelpWindow"] = {}
 
     @classmethod
     def show_help(cls, parent=None) -> None:
-        """Show the help window (singleton — only one instance)."""
-        if cls._instance is None or not cls._instance.isVisible():
-            cls._instance = cls(parent)
-        cls._instance.show()
-        cls._instance.raise_()
-        cls._instance.activateWindow()
+        cls._show_doc("help.md", "Diagrammer Help",
+                      show_shortcuts=True, parent=parent)
 
-    def __init__(self, parent=None):
-        super().__init__(parent, Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
-        self.setWindowTitle("Diagrammer Help")
+    @classmethod
+    def show_tutorial(cls, parent=None) -> None:
+        cls._show_doc("tutorial.md", "Diagrammer Tutorial",
+                      show_shortcuts=False, parent=parent)
+
+    @classmethod
+    def _show_doc(cls, filename: str, title: str,
+                  show_shortcuts: bool, parent=None) -> None:
+        inst = cls._instances.get(filename)
+        if inst is None or not inst.isVisible():
+            inst = cls(parent, filename=filename, title=title,
+                       show_shortcuts=show_shortcuts)
+            cls._instances[filename] = inst
+        inst.show()
+        inst.raise_()
+        # Note: do NOT call activateWindow() — we want the editor to keep
+        # keyboard focus so users can follow along while reading.
+
+    def __init__(self, parent=None, *, filename: str = "help.md",
+                 title: str = "Diagrammer Help",
+                 show_shortcuts: bool = True):
+        # Tool-window flag keeps it from stealing focus on macOS while
+        # WindowStaysOnTopHint keeps it visible above the editor.
+        super().__init__(
+            parent,
+            Qt.WindowType.Tool
+            | Qt.WindowType.WindowStaysOnTopHint,
+        )
+        self._doc_filename = filename
+        self._show_shortcuts = show_shortcuts
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setWindowTitle(title)
         self.resize(650, 700)
 
         layout = QVBoxLayout(self)
@@ -111,11 +142,10 @@ class HelpWindow(QWidget):
                 self._browser.find(text, QTextDocument.FindFlag.FindBackward)
 
     def _load_help(self) -> None:
-        """Load and render help.md."""
-        # Find help.md relative to the package
+        """Load and render the doc markdown file."""
         help_path = self._find_help_file()
         if help_path is None:
-            self._browser.setPlainText("Help file not found.")
+            self._browser.setPlainText(f"Document not found: {self._doc_filename}")
             return
 
         md_text = help_path.read_text(encoding="utf-8")
@@ -147,9 +177,10 @@ class HelpWindow(QWidget):
         {html}
         </body></html>
         """
-        # Append auto-generated keyboard shortcuts section
-        shortcuts_html = self._generate_shortcuts_html()
-        styled = styled.replace("</body>", f"{shortcuts_html}</body>")
+        # Append auto-generated keyboard shortcuts section (help.md only)
+        if self._show_shortcuts:
+            shortcuts_html = self._generate_shortcuts_html()
+            styled = styled.replace("</body>", f"{shortcuts_html}</body>")
 
         self._browser.setHtml(styled)
 
@@ -158,6 +189,13 @@ class HelpWindow(QWidget):
         """Generate an HTML keyboard shortcuts table from the shortcut registry."""
         from diagrammer.shortcuts import shortcuts_by_category
         html = "<hr><h2>Keyboard Shortcuts</h2>\n"
+        html += (
+            "<p style='color:#666; font-size:12px;'>"
+            "These reflect your current shortcuts. Defaults can be customized "
+            "in <i>Settings → Keyboard Shortcuts</i>. "
+            "Customized entries are marked <i>(custom)</i>."
+            "</p>\n"
+        )
         for cat, shortcuts in shortcuts_by_category().items():
             html += f"<h3>{cat}</h3>\n"
             html += "<table><tr><th>Shortcut</th><th>Action</th></tr>\n"
@@ -165,17 +203,25 @@ class HelpWindow(QWidget):
                 key = s.display_text
                 if not key:
                     continue
-                html += f"<tr><td><kbd>{key}</kbd></td><td>{s.description}</td></tr>\n"
+                marker = " <i style='color:#888;'>(custom)</i>" if s.is_overridden else ""
+                html += (
+                    f"<tr><td><kbd>{key}</kbd></td>"
+                    f"<td>{s.description}{marker}</td></tr>\n"
+                )
             html += "</table>\n"
         return html
 
-    @staticmethod
-    def _find_help_file() -> Path | None:
-        """Locate help.md in the docs directory inside the package."""
+    def _find_help_file(self) -> Path | None:
+        """Locate the doc file in the package's docs/ directory, with a
+        fall-back to the repo-root docs/ folder for development checkouts."""
         here = Path(__file__).resolve().parent
-        candidate = here.parent / "docs" / "help.md"
-        if candidate.exists():
-            return candidate
+        candidates = [
+            here.parent / "docs" / self._doc_filename,
+            here.parent.parent.parent / "docs" / self._doc_filename,
+        ]
+        for c in candidates:
+            if c.exists():
+                return c
         return None
 
     @staticmethod
