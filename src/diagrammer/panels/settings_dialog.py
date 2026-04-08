@@ -31,6 +31,37 @@ from PySide6.QtWidgets import (
 _SETTINGS_FILE = Path.home() / ".diagrammer" / "settings.json"
 
 
+def _parse_color(value, default: QColor) -> QColor:
+    """Parse a color value from settings/defaults with robust ARGB support.
+
+    Qt's ``QColor`` string constructor is documented to accept
+    ``"#AARRGGBB"`` (8 hex digits) as alpha-prefixed hex, but on some
+    platform/PySide6 combinations — observed on Windows PyInstaller
+    builds — the 8-digit form round-trips through an *invalid* QColor
+    on the way back in, which then re-serializes as opaque black on
+    save. Once that's written to ``settings.json`` the shape-annotation
+    default fill becomes a solid black fill forever.
+
+    To avoid relying on QColor's hex parser for the ARGB case, we parse
+    ``"#AARRGGBB"`` manually here and only fall through to the QColor
+    constructor for shorter forms. If parsing fails or produces an
+    invalid color, we return a copy of ``default``.
+    """
+    if not isinstance(value, str) or not value:
+        return QColor(default)
+    if len(value) == 9 and value.startswith("#"):
+        try:
+            a = int(value[1:3], 16)
+            r = int(value[3:5], 16)
+            g = int(value[5:7], 16)
+            b = int(value[7:9], 16)
+            return QColor(r, g, b, a)
+        except ValueError:
+            pass
+    c = QColor(value)
+    return c if c.isValid() else QColor(default)
+
+
 class AppSettings:
     """Central store for application-wide default settings, persisted to disk."""
 
@@ -41,6 +72,14 @@ class AppSettings:
     def reset_all(self) -> None:
         """Reset all settings to factory defaults from defaults.yaml."""
         from diagrammer.defaults import get as _d
+
+        # Appearance / theme
+        # One of: "system", "light", "dark". "system" lets the OS style
+        # decide (native look, honors Windows dark mode); "light"/"dark"
+        # force a Fusion palette in that mode. The canvas and library
+        # panel always render on a light background regardless of the
+        # chrome theme, because the diagram artwork is authored that way.
+        self.theme: str = "system"
 
         # Line styles (wiring)
         self.default_line_width = _d("wiring", "line_width", 3.0)
@@ -79,7 +118,13 @@ class AppSettings:
         # Shape/line annotation defaults
         self.default_shape_stroke_color = QColor(_d("shape", "stroke_color", "#323232"))
         self.default_shape_stroke_width = _d("shape", "stroke_width", 2.0)
-        self.default_shape_fill_color = QColor(_d("shape", "fill_color", "#00ffffff"))
+        # Use _parse_color rather than QColor(str) directly so the
+        # 8-digit ARGB default ("#00ffffff") is decoded reliably on
+        # every platform — see _parse_color's docstring for why.
+        self.default_shape_fill_color = _parse_color(
+            _d("shape", "fill_color", "#00ffffff"),
+            QColor(255, 255, 255, 0),
+        )
         self.default_shape_dash_style = _d("shape", "dash_style", "solid")
         self.default_shape_corner_radius = _d("shape", "corner_radius", 0.0)
         self.default_shape_cap_style = _d("shape", "cap_style", "round")
@@ -181,13 +226,24 @@ class AppSettings:
                 "default_annotation_italic": self.default_annotation_italic,
                 "default_shape_stroke_color": self.default_shape_stroke_color.name(),
                 "default_shape_stroke_width": self.default_shape_stroke_width,
+                # Serialize the fill color as both an explicit RGBA
+                # tuple and the legacy "#AARRGGBB" hex string. The
+                # tuple is the source of truth on load; the hex is a
+                # fallback for older builds and a human-readable hint.
                 "default_shape_fill_color": self.default_shape_fill_color.name(QColor.NameFormat.HexArgb),
+                "default_shape_fill_rgba": [
+                    self.default_shape_fill_color.red(),
+                    self.default_shape_fill_color.green(),
+                    self.default_shape_fill_color.blue(),
+                    self.default_shape_fill_color.alpha(),
+                ],
                 "default_shape_dash_style": self.default_shape_dash_style,
                 "default_shape_corner_radius": self.default_shape_corner_radius,
                 "default_shape_cap_style": self.default_shape_cap_style,
                 "default_shape_arrow_type": self.default_shape_arrow_type,
                 "default_shape_arrow_scale": self.default_shape_arrow_scale,
                 "default_shape_arrow_extend": self.default_shape_arrow_extend,
+                "theme": self.theme,
             }
             import json
             _SETTINGS_FILE.write_text(json.dumps(data, indent=2))
@@ -264,15 +320,46 @@ class AppSettings:
                 if sc:
                     self.default_shape_stroke_color = QColor(sc)
                 self.default_shape_stroke_width = data.get("default_shape_stroke_width", self.default_shape_stroke_width)
-                fc = data.get("default_shape_fill_color")
-                if fc:
-                    self.default_shape_fill_color = QColor(fc)
+                # Fill color: prefer the explicit rgba tuple if present
+                # (unambiguous, platform-independent). Fall back to the
+                # legacy "#AARRGGBB" hex string via _parse_color, which
+                # handles the 8-digit form correctly on all platforms.
+                rgba = data.get("default_shape_fill_rgba")
+                if (
+                    isinstance(rgba, (list, tuple))
+                    and len(rgba) == 4
+                    and all(isinstance(x, int) for x in rgba)
+                ):
+                    self.default_shape_fill_color = QColor(
+                        rgba[0], rgba[1], rgba[2], rgba[3])
+                else:
+                    fc = data.get("default_shape_fill_color")
+                    if fc:
+                        parsed = _parse_color(
+                            fc, self.default_shape_fill_color)
+                        # Heal a known corruption: older builds on
+                        # Windows persisted an opaque black fill after
+                        # a round-trip of the 8-digit ARGB default.
+                        # If we see opaque black in an unupgraded file
+                        # (no explicit rgba tuple), treat it as the
+                        # transparent-fill default instead.
+                        if (
+                            parsed.alpha() == 255
+                            and parsed.red() == 0
+                            and parsed.green() == 0
+                            and parsed.blue() == 0
+                        ):
+                            parsed = QColor(255, 255, 255, 0)
+                        self.default_shape_fill_color = parsed
                 self.default_shape_dash_style = data.get("default_shape_dash_style", self.default_shape_dash_style)
                 self.default_shape_corner_radius = data.get("default_shape_corner_radius", self.default_shape_corner_radius)
                 self.default_shape_cap_style = data.get("default_shape_cap_style", self.default_shape_cap_style)
                 self.default_shape_arrow_type = data.get("default_shape_arrow_type", self.default_shape_arrow_type)
                 self.default_shape_arrow_scale = data.get("default_shape_arrow_scale", self.default_shape_arrow_scale)
                 self.default_shape_arrow_extend = data.get("default_shape_arrow_extend", self.default_shape_arrow_extend)
+                theme = data.get("theme", self.theme)
+                if theme in ("system", "light", "dark"):
+                    self.theme = theme
         except Exception:
             pass
 
@@ -499,7 +586,8 @@ class SettingsDialog(QDialog):
             "Check a folder to include it in the library. "
             "Removing a folder also clears its visibility selections."
         )
-        paths_hint.setStyleSheet("color: #666; font-size: 11px;")
+        from diagrammer.app import hint_text_color as _htc
+        paths_hint.setStyleSheet(f"color: {_htc()}; font-size: 11px;")
         paths_hint.setWordWrap(True)
         paths_layout.addWidget(paths_hint)
         self._lib_paths_list = QListWidget()
@@ -607,7 +695,9 @@ class SettingsDialog(QDialog):
                             "and $$...$$ for display math (matrices, etc.).\n"
                             "STIX Two Text and CMU Serif closely match\n"
                             "TeX's Computer Modern style.")
-        annot_hint.setStyleSheet("color: #666; font-size: 11px; margin-top: 8px;")
+        from diagrammer.app import hint_text_color as _htc
+        annot_hint.setStyleSheet(
+            f"color: {_htc()}; font-size: 11px; margin-top: 8px;")
         annot_layout.addWidget(annot_hint)
 
         # Display-math backend toggle. By default we prefer ziamath
@@ -831,7 +921,8 @@ class SettingsDialog(QDialog):
             "Customize keyboard shortcuts. Conflicts must be resolved before "
             "you can save."
         )
-        hint.setStyleSheet("color: #555;")
+        from diagrammer.app import hint_text_color as _htc
+        hint.setStyleSheet(f"color: {_htc()};")
         hint.setWordWrap(True)
         v.addWidget(hint)
 

@@ -106,3 +106,28 @@ class AnnotationsPanel(QDockWidget):
         )
         # Keep it compact
         self.setMaximumHeight(80)
+
+    def apply_light_surface(self, color) -> None:  # noqa: ANN001
+        """Pin the annotations panel chrome to a light surface color.
+
+        The annotation tool icons are drawn with a dark stroke
+        (``QColor(50, 50, 50)``) at panel construction time, which
+        becomes invisible against a dark-mode tool-button background.
+        Keeping this panel on a light surface lets us reuse the light
+        icons without having to regenerate them per theme.
+        """
+        hex_color = color.name()
+        self.setStyleSheet(
+            f"QToolButton {{"
+            f" background-color: {hex_color};"
+            f" border: 1px solid #c8c8c8;"
+            f" border-radius: 3px; }}"
+            f"QToolButton:hover {{ background-color: #e8f0ff; }}"
+            f"QToolButton:pressed {{ background-color: #d0e0ff; }}"
+            f"QWidget#AnnotationsPanelContainer {{"
+            f" background-color: {hex_color}; }}"
+        )
+        # Tag the container so the widget#ObjectName selector above hits it.
+        w = self.widget()
+        if w is not None:
+            w.setObjectName("AnnotationsPanelContainer")

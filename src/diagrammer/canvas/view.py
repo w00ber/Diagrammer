@@ -63,6 +63,12 @@ class DiagramView(QGraphicsView):
             QPainter.RenderHint.Antialiasing
             | QPainter.RenderHint.SmoothPixmapTransform
         )
+        # Force a light canvas regardless of the chrome theme. The
+        # diagram artwork, grid, and component SVGs are all authored
+        # against a white background, so even in dark mode the canvas
+        # itself stays light for legibility.
+        from diagrammer.app import CANVAS_BACKGROUND
+        self.setBackgroundBrush(QBrush(CANVAS_BACKGROUND))
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
