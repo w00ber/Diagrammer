@@ -9,7 +9,8 @@
       "Bash(python3 -c \"import ast; ast.parse\\(open\\('src/diagrammer/main_window.py'\\).read\\(\\)\\); print\\('ok'\\)\")",
       "Bash(python3 -c \"import ast; ast.parse\\(open\\('src/diagrammer/panels/settings_dialog.py'\\).read\\(\\)\\); ast.parse\\(open\\('src/diagrammer/shortcuts.py'\\).read\\(\\)\\); print\\('ok'\\)\")",
       "Bash(python3 -c ':*)",
-      "Bash(python3 -c \"import ast; ast.parse\\(open\\('src/diagrammer/panels/settings_dialog.py'\\).read\\(\\)\\); print\\('ok'\\)\")"
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('src/diagrammer/panels/settings_dialog.py'\\).read\\(\\)\\); print\\('ok'\\)\")",
+      "Bash(git merge:*)"
     ]
   }
 }

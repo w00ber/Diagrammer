@@ -130,6 +130,10 @@ class MainWindow(QMainWindow):
         open_act.triggered.connect(self._file_open)
         file_menu.addAction(open_act)
 
+        examples_act = QAction("E&xamples...", self)
+        examples_act.triggered.connect(self._file_open_example)
+        file_menu.addAction(examples_act)
+
         save_act = QAction("&Save", self)
         self._register_shortcut(save_act, "file.save")
         save_act.triggered.connect(self._file_save)
@@ -2087,6 +2091,38 @@ class MainWindow(QMainWindow):
         )
         if path:
             self._open_file(path)
+
+    def _file_open_example(self) -> None:
+        """Show the Examples dialog and load the chosen example as Untitled."""
+        if not self._check_unsaved_changes():
+            return
+        from diagrammer.panels.examples_dialog import ExamplesDialog
+        dlg = ExamplesDialog(self._library, self)
+        if dlg.exec() != dlg.DialogCode.Accepted:
+            return
+        path = dlg.selected_path
+        if path is None:
+            return
+        from diagrammer.io.serializer import DiagramSerializer
+        self._scene.clear()
+        self._scene.undo_stack.clear()
+        try:
+            DiagramSerializer.load(self._scene, str(path), library=self._library)
+        except Exception as exc:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Open Example", f"Failed to open example:\n\n{exc}")
+            return
+        self._layers_panel._manager = self._scene._layer_manager
+        self._layers_panel.refresh()
+        self._scene.apply_layer_state()
+        # Open as untitled — Save will become Save As, protecting the bundled file.
+        self._current_file = None
+        self._update_title()
+        # Mark scene as dirty so the user is prompted to save before discarding.
+        # (load() leaves the undo stack clean, but the example is unsaved work
+        # from the user's perspective the moment they pick it.)
+        # We deliberately do NOT call _track_file — examples shouldn't pollute
+        # the Recent Files list.
 
     def _file_save(self) -> None:
         if self._current_file:

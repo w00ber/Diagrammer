@@ -93,27 +93,10 @@ class DiagramExporter:
         margin:
             Extra padding (in scene units) around the items bounding rect.
         """
-        source_rect = _items_rect_with_margin(scene, margin)
-
-        # Scale factor: scene coordinates are nominally at 96 dpi.
-        scale = dpi / 96.0
-        pixel_width = max(1, int(source_rect.width() * scale))
-        pixel_height = max(1, int(source_rect.height() * scale))
-
-        image = QImage(QSize(pixel_width, pixel_height), QImage.Format.Format_ARGB32_Premultiplied)
-        image.setDotsPerMeterX(int(dpi / 0.0254))
-        image.setDotsPerMeterY(int(dpi / 0.0254))
-        image.fill(QColor(Qt.GlobalColor.white))
-
-        painter = QPainter()
-        painter.begin(image)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-
-        target_rect = QRectF(0, 0, pixel_width, pixel_height)
-        scene.render(painter, target_rect, source_rect)
-        painter.end()
-
+        image = render_scene_to_qimage(
+            scene, dpi=dpi, margin=margin,
+            background=QColor(Qt.GlobalColor.white),
+        )
         image.save(path)
 
     # ------------------------------------------------------------------
@@ -595,6 +578,46 @@ def _set_clipboard_qt(pdf_data: bytes | None, png_data: bytes | None) -> bool:
 
 
 # -- Rendering helpers ---------------------------------------------------
+
+def render_scene_to_qimage(
+    scene: QGraphicsScene,
+    dpi: int = 96,
+    margin: float = 10.0,
+    background: QColor | None = None,
+) -> QImage:
+    """Render *scene* to a QImage at the given DPI.
+
+    Used by both PNG export and the Examples dialog previews. Scene coords
+    are treated as nominally 96 dpi, so a *dpi* of 192 produces a 2x image.
+
+    If *background* is None the image is transparent. The returned QImage
+    has its physical DPI set so that downstream consumers (e.g. ``QImage.save``)
+    embed the correct resolution.
+    """
+    source_rect = _items_rect_with_margin(scene, margin)
+
+    scale = dpi / 96.0
+    pixel_width = max(1, int(source_rect.width() * scale))
+    pixel_height = max(1, int(source_rect.height() * scale))
+
+    image = QImage(
+        QSize(pixel_width, pixel_height),
+        QImage.Format.Format_ARGB32_Premultiplied,
+    )
+    image.setDotsPerMeterX(int(dpi / 0.0254))
+    image.setDotsPerMeterY(int(dpi / 0.0254))
+    image.fill(background if background is not None else Qt.GlobalColor.transparent)
+
+    painter = QPainter()
+    painter.begin(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    target_rect = QRectF(0, 0, pixel_width, pixel_height)
+    scene.render(painter, target_rect, source_rect)
+    painter.end()
+
+    return image
+
 
 def _render_png_bytes(
     scene: QGraphicsScene,

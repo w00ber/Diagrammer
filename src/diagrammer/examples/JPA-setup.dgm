@@ -1,0 +1,440 @@
+{
+  "version": "1.0",
+  "layers": [
+    {
+      "name": "Default",
+      "visible": true,
+      "locked": false,
+      "color": "#000000"
+    }
+  ],
+  "components": [
+    {
+      "id": "650986bf8c9e",
+      "def_key": "SLIDES_3pt/circuits/gnds/GND2",
+      "pos": [
+        757.0,
+        440.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 28.0,
+      "group": []
+    },
+    {
+      "id": "c353d3da46f1",
+      "def_key": "SLIDES_3pt/circuits/\u00b5wave/PASSIVE/CIRC2",
+      "pos": [
+        120.0,
+        310.3
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 24.0,
+      "group": []
+    },
+    {
+      "id": "95e36d5eb1cf",
+      "def_key": "SLIDES_3pt/circuits/gnds/GND2",
+      "pos": [
+        1021.0,
+        440.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 22.0,
+      "group": []
+    },
+    {
+      "id": "d837c5236d95",
+      "def_key": "SLIDES_3pt/circuits/sources/VAC_bias1",
+      "pos": [
+        1023.9000000000001,
+        340.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 19.0,
+      "group": []
+    },
+    {
+      "id": "264d04c46931",
+      "def_key": "SLIDES_3pt/circuits/LCR/RES1",
+      "pos": [
+        928.0,
+        289.9
+      ],
+      "rotation": 90.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 16.0,
+      "group": []
+    },
+    {
+      "id": "b67fd8a6fc77",
+      "def_key": "FLAIR/edges/BLOCKSTRIP_WHITE1",
+      "pos": [
+        400.0,
+        298.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": -80.0,
+      "stretch_dy": -80.0,
+      "layer": 0,
+      "z": 15.0,
+      "group": []
+    },
+    {
+      "id": "f34cbb65e569",
+      "def_key": "SLIDES_3pt/circuits/LCR/IND1",
+      "pos": [
+        840.0,
+        340.0
+      ],
+      "rotation": 180.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 12.0,
+      "group": []
+    },
+    {
+      "id": "006abe0ce56e",
+      "def_key": "SLIDES_3pt/circuits/LCR/CAP1",
+      "pos": [
+        650.0,
+        340.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 9.0,
+      "group": []
+    },
+    {
+      "id": "b12ca176058e",
+      "def_key": "SLIDES_3pt/circuits/LCR/CAP2_SHORT",
+      "pos": [
+        550.0,
+        320.0
+      ],
+      "rotation": 90.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 6.0,
+      "group": []
+    },
+    {
+      "id": "910eb88549ba",
+      "def_key": "SLIDES_3pt/circuits/\u00b5wave/coax and twp/COAX1_MED",
+      "pos": [
+        300.0,
+        320.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 140.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 3.0,
+      "group": []
+    },
+    {
+      "id": "82ecf3b5fac0",
+      "def_key": "SLIDES_3pt/circuits/quantum/SQUIDs/dcSQUID1",
+      "pos": [
+        739.9,
+        340.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 0.0,
+      "group": []
+    }
+  ],
+  "connections": [
+    {
+      "id": "6af13a1045a2",
+      "source": {
+        "component_id": "c353d3da46f1",
+        "port_name": "1"
+      },
+      "target": {
+        "component_id": "b7f8745a5c76",
+        "port_name": "center"
+      },
+      "waypoints": [
+        [
+          100.0,
+          340.0
+        ],
+        [
+          100.0,
+          340.0
+        ]
+      ],
+      "line_width": 3.0,
+      "line_color": "#000000",
+      "corner_radius": 1.0,
+      "routing_mode": "ortho_45",
+      "closed": false,
+      "layer": 0,
+      "z": 44.0,
+      "group": []
+    },
+    {
+      "id": "7415c3562267",
+      "source": {
+        "component_id": "c353d3da46f1",
+        "port_name": "3"
+      },
+      "target": {
+        "component_id": "12923cf658e6",
+        "port_name": "center"
+      },
+      "waypoints": [
+        [
+          200.0,
+          500.0
+        ],
+        [
+          100.0,
+          600.0
+        ]
+      ],
+      "line_width": 3.0,
+      "line_color": "#000000",
+      "corner_radius": 1.0,
+      "routing_mode": "ortho_45",
+      "closed": false,
+      "layer": 0,
+      "z": 41.0,
+      "group": []
+    },
+    {
+      "id": "711dbd237682",
+      "source": {
+        "component_id": "c353d3da46f1",
+        "port_name": "2"
+      },
+      "target": {
+        "component_id": "910eb88549ba",
+        "port_name": "left"
+      },
+      "waypoints": [],
+      "line_width": 3.0,
+      "line_color": "#000000",
+      "corner_radius": 1.0,
+      "routing_mode": "ortho_45",
+      "closed": false,
+      "layer": 0,
+      "z": 38.0,
+      "group": []
+    },
+    {
+      "id": "94617fffc1fe",
+      "source": {
+        "component_id": "650986bf8c9e",
+        "port_name": "left"
+      },
+      "target": {
+        "component_id": "006abe0ce56e",
+        "port_name": "right"
+      },
+      "waypoints": [],
+      "line_width": 3.0,
+      "line_color": "#000000",
+      "corner_radius": 1.0,
+      "routing_mode": "ortho_45",
+      "closed": false,
+      "layer": 0,
+      "z": 37.0,
+      "group": []
+    },
+    {
+      "id": "b744b0a55d35",
+      "source": {
+        "component_id": "f34cbb65e569",
+        "port_name": "left"
+      },
+      "target": {
+        "component_id": "d837c5236d95",
+        "port_name": "right"
+      },
+      "waypoints": [
+        [
+          880.0,
+          440.0
+        ],
+        [
+          924.95,
+          440.0
+        ],
+        [
+          925.0500000000001,
+          440.1
+        ],
+        [
+          1044.0,
+          440.1
+        ]
+      ],
+      "line_width": 3.0,
+      "line_color": "#000000",
+      "corner_radius": 1.0,
+      "routing_mode": "ortho_45",
+      "closed": false,
+      "layer": 0,
+      "z": 34.0,
+      "group": []
+    },
+    {
+      "id": "085477153b12",
+      "source": {
+        "component_id": "264d04c46931",
+        "port_name": "right"
+      },
+      "target": {
+        "component_id": "f34cbb65e569",
+        "port_name": "right"
+      },
+      "waypoints": [],
+      "line_width": 3.0,
+      "line_color": "#000000",
+      "corner_radius": 1.0,
+      "routing_mode": "ortho_45",
+      "closed": false,
+      "layer": 0,
+      "z": 33.0,
+      "group": []
+    },
+    {
+      "id": "a63d22034024",
+      "source": {
+        "component_id": "d837c5236d95",
+        "port_name": "left"
+      },
+      "target": {
+        "component_id": "264d04c46931",
+        "port_name": "left"
+      },
+      "waypoints": [],
+      "line_width": 3.0,
+      "line_color": "#000000",
+      "corner_radius": 1.0,
+      "routing_mode": "ortho_45",
+      "closed": false,
+      "layer": 0,
+      "z": 32.0,
+      "group": []
+    },
+    {
+      "id": "6869365dc0df",
+      "source": {
+        "component_id": "b12ca176058e",
+        "port_name": "right"
+      },
+      "target": {
+        "component_id": "910eb88549ba",
+        "port_name": "right"
+      },
+      "waypoints": [],
+      "line_width": 3.0,
+      "line_color": "#000000",
+      "corner_radius": 1.0,
+      "routing_mode": "ortho_45",
+      "closed": false,
+      "layer": 0,
+      "z": 31.0,
+      "group": []
+    },
+    {
+      "id": "21c752d80e99",
+      "source": {
+        "component_id": "82ecf3b5fac0",
+        "port_name": "bot"
+      },
+      "target": {
+        "component_id": "b12ca176058e",
+        "port_name": "left"
+      },
+      "waypoints": [],
+      "line_width": 3.0,
+      "line_color": "#000000",
+      "corner_radius": 1.0,
+      "routing_mode": "ortho_45",
+      "closed": false,
+      "layer": 0,
+      "z": 30.0,
+      "group": []
+    }
+  ],
+  "junctions": [
+    {
+      "id": "b7f8745a5c76",
+      "pos": [
+        100.0,
+        340.0
+      ],
+      "layer": 0,
+      "z": 42.0,
+      "group": []
+    },
+    {
+      "id": "12923cf658e6",
+      "pos": [
+        100.0,
+        600.0
+      ],
+      "layer": 0,
+      "z": 39.0,
+      "group": []
+    },
+    {
+      "id": "e1733a8087ee",
+      "pos": [
+        1100.0,
+        520.0
+      ],
+      "layer": 0,
+      "z": 35.0,
+      "group": []
+    }
+  ],
+  "shapes": [],
+  "annotations": []
+}

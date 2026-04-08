@@ -24,7 +24,67 @@ def _restore_group(item, data: dict) -> None:
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QGraphicsScene
 
-FORMAT_VERSION = "1.0"
+# ---------------------------------------------------------------------------
+# .dgm file format versioning
+# ---------------------------------------------------------------------------
+#
+# Version string is "MAJOR.MINOR".
+#
+#   * Bump MINOR for additive, backward-compatible changes (new optional
+#     fields). Old loaders ignore unknown keys; new loaders must fall back
+#     to sensible defaults when an old file omits a new field.
+#
+#   * Bump MAJOR for breaking changes (renames, removals, semantic shifts,
+#     restructured nesting). Each MAJOR bump must add a migration step in
+#     ``_migrate`` that upgrades the previous MAJOR to the current one.
+#
+# Loader policy (see ``DiagramSerializer.load``):
+#
+#   * file MAJOR > code MAJOR  ->  refuse to load (file is from the future)
+#   * file MAJOR < code MAJOR  ->  run migrations in sequence
+#   * file MINOR > code MINOR  ->  load anyway (forward-compat best effort)
+#   * file MINOR < code MINOR  ->  load anyway (defaults fill missing fields)
+#
+# When you bump the version, re-save the bundled examples by running
+# ``python tools/resave_examples.py`` so they ship in the current format.
+#
+# Version history:
+#   1.0 - initial format
+# ---------------------------------------------------------------------------
+
+FORMAT_MAJOR = 1
+FORMAT_MINOR = 0
+FORMAT_VERSION = f"{FORMAT_MAJOR}.{FORMAT_MINOR}"
+
+
+def _parse_version(v: str) -> tuple[int, int]:
+    """Parse a 'MAJOR.MINOR' version string into a (major, minor) tuple.
+
+    Tolerates missing minor ('1' -> (1, 0)) and ignores trailing junk.
+    Returns (1, 0) for unparseable input so legacy files load by default.
+    """
+    try:
+        parts = str(v).split(".")
+        major = int(parts[0])
+        minor = int(parts[1]) if len(parts) > 1 else 0
+        return major, minor
+    except (ValueError, IndexError):
+        return 1, 0
+
+
+def _migrate(data: dict, from_major: int) -> dict:
+    """Upgrade *data* from ``from_major`` to the current ``FORMAT_MAJOR``.
+
+    Each step migrates one major version forward and is registered below.
+    No-op when ``from_major == FORMAT_MAJOR``.
+    """
+    # No migrations registered yet — when adding the first MAJOR bump,
+    # add an ``if from_major == 1: data = _migrate_1_to_2(data)`` line here.
+    return data
+
+
+class _IncompatibleFormatError(Exception):
+    """Raised when a .dgm file was saved by a newer MAJOR version."""
 
 
 class DiagramSerializer:
@@ -107,7 +167,16 @@ class DiagramSerializer:
         from diagrammer.panels.settings_dialog import app_settings
 
         data = json.loads(Path(path).read_text())
-        version = data.get("version", "1.0")
+        file_major, file_minor = _parse_version(data.get("version", "1.0"))
+
+        if file_major > FORMAT_MAJOR:
+            raise _IncompatibleFormatError(
+                f"Cannot open '{Path(path).name}': file format version "
+                f"{file_major}.{file_minor} is newer than this build supports "
+                f"(max {FORMAT_VERSION}). Please update Diagrammer."
+            )
+        if file_major < FORMAT_MAJOR:
+            data = _migrate(data, file_major)
 
         # Clear the scene
         scene.clear()

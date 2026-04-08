@@ -44,6 +44,7 @@ diagrammer = [
     "defaults.yaml",
     "icons/*.png",
     "components/**/*.svg",
+    "examples/*.dgm",
     "docs/*.md",
     "fonts/*.otf",
     "fonts/OFL.txt",
