@@ -589,9 +589,30 @@ def _render_shape(parent: ET.Element, shape, ox: float, oy: float) -> None:
     x = sc.x() - ox
     y = sc.y() - oy
 
-    # Build style string
-    style_parts = []
-    style_parts.append(f"stroke:{shape.stroke_color.name()}")
+    # Build style string.
+    #
+    # IMPORTANT: use 6-digit hex (#RRGGBB) + a separate *-opacity
+    # property for partial alpha. Qt's SVG renderer — which is what
+    # re-imports these flattened compound SVGs at placement time — does
+    # NOT understand the 8-digit #AARRGGBB form that ``QColor.name(
+    # NameFormat.HexArgb)`` produces. When it fails to parse the color,
+    # it falls back to the SVG default (``fill`` → black, ``stroke`` →
+    # none), so a rectangle/ellipse with the default transparent fill
+    # (``QColor(255,255,255,0)``) would come back as solid black. The
+    # native .dgmcomp manifest path avoids this bug because it
+    # round-trips through QColor(string), which DOES accept the 8-digit
+    # form.
+    def _append_rgba(prop: str, color) -> None:
+        a = color.alpha()
+        if prop == "fill" and a == 0:
+            style_parts.append("fill:none")
+            return
+        style_parts.append(f"{prop}:{color.name()}")
+        if a < 255:
+            style_parts.append(f"{prop}-opacity:{a / 255:.3f}")
+
+    style_parts: list[str] = []
+    _append_rgba("stroke", shape.stroke_color)
     style_parts.append(f"stroke-width:{shape.stroke_width}")
 
     if isinstance(shape, LineItem):
@@ -605,8 +626,7 @@ def _render_shape(parent: ET.Element, shape, ox: float, oy: float) -> None:
             style_parts.append(f"stroke-dasharray:{','.join(str(v * shape.stroke_width) for v in pattern)}")
 
     if isinstance(shape, ShapeItem):
-        fc = shape.fill_color
-        style_parts.append(f"fill:{fc.name(fc.NameFormat.HexArgb)}")
+        _append_rgba("fill", shape.fill_color)
     else:
         style_parts.append("fill:none")
 
