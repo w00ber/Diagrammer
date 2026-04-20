@@ -740,22 +740,12 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         app_settings.discrete_angle_routing = enabled
         app_settings.save()
 
-    def _toggle_show_junctions(self, enabled: bool) -> None:
-        app_settings.show_junctions = enabled
-        app_settings.save()
-        # Update visibility of all existing junctions
-        from diagrammer.items.junction_item import JunctionItem
-        for item in self._scene.items():
-            if isinstance(item, JunctionItem):
-                item.setVisible(enabled)
-
     def _restore_from_settings(self) -> None:
         """Restore UI state from persisted settings on startup."""
         # Block signals on toggle actions to prevent their handlers from
         # firing (and calling app_settings.save()) during restoration.
         toggle_acts = [self._snap_grid_act, self._snap_port_act,
-                       self._snap_angle_act, self._discrete_angle_act,
-                       self._show_junctions_act]
+                       self._snap_angle_act, self._discrete_angle_act]
         for act in toggle_acts:
             act.blockSignals(True)
 
@@ -774,9 +764,6 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
 
         # Default routing mode (sync scene with persisted setting)
         self._scene.default_routing_mode = app_settings.default_routing_mode
-
-        # Show junctions
-        self._show_junctions_act.setChecked(app_settings.show_junctions)
 
         for act in toggle_acts:
             act.blockSignals(False)

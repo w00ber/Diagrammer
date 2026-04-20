@@ -997,6 +997,11 @@ class AnnotationItem(QGraphicsTextItem):
         the math portions as glyphs and the rest as regular text — all
         as vector paths in a single SVG.
         """
+        # Never render while the user is editing: the QTextDocument is the
+        # live editor buffer, and this method clears it. finish_editing()
+        # will re-invoke us once the edit is committed.
+        if self._editing:
+            return
         text = self._source_text
         if not _has_any_math(text):
             self._math_renderer = None

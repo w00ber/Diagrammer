@@ -168,7 +168,6 @@ class DiagramScene(QGraphicsScene):
         from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
-        from diagrammer.items.junction_item import JunctionItem
         from diagrammer.items.shape_item import LineItem, ShapeItem
         from diagrammer.items.svg_image_item import SvgImageItem
 
@@ -183,13 +182,8 @@ class DiagramScene(QGraphicsScene):
             layer = self._layer_manager.layers[layer_idx]
 
             # Visibility
-            if isinstance(item, (ComponentItem, ConnectionItem, JunctionItem, ShapeItem, LineItem, SvgImageItem, AnnotationItem)):
-                if isinstance(item, JunctionItem):
-                    # Respect show_junctions setting — never show if user hid them
-                    from diagrammer.panels.settings_dialog import app_settings
-                    item.setVisible(layer.visible and app_settings.show_junctions)
-                else:
-                    item.setVisible(layer.visible)
+            if isinstance(item, (ComponentItem, ConnectionItem, ShapeItem, LineItem, SvgImageItem, AnnotationItem)):
+                item.setVisible(layer.visible)
                 # Lock: prevent selection and movement
                 movable = not layer.locked
                 item.setFlag(item.GraphicsItemFlag.ItemIsMovable, movable)
@@ -953,18 +947,10 @@ class DiagramScene(QGraphicsScene):
             if grid_wire_dist < views[0].grid_spacing * 0.6:
                 best_proj = grid_pos
 
-        # Check if junctions should be shown
-        from diagrammer.panels.settings_dialog import app_settings
-        if not app_settings.show_junctions:
-            # Still create a junction for connectivity, just hide it
-            pass
-
-        # Place a junction at the snap point on the existing wire.
+        # Place a connectivity anchor at the snap point on the existing wire.
         from diagrammer.items.junction_item import JunctionItem
         junction = JunctionItem()
         junction.setPos(best_proj)
-        if not app_settings.show_junctions:
-            junction.setVisible(False)
         self.addItem(junction)
 
         return junction.port

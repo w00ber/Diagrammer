@@ -114,12 +114,6 @@ class AppSettings:
         # Shift+Arrow uses half this value for fine nudge.
         self.nudge_fraction = _d("snap", "nudge_fraction", 0.2)
 
-        # Junction appearance
-        self.show_junctions = _d("junction", "show", True)
-        self.junction_color = QColor(_d("junction", "color", "#000000"))
-        self.junction_outline = _d("junction", "outline", False)
-        self.junction_radius = _d("junction", "radius", 5.0)
-
         # Routing menu state
         self.discrete_angle_routing = _d("routing", "discrete_angle", False)
 
@@ -250,10 +244,6 @@ class AppSettings:
                 "snap_to_grid": self.snap_to_grid,
                 "angle_snap_increment": self.angle_snap_increment,
                 "nudge_fraction": self.nudge_fraction,
-                "show_junctions": self.show_junctions,
-                "junction_color": self.junction_color.name(),
-                "junction_outline": self.junction_outline,
-                "junction_radius": self.junction_radius,
                 "discrete_angle_routing": self.discrete_angle_routing,
                 "hidden_libraries": sorted(self.hidden_libraries),
                 "library_view_mode": self.library_view_mode,
@@ -321,12 +311,6 @@ class AppSettings:
                 self.snap_to_grid = data.get("snap_to_grid", self.snap_to_grid)
                 self.angle_snap_increment = data.get("angle_snap_increment", self.angle_snap_increment)
                 self.nudge_fraction = data.get("nudge_fraction", self.nudge_fraction)
-                self.show_junctions = data.get("show_junctions", self.show_junctions)
-                jc = data.get("junction_color")
-                if jc:
-                    self.junction_color = QColor(jc)
-                self.junction_outline = data.get("junction_outline", self.junction_outline)
-                self.junction_radius = data.get("junction_radius", self.junction_radius)
                 self.discrete_angle_routing = data.get("discrete_angle_routing", self.discrete_angle_routing)
                 self.hidden_libraries = set(data.get("hidden_libraries", []))
                 self.library_view_mode = data.get("library_view_mode", self.library_view_mode)
@@ -732,38 +716,6 @@ class SettingsDialog(QDialog):
         lib_layout.addWidget(self._auto_add_compounds_cb)
 
         tabs.addTab(_scrollable(lib_tab), "Libraries")
-
-        # -- Junction tab --
-        junc_tab = QWidget()
-        junc_layout = QVBoxLayout(junc_tab)
-        junc_group = QGroupBox("Junction Appearance")
-        junc_form = QFormLayout()
-
-        self._junc_color = QColor(settings.junction_color)
-        self._junc_color_btn = QPushButton()
-        self._junc_color_btn.setFixedSize(60, 24)
-        self._junc_color_btn.setAutoDefault(False)
-        self._junc_color_btn.setStyleSheet(
-            f"background-color: {self._junc_color.name()}; border: 1px solid #888;"
-        )
-        self._junc_color_btn.clicked.connect(self._pick_junc_color)
-        junc_form.addRow("Fill color:", self._junc_color_btn)
-
-        self._junc_outline_cb = QCheckBox("Show outline")
-        self._junc_outline_cb.setChecked(settings.junction_outline)
-        junc_form.addRow(self._junc_outline_cb)
-
-        self._junc_radius_spin = QDoubleSpinBox()
-        self._junc_radius_spin.setRange(2.0, 20.0)
-        self._junc_radius_spin.setValue(settings.junction_radius)
-        self._junc_radius_spin.setSuffix(" pt")
-        self._junc_radius_spin.setSingleStep(1.0)
-        junc_form.addRow("Radius:", self._junc_radius_spin)
-
-        junc_group.setLayout(junc_form)
-        junc_layout.addWidget(junc_group)
-        junc_layout.addStretch()
-        tabs.addTab(_scrollable(junc_tab), "Junctions")
 
         # -- Appearance tab (canvas/library background + grid colors per theme) --
         appearance_tab = QWidget()
@@ -1189,14 +1141,6 @@ class SettingsDialog(QDialog):
         self._refresh_appearance_color_buttons()
         self._live_apply_appearance()
 
-    def _pick_junc_color(self) -> None:
-        c = QColorDialog.getColor(self._junc_color, self, "Junction Color")
-        if c.isValid():
-            self._junc_color = c
-            self._junc_color_btn.setStyleSheet(
-                f"background-color: {c.name()}; border: 1px solid #888;"
-            )
-
     def _browse_latex_bin_path(self) -> None:
         from PySide6.QtWidgets import QFileDialog
         start = self._latex_path_edit.text() or "/Library/TeX/texbin"
@@ -1268,11 +1212,6 @@ class SettingsDialog(QDialog):
         self._snap_to_port_cb.setChecked(self._settings.snap_to_port)
         self._snap_to_angle_cb.setChecked(self._settings.snap_to_angle)
         self._angle_increment_spin.setValue(self._settings.angle_snap_increment)
-        self._junc_color = QColor(self._settings.junction_color)
-        self._junc_color_btn.setStyleSheet(
-            f"background-color: {self._junc_color.name()}; border: 1px solid #888;")
-        self._junc_outline_cb.setChecked(self._settings.junction_outline)
-        self._junc_radius_spin.setValue(self._settings.junction_radius)
         self._annot_font_combo.setCurrentText(self._settings.default_annotation_font)
         self._annot_size_spin.setValue(self._settings.default_annotation_size)
         self._annot_color = QColor(self._settings.default_annotation_color)
@@ -1484,10 +1423,6 @@ class SettingsDialog(QDialog):
         self._settings.snap_to_angle = self._snap_to_angle_cb.isChecked()
         self._settings.angle_snap_increment = self._angle_increment_spin.value()
         self._settings.nudge_fraction = self._nudge_fraction_spin.value()
-        # Junction appearance
-        self._settings.junction_color = QColor(self._junc_color)
-        self._settings.junction_outline = self._junc_outline_cb.isChecked()
-        self._settings.junction_radius = self._junc_radius_spin.value()
         # Library visibility (children are independently controllable;
         # parent items use auto tri-state purely as a UI convenience)
         self._settings.hidden_libraries = {

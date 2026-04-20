@@ -21,13 +21,6 @@ snap:
   snap_to_angle: false
   angle_snap_increment: 15.0  # degrees
 
-# --- Junction appearance ---
-junction:
-  show: false
-  color: "#000000"
-  outline: false
-  radius: 5.0               # pt
-
 # --- Text annotation defaults ---
 annotation:
   font_family: "STIX Two Text"

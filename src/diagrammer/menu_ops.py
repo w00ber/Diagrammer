@@ -376,14 +376,6 @@ class MenuMixin:
 
         routing_menu.addSeparator()
 
-        self._show_junctions_act = QAction("Show &Junctions", self)
-        self._show_junctions_act.setCheckable(True)
-        self._show_junctions_act.setChecked(app_settings.show_junctions)
-        self._show_junctions_act.toggled.connect(self._toggle_show_junctions)
-        routing_menu.addAction(self._show_junctions_act)
-
-        routing_menu.addSeparator()
-
         hv_info_act = QAction("Hold Shift for &H/V Constraint", self)
         hv_info_act.setEnabled(False)
         routing_menu.addAction(hv_info_act)
