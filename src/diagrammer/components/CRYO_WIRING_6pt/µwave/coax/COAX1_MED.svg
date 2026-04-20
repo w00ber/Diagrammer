@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 120 40">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        stroke-width: 6px;
+      }
+
+      .st0, .st1, .st2, .st3, .st4, .st5, .st6 {
+        stroke: #000;
+      }
+
+      .st0, .st1, .st2, .st3, .st6 {
+        stroke-linejoin: round;
+      }
+
+      .st0, .st2 {
+        stroke-linecap: round;
+      }
+
+      .st0, .st2, .st7, .st3, .st5 {
+        fill: none;
+      }
+
+      .st1 {
+        stroke-width: 1.9px;
+      }
+
+      .st1, .st6 {
+        fill: #cccbcb;
+      }
+
+      .st2 {
+        stroke-width: 3px;
+      }
+
+      .st8 {
+        fill: #c66;
+      }
+
+      .st7 {
+        stroke: #c03;
+        stroke-width: .9px;
+      }
+
+      .st7, .st4, .st5 {
+        stroke-miterlimit: 10;
+      }
+
+      .st3, .st6 {
+        stroke-width: 1.6px;
+      }
+
+      .st4 {
+        fill: #fff;
+      }
+
+      .st4, .st5 {
+        stroke-width: .5px;
+      }
+
+      .st9 {
+        display: none;
+      }
+    </style>
+  </defs>
+  <g id="grid" class="st9">
+    <line class="st5" x1="120" x2="120" y2="40"/>
+    <line class="st5" y1="40"/>
+    <line class="st4" x1="20" x2="20" y2="40"/>
+    <line class="st4" x1="40" x2="40" y2="40"/>
+    <line class="st4" x1="60" x2="60" y2="40"/>
+    <line class="st4" x1="80" x2="80" y2="40"/>
+    <line class="st4" x1="100" x2="100" y2="40"/>
+    <line class="st5" x2="120"/>
+    <line class="st5" y1="20" x2="120" y2="20"/>
+    <line class="st5" y1="40" x2="120" y2="40"/>
+  </g>
+  <g id="stretch">
+    <line id="stretch:v" class="st7" x1="60" x2="60" y2="40"/>
+  </g>
+  <g id="leads">
+    <line class="st0" x1="4.6" y1="19.9" x2="0" y2="19.9"/>
+    <line class="st0" x1="120" y1="20" x2="110.2" y2="20"/>
+  </g>
+  <g id="ports">
+    <circle id="port:left" class="st8" cx="0" cy="19.9" r="3"/>
+    <circle id="port:right" class="st8" cx="120" cy="20" r="3"/>
+  </g>
+  <g id="artwork">
+    <g>
+      <path class="st6" d="M110.5,33.6c-3.8,0-7-6.1-7-13.6s3.1-13.6,7-13.6H12.5c-3.8,0-7,6.1-7,13.6s3.1,13.6,7,13.6h98Z"/>
+      <g>
+        <path class="st3" d="M117.1,24.1c-.9,5.5-3.5,9.5-6.6,9.5s-7-6.1-7-13.6,3.1-13.6,7-13.6,5.8,4,6.6,9.5"/>
+        <path class="st1" d="M117.1,24.1"/>
+      </g>
+      <path class="st2" d="M111.3,20"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80">
+  <defs>
+    <style>
+      .bg { fill: #e8f0ff; stroke: #b0c4de; stroke-width: 1; }
+    </style>
+  </defs>
+  <g id="decorative"/>
+  <g id="artwork">
+    <rect class="bg" x="0.5" y="0.5" width="119" height="79" rx="6" ry="6"/>
+  </g>
+  <g id="snap">
+    <circle cx="0" cy="0" r="2"/>
+  </g>
+</svg>

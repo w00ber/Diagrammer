@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 160 160">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        stroke-width: 3.2px;
+      }
+
+      .st0, .st1, .st2 {
+        stroke: #231f20;
+        stroke-linejoin: round;
+      }
+
+      .st0, .st1, .st2, .st3 {
+        fill: none;
+      }
+
+      .st4 {
+        fill: #c33;
+      }
+
+      .st1 {
+        stroke-width: 2px;
+      }
+
+      .st2 {
+        stroke-width: .8px;
+      }
+
+      .st3 {
+        stroke: #c36;
+        stroke-miterlimit: 10;
+      }
+
+      .st5 {
+        display: none;
+      }
+    </style>
+  </defs>
+  <g id="stretch">
+    <line id="stretch:v" class="st3" x1="80" x2="80" y2="160"/>
+  </g>
+  <g id="artwork">
+    <rect class="st0" x="5" y="5" width="150" height="149.8"/>
+  </g>
+  <g id="leads">
+    <line class="st1" x1="5" y1="20" y2="20"/>
+    <line class="st1" x1="5" y1="140" y2="140"/>
+    <line class="st1" x1="160" y1="20" x2="155" y2="20"/>
+    <line class="st1" x1="160" y1="140" x2="155" y2="140"/>
+  </g>
+  <g id="ports">
+    <circle id="port:left2" class="st4" cy="20" r="3"/>
+    <circle id="port:left1" class="st4" cy="140" r="3"/>
+    <circle id="port:right1" class="st4" cx="160" cy="20" r="3"/>
+    <circle id="port:right2" class="st4" cx="160" cy="140" r="3"/>
+  </g>
+  <g id="guides" class="st5">
+    <rect class="st2" width="20" height="20"/>
+    <rect class="st2" y="140" width="20" height="20"/>
+    <rect class="st2" x="140" width="20" height="20"/>
+    <rect class="st2" x="140" y="140" width="20" height="20"/>
+  </g>
+</svg>

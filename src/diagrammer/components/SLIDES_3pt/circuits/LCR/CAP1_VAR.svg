@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 60 100">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0, .st1 {
+        fill: none;
+      }
+
+      .st1 {
+        stroke: #000;
+        stroke-linecap: round;
+        stroke-linejoin: bevel;
+        stroke-width: 3px;
+      }
+
+      .st2 {
+        fill: #c66;
+      }
+    </style>
+  </defs>
+  <g id="artwork">
+    <g>
+      <path class="st1" d="M54.6,54.6H5.4"/>
+      <path class="st1" d="M54.6,45.4H5.4"/>
+    </g>
+    <g>
+      <g>
+        <line class="st1" x1="14.5" y1="92.4" x2="41.9" y2="19.7"/>
+        <polygon points="45.2 24.5 47 6.1 36.2 21.1 45.2 24.5"/>
+      </g>
+      <line class="st0" x1="14.5" y1="92.4" x2="41.9" y2="19.7"/>
+      <line class="st0" x1="14.5" y1="92.4" x2="41.9" y2="19.7"/>
+    </g>
+  </g>
+  <g id="leads">
+    <path class="st1" d="M30,0v45.4"/>
+    <path class="st1" d="M30,100v-44.9"/>
+  </g>
+  <g id="ports">
+    <circle id="port:left" class="st2" cx="30" cy="0" r="3"/>
+    <circle id="port:right" class="st2" cx="30" cy="100" r="3"/>
+  </g>
+</svg>

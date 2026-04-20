@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 160">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1, .st2, .st3 {
+        fill: none;
+      }
+
+      .st1, .st2, .st3, .st4, .st5 {
+        stroke: #231f20;
+        stroke-linejoin: round;
+      }
+
+      .st1, .st4 {
+        stroke-width: 2px;
+      }
+
+      .st2 {
+        stroke-width: 3px;
+      }
+
+      .st3 {
+        stroke-width: 2.7px;
+      }
+
+      .st4, .st5 {
+        fill: #fff;
+      }
+
+      .st5 {
+        stroke-width: 2.1px;
+      }
+    </style>
+  </defs>
+  <g id="artwork">
+    <rect class="st3" x="10" y="7.7" width="60" height="144" rx="4" ry="4"/>
+    <circle class="st4" cx="23.8" cy="79.7" r="4.5"/>
+    <circle class="st4" cx="56.2" cy="90" r="4.5"/>
+    <circle class="st4" cx="52.6" cy="110" r="4.5"/>
+    <circle class="st4" cx="46.7" cy="130" r="4.5"/>
+    <circle class="st4" cx="56.2" cy="70" r="4.5"/>
+    <circle class="st4" cx="52.6" cy="50" r="4.5"/>
+    <circle class="st4" cx="47.2" cy="30" r="4.5"/>
+    <path class="st5" d="M10,79.7"/>
+    <path class="st5" d="M23.8,79.7"/>
+    <line class="st1" x1="27" y1="83.5" x2="46.7" y2="104.5"/>
+  </g>
+  <g id="ports">
+    <circle id="port:com" class="st0" cy="80" r="3"/>
+    <circle id="port:3" class="st0" cx="80" cy="70.3" r="3"/>
+    <circle id="port:2" class="st0" cx="80" cy="50.3" r="3"/>
+    <circle id="port:1" class="st0" cx="80" cy="30.3" r="3"/>
+    <circle id="port:4" class="st0" cx="80" cy="90.3" r="3"/>
+    <circle id="port:5" class="st0" cx="80" cy="110.3" r="3"/>
+    <circle id="port:6" class="st0" cx="80" cy="130.3" r="3"/>
+  </g>
+  <g id="leads">
+    <line id="_x32_" class="st2" x1="60.7" y1="70.3" x2="80" y2="70.3"/>
+    <line id="_x32_1" class="st2" x1="57.1" y1="50.3" x2="80" y2="50.3"/>
+    <line id="_x32_2" class="st2" x1="51.7" y1="30.3" x2="80" y2="30.3"/>
+    <line id="_x31_" class="st2" x1="60.7" y1="90.3" x2="80" y2="90.3"/>
+    <line id="_x31_1" class="st2" x1="57.1" y1="110.3" x2="80" y2="110.3"/>
+    <line id="_x31_2" class="st2" x1="51.2" y1="130.3" x2="80" y2="130.3"/>
+    <line id="com" class="st2" x1="19.7" y1="80" y2="80"/>
+  </g>
+</svg>

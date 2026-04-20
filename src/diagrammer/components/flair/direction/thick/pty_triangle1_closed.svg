@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 30 20">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1 {
+        stroke: #000;
+        stroke-miterlimit: 10;
+        stroke-width: 6px;
+      }
+
+      .st2 {
+        display: none;
+      }
+    </style>
+  </defs>
+  <g id="ports">
+    <circle id="port:left" class="st0" cx="15" cy="10" r="3"/>
+  </g>
+  <g id="artwork">
+    <polygon points="29.4 10 8.6 .8 8.6 19.2 29.4 10"/>
+  </g>
+  <g id="guide" class="st2">
+    <line class="st1" x1="-17" y1="10" x2="53.8" y2="10"/>
+  </g>
+</svg>

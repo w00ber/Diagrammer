@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -10 390 290">
+  <style>
+    .label { font-family: sans-serif; font-size: 11px; font-weight: bold; }
+    .status { font-family: sans-serif; font-size: 9px; fill: #888; }
+    .ann { font-family: sans-serif; font-size: 8px; fill: #999; }
+    .band { opacity: 0.12; }
+  </style>
+
+  <defs>
+    <!-- Resistor zigzag reused across layers -->
+    <path id="zigzag" d="M22,15 l4.7-8.7 9.4,17.4 9.4-17.4 9.4,17.4 9.4-17.4 9.4,17.4 4.7-8.7"/>
+  </defs>
+
+  <!-- Title -->
+  <text font-family="sans-serif" font-size="13" font-weight="bold" fill="#444" x="120" y="6">Layer Anatomy — Exploded View</text>
+
+  <!-- ============ Layer 1: artwork ============ -->
+  <g transform="translate(30, 20)">
+    <!-- Band background -->
+    <rect class="band" x="-5" y="-5" width="180" height="40" rx="4" fill="#555"/>
+    <!-- Layer content -->
+    <use href="#zigzag" stroke="#333" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Label -->
+    <text class="label" x="190" y="12" fill="#333">artwork</text>
+    <text class="status" x="190" y="24">Rendered</text>
+  </g>
+
+  <!-- ============ Layer 2: leads ============ -->
+  <g transform="translate(30, 75)">
+    <rect class="band" x="-5" y="-5" width="180" height="40" rx="4" fill="#2a7"/>
+    <!-- Lead lines -->
+    <line x1="0" y1="15" x2="22" y2="15" stroke="#2a7" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="78" y1="15" x2="100" y2="15" stroke="#2a7" stroke-width="2.5" stroke-linecap="round"/>
+    <!-- Label -->
+    <text class="label" x="190" y="12" fill="#2a7">leads</text>
+    <text class="status" x="190" y="24">Rendered (shortened)</text>
+  </g>
+
+  <!-- ============ Layer 3: ports ============ -->
+  <g transform="translate(30, 130)">
+    <rect class="band" x="-5" y="-5" width="180" height="40" rx="4" fill="#c33"/>
+    <!-- Port circles -->
+    <circle cx="0" cy="15" r="3.5" fill="#c33" opacity="0.8"/>
+    <circle cx="100" cy="15" r="3.5" fill="#c33" opacity="0.8"/>
+    <!-- Port id labels -->
+    <text class="ann" x="6" y="12" fill="#c33">port:left</text>
+    <text class="ann" x="76" y="12" fill="#c33">port:right</text>
+    <!-- Label -->
+    <text class="label" x="190" y="12" fill="#c33">ports</text>
+    <text class="status" x="190" y="24">Hidden (parsed for positions)</text>
+  </g>
+
+  <!-- ============ Layer 4: labels ============ -->
+  <g transform="translate(30, 185)">
+    <rect class="band" x="-5" y="-5" width="180" height="40" rx="4" fill="#e80"/>
+    <!-- Label crosshair -->
+    <line x1="46" y1="15" x2="54" y2="15" stroke="#e80" stroke-width="1"/>
+    <line x1="50" y1="11" x2="50" y2="19" stroke="#e80" stroke-width="1"/>
+    <text class="ann" x="56" y="13" fill="#e80">label:value</text>
+    <!-- Label -->
+    <text class="label" x="190" y="12" fill="#e80">labels</text>
+    <text class="status" x="190" y="24">Hidden (parsed for positions)</text>
+  </g>
+
+  <!-- ============ Composited preview ============ -->
+  <g transform="translate(30, 240)">
+    <text class="ann" x="0" y="-5" fill="#666" font-size="9" font-weight="bold">Composited result (what the user sees):</text>
+    <!-- Artwork -->
+    <use href="#zigzag" stroke="#333" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Leads -->
+    <line x1="0" y1="15" x2="22" y2="15" stroke="#333" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="78" y1="15" x2="100" y2="15" stroke="#333" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+
+  <!-- Vertical dashed connector lines between layers -->
+  <g stroke="#ddd" stroke-width="0.5" stroke-dasharray="2,2">
+    <!-- Left side alignment -->
+    <line x1="30" y1="55" x2="30" y2="70"/>
+    <line x1="30" y1="110" x2="30" y2="125"/>
+    <line x1="30" y1="165" x2="30" y2="180"/>
+    <!-- Right side alignment -->
+    <line x1="130" y1="55" x2="130" y2="70"/>
+    <line x1="130" y1="110" x2="130" y2="125"/>
+    <line x1="130" y1="165" x2="130" y2="180"/>
+  </g>
+</svg>

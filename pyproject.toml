@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diagrammer"
+version = "0.9.0"
+description = "A tool for building diagrams, including flowcharts, circuits, and more"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    {name = "J Aumentado"},
+]
+dependencies = [
+    "PySide6-Essentials>=6.6",
+    "matplotlib>=3.5",
+    # Pure-Python LaTeX-math-to-SVG renderer used for display math
+    # (e.g. matrices) in annotations. Bundling it as a base dependency
+    # means users get matrix / display-math rendering in annotations
+    # out of the box without needing a system LaTeX install. The
+    # annotation pipeline still falls back to matplotlib's usetex /
+    # mathtext if ziamath cannot parse a particular expression.
+    "ziamath>=0.9",
+    "markdown>=3.4",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pyinstaller>=6.0",
+]
+
+[project.scripts]
+diagrammer = "diagrammer.__main__:main"
+
+[project.gui-scripts]
+diagrammer-gui = "diagrammer.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+diagrammer = [
+    "defaults.yaml",
+    "icons/*.png",
+    "components/**/*.svg",
+    "examples/*.dgm",
+    "docs/*.md",
+    "fonts/*.otf",
+    "fonts/OFL.txt",
+]

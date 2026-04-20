@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80">
+  <g id="artwork">
+    <polygon points="60,2 118,40 60,78 2,40"
+             fill="#fff3e0" stroke="#333" stroke-width="2"/>
+  </g>
+  <g id="ports" display="none">
+    <circle id="port:left" cx="2" cy="40" r="3"/>
+    <circle id="port:right" cx="118" cy="40" r="3"/>
+    <circle id="port:top" cx="60" cy="2" r="3"/>
+    <circle id="port:bottom" cx="60" cy="78" r="3"/>
+  </g>
+  <g id="labels" display="none">
+    <text id="label:title" x="60" y="40"/>
+  </g>
+</svg>

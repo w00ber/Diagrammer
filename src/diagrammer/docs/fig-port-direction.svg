@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-75 -55 340 220">
+  <style>
+    .vb-border { fill: none; stroke: #333; stroke-width: 1.5; }
+    .tol-zone { fill: #c33; opacity: 0.08; }
+    .ann { font-family: sans-serif; font-size: 8px; fill: #888; }
+    .port-label { font-family: sans-serif; font-size: 8px; fill: #c33; font-weight: bold; }
+    .dim { font-family: sans-serif; font-size: 7px; fill: #c03; }
+    .title { font-family: sans-serif; font-size: 10px; fill: #444; font-weight: bold; }
+    .arrow { stroke: #07a; stroke-width: 1.5; fill: none; marker-end: url(#dir-arrow); }
+    .arrow-q { stroke: #999; stroke-width: 1; fill: none; }
+  </style>
+
+  <defs>
+    <marker id="dir-arrow" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+      <path d="M0,0 L7,2.5 L0,5" fill="#07a"/>
+    </marker>
+  </defs>
+
+  <text class="title" x="100" y="-35" text-anchor="middle">Port Direction Auto-Detection</text>
+
+  <!-- viewBox rectangle -->
+  <rect x="0" y="0" width="200" height="100" class="vb-border"/>
+
+  <!-- Dimension labels -->
+  <text class="ann" x="100" y="-8" text-anchor="middle">viewBox width = 200</text>
+  <text class="ann" x="-8" y="55" text-anchor="middle" transform="rotate(-90, -8, 55)">height = 100</text>
+
+  <!-- 2pt tolerance zones (shaded strips along edges) -->
+  <!-- Left edge -->
+  <rect x="0" y="0" width="2" height="100" class="tol-zone"/>
+  <!-- Right edge -->
+  <rect x="198" y="0" width="2" height="100" class="tol-zone"/>
+  <!-- Top edge -->
+  <rect x="0" y="0" width="200" height="2" class="tol-zone"/>
+  <!-- Bottom edge -->
+  <rect x="0" y="98" width="200" height="2" class="tol-zone"/>
+
+  <!-- 2pt dimension callout (left edge) -->
+  <line x1="0" y1="108" x2="0" y2="115" stroke="#c03" stroke-width="0.4"/>
+  <line x1="2" y1="108" x2="2" y2="115" stroke="#c03" stroke-width="0.4"/>
+  <line x1="0" y1="112" x2="2" y2="112" stroke="#c03" stroke-width="0.5"/>
+  <text class="dim" x="6" y="114">2 pt tolerance</text>
+
+  <!-- PORT: Left edge (cx near 0) -->
+  <circle cx="0" cy="40" r="4" fill="#c33" opacity="0.8"/>
+  <line x1="-15" y1="40" x2="-4" y2="40" class="arrow"/>
+  <text class="port-label" x="-42" y="37" text-anchor="end">Wire</text>
+  <text class="port-label" x="-42" y="46" text-anchor="end">from left</text>
+
+  <!-- PORT: Right edge (cx near width) -->
+  <circle cx="200" cy="40" r="4" fill="#c33" opacity="0.8"/>
+  <line x1="215" y1="40" x2="204" y2="40" class="arrow"/>
+  <text class="port-label" x="242" y="37">Wire</text>
+  <text class="port-label" x="242" y="46">from right</text>
+
+  <!-- PORT: Top edge (cy near 0) -->
+  <circle cx="130" cy="0" r="4" fill="#c33" opacity="0.8"/>
+  <line x1="130" y1="-15" x2="130" y2="-4" class="arrow"/>
+  <text class="port-label" x="130" y="-20" text-anchor="middle">Wire from top</text>
+
+  <!-- PORT: Bottom edge (cy near height) -->
+  <circle cx="130" cy="100" r="4" fill="#c33" opacity="0.8"/>
+  <line x1="130" y1="115" x2="130" y2="104" class="arrow"/>
+  <text class="port-label" x="130" y="125" text-anchor="middle">Wire from bottom</text>
+
+  <!-- PORT: Interior (no preferred direction) -->
+  <circle cx="80" cy="55" r="4" fill="#999" opacity="0.6"/>
+  <text font-family="sans-serif" font-size="12" fill="#999" x="80" y="59" text-anchor="middle" font-weight="bold">?</text>
+  <text class="ann" x="80" y="72" text-anchor="middle">Interior port</text>
+  <text class="ann" x="80" y="81" text-anchor="middle">(no preferred direction)</text>
+</svg>

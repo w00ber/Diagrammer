@@ -1,0 +1,3 @@
+recursive-include src/diagrammer/components *.svg
+recursive-include src/diagrammer/docs *.md
+include src/diagrammer/defaults.yaml

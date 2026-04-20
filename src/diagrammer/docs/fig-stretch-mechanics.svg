@@ -1,0 +1,207 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -10 480 300">
+  <style>
+    .title { font-family: sans-serif; font-size: 11px; font-weight: bold; fill: #444; }
+    .subtitle { font-family: sans-serif; font-size: 9px; fill: #666; }
+    .ann { font-family: sans-serif; font-size: 7.5px; fill: #888; }
+    .ann-bold { font-family: sans-serif; font-size: 7.5px; fill: #666; font-weight: bold; }
+    .break-line { stroke: #c03; stroke-width: 1; stroke-dasharray: 4,2; }
+    .body { fill: #f0f0f0; stroke: #333; stroke-width: 1.5; }
+    .lead { stroke: #333; stroke-width: 2; stroke-linecap: round; }
+    .port { fill: #c33; opacity: 0.8; }
+    .growth { fill: #dfe; stroke: #2a7; stroke-width: 0.8; stroke-dasharray: 3,1.5; }
+    .arrow-line { stroke: #07a; stroke-width: 1; fill: none; marker-end: url(#stretch-arrow); }
+    .shift-arrow { stroke: #c03; stroke-width: 0.8; fill: none; marker-end: url(#shift-arrow); }
+    .tile-fill { opacity: 0.25; }
+  </style>
+
+  <defs>
+    <marker id="stretch-arrow" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto">
+      <path d="M0,0 L6,2 L0,4" fill="#07a"/>
+    </marker>
+    <marker id="shift-arrow" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto">
+      <path d="M0,0 L5,2 L0,4" fill="#c03"/>
+    </marker>
+    <!-- Zigzag tile pattern for repeating stretch -->
+    <path id="coil-segment" d="M0,0 Q5,-8 10,0 Q15,8 20,0" fill="none" stroke="#333" stroke-width="1.5"/>
+  </defs>
+
+  <!-- ============================================================ -->
+  <!-- ROW 1: Gap Stretch                                           -->
+  <!-- ============================================================ -->
+  <text class="title" x="0" y="5">Gap Stretch (single break line)</text>
+
+  <!-- Before -->
+  <g transform="translate(0, 20)">
+    <text class="subtitle" x="0" y="0">Before:</text>
+
+    <!-- Component body -->
+    <rect x="20" y="10" width="120" height="30" class="body" rx="3"/>
+
+    <!-- Leads -->
+    <line x1="0" y1="25" x2="20" y2="25" class="lead"/>
+    <line x1="140" y1="25" x2="160" y2="25" class="lead"/>
+
+    <!-- Ports -->
+    <circle cx="0" cy="25" r="3" class="port"/>
+    <circle cx="160" cy="25" r="3" class="port"/>
+
+    <!-- Break line -->
+    <line x1="80" y1="5" x2="80" y2="48" class="break-line"/>
+    <text class="ann" x="82" y="52" fill="#c03">stretch:v</text>
+
+    <!-- Region labels -->
+    <text class="ann-bold" x="45" y="28" text-anchor="middle">Fixed</text>
+    <text class="ann-bold" x="120" y="28" text-anchor="middle">Shifts</text>
+    <path d="M100,28 L130,28" class="shift-arrow"/>
+  </g>
+
+  <!-- After -->
+  <g transform="translate(200, 20)">
+    <text class="subtitle" x="0" y="0">After (stretched +40 pt):</text>
+
+    <!-- Component body - left half -->
+    <rect x="20" y="10" width="60" height="30" fill="#f0f0f0" stroke="#333" stroke-width="1.5" rx="0"/>
+    <!-- Gap fill region -->
+    <rect x="80" y="10" width="40" height="30" class="growth"/>
+    <!-- Component body - right half (shifted) -->
+    <rect x="120" y="10" width="60" height="30" fill="#f0f0f0" stroke="#333" stroke-width="1.5" rx="0"/>
+    <!-- Outer border -->
+    <rect x="20" y="10" width="160" height="30" fill="none" stroke="#333" stroke-width="1.5" rx="3"/>
+
+    <!-- Leads -->
+    <line x1="0" y1="25" x2="20" y2="25" class="lead"/>
+    <line x1="180" y1="25" x2="200" y2="25" class="lead"/>
+
+    <!-- Ports -->
+    <circle cx="0" cy="25" r="3" class="port"/>
+    <circle cx="200" cy="25" r="3" class="port"/>
+
+    <!-- Break line (original position) -->
+    <line x1="80" y1="5" x2="80" y2="48" class="break-line" opacity="0.4"/>
+
+    <!-- Growth annotation -->
+    <line x1="80" y1="48" x2="80" y2="55" stroke="#07a" stroke-width="0.5"/>
+    <line x1="120" y1="48" x2="120" y2="55" stroke="#07a" stroke-width="0.5"/>
+    <line x1="80" y1="52" x2="120" y2="52" class="arrow-line"/>
+    <text class="ann" x="100" y="62" text-anchor="middle" fill="#07a">+40 pt gap</text>
+
+    <!-- Shifted label -->
+    <text class="ann" x="100" y="28" text-anchor="middle" fill="#2a7">extended</text>
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- ROW 2: Repeating Stretch                                     -->
+  <!-- ============================================================ -->
+  <text class="title" x="0" y="115">Repeating Stretch (two break lines + tile group)</text>
+
+  <!-- Before -->
+  <g transform="translate(0, 130)">
+    <text class="subtitle" x="0" y="0">Before:</text>
+
+    <!-- Component body -->
+    <rect x="20" y="10" width="120" height="30" fill="none" stroke="#333" stroke-width="1.5" rx="3"/>
+
+    <!-- Left end cap -->
+    <rect x="20" y="10" width="20" height="30" fill="#f0f0f0" stroke="none"/>
+    <rect x="20" y="10" width="20" height="30" fill="none" stroke="#333" stroke-width="1.5" rx="3"/>
+
+    <!-- Tile region (highlighted) -->
+    <rect x="40" y="10" width="40" height="30" fill="#fef3e0" stroke="none"/>
+    <!-- Coil/pattern in tile -->
+    <use href="#coil-segment" transform="translate(40, 25)"/>
+    <use href="#coil-segment" transform="translate(60, 25)"/>
+
+    <!-- Right end cap -->
+    <rect x="80" y="10" width="60" height="30" fill="#f0f0f0" stroke="none"/>
+    <line x1="80" y1="10" x2="140" y2="10" stroke="#333" stroke-width="1.5"/>
+    <line x1="80" y1="40" x2="140" y2="40" stroke="#333" stroke-width="1.5"/>
+    <line x1="140" y1="10" x2="140" y2="40" stroke="#333" stroke-width="1.5"/>
+
+    <!-- Leads -->
+    <line x1="0" y1="25" x2="20" y2="25" class="lead"/>
+    <line x1="140" y1="25" x2="160" y2="25" class="lead"/>
+
+    <!-- Ports -->
+    <circle cx="0" cy="25" r="3" class="port"/>
+    <circle cx="160" cy="25" r="3" class="port"/>
+
+    <!-- Break lines -->
+    <line x1="40" y1="5" x2="40" y2="48" class="break-line"/>
+    <line x1="80" y1="5" x2="80" y2="48" class="break-line"/>
+    <text class="ann" x="38" y="55" text-anchor="end" fill="#c03">stretch:v1</text>
+    <text class="ann" x="82" y="55" fill="#c03">stretch:v2</text>
+
+    <!-- Region labels -->
+    <text class="ann-bold" x="30" y="28" text-anchor="middle">end</text>
+    <text class="ann-bold" x="60" y="28" text-anchor="middle">tile</text>
+    <text class="ann-bold" x="110" y="28" text-anchor="middle">end (shifts)</text>
+  </g>
+
+  <!-- After -->
+  <g transform="translate(200, 130)">
+    <text class="subtitle" x="0" y="0">After (stretched, 3 tiles):</text>
+
+    <!-- Component body outline -->
+    <rect x="20" y="10" width="200" height="30" fill="none" stroke="#333" stroke-width="1.5" rx="3"/>
+
+    <!-- Left end cap -->
+    <rect x="20" y="10" width="20" height="30" fill="#f0f0f0" stroke="none"/>
+    <line x1="20" y1="10" x2="20" y2="40" stroke="#333" stroke-width="1.5"/>
+
+    <!-- Tile 1 (original) -->
+    <rect x="40" y="10" width="40" height="30" fill="#fef3e0" stroke="none" class="tile-fill"/>
+    <use href="#coil-segment" transform="translate(40, 25)"/>
+    <use href="#coil-segment" transform="translate(60, 25)"/>
+    <text class="ann" x="60" y="28" text-anchor="middle" fill="#b80">1</text>
+
+    <!-- Tile 2 (cloned) -->
+    <rect x="80" y="10" width="40" height="30" fill="#e8f5e9" stroke="none" class="tile-fill"/>
+    <use href="#coil-segment" transform="translate(80, 25)"/>
+    <use href="#coil-segment" transform="translate(100, 25)"/>
+    <text class="ann" x="100" y="28" text-anchor="middle" fill="#2a7">2</text>
+
+    <!-- Tile 3 (cloned) -->
+    <rect x="120" y="10" width="40" height="30" fill="#e3f2fd" stroke="none" class="tile-fill"/>
+    <use href="#coil-segment" transform="translate(120, 25)"/>
+    <use href="#coil-segment" transform="translate(140, 25)"/>
+    <text class="ann" x="140" y="28" text-anchor="middle" fill="#07a">3</text>
+
+    <!-- Right end cap (shifted) -->
+    <rect x="160" y="10" width="60" height="30" fill="#f0f0f0" stroke="none"/>
+    <line x1="160" y1="10" x2="220" y2="10" stroke="#333" stroke-width="1.5"/>
+    <line x1="160" y1="40" x2="220" y2="40" stroke="#333" stroke-width="1.5"/>
+    <line x1="220" y1="10" x2="220" y2="40" stroke="#333" stroke-width="1.5"/>
+
+    <!-- Leads -->
+    <line x1="0" y1="25" x2="20" y2="25" class="lead"/>
+    <line x1="220" y1="25" x2="240" y2="25" class="lead"/>
+
+    <!-- Ports -->
+    <circle cx="0" cy="25" r="3" class="port"/>
+    <circle cx="240" cy="25" r="3" class="port"/>
+
+    <!-- Growth annotation -->
+    <line x1="80" y1="48" x2="80" y2="55" stroke="#07a" stroke-width="0.5"/>
+    <line x1="160" y1="48" x2="160" y2="55" stroke="#07a" stroke-width="0.5"/>
+    <line x1="80" y1="52" x2="160" y2="52" class="arrow-line"/>
+    <text class="ann" x="120" y="62" text-anchor="middle" fill="#07a">+80 pt (2 tile clones)</text>
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- Key / Legend                                                 -->
+  <!-- ============================================================ -->
+  <g transform="translate(0, 260)">
+    <text class="subtitle" x="0" y="0" font-weight="bold">Key:</text>
+    <line x1="0" y1="12" x2="15" y2="12" class="break-line"/>
+    <text class="ann" x="18" y="15">Break line (stretch axis)</text>
+
+    <rect x="100" y="6" width="15" height="10" class="growth"/>
+    <text class="ann" x="118" y="15">Gap fill region</text>
+
+    <rect x="200" y="6" width="15" height="10" fill="#fef3e0" opacity="0.25" stroke="#b80" stroke-width="0.5"/>
+    <text class="ann" x="218" y="15">Tile region</text>
+
+    <rect x="310" y="6" width="15" height="10" fill="#e8f5e9" opacity="0.25" stroke="#2a7" stroke-width="0.5"/>
+    <text class="ann" x="328" y="15">Cloned tile</text>
+  </g>
+</svg>

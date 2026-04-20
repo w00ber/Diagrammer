@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 120 120">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1 {
+        stroke-width: 2px;
+      }
+
+      .st1, .st2, .st3, .st4, .st5, .st6, .st7 {
+        fill: none;
+      }
+
+      .st1, .st2, .st3, .st4, .st5, .st7 {
+        stroke: #000;
+        stroke-linejoin: round;
+      }
+
+      .st1, .st7 {
+        stroke-linecap: round;
+      }
+
+      .st2 {
+        stroke-width: 3px;
+      }
+
+      .st3 {
+        stroke-width: 3px;
+      }
+
+      .st4 {
+        stroke-width: 3px;
+      }
+
+      .st5 {
+        stroke-width: 4px;
+      }
+
+      .st6 {
+        stroke: #999;
+        stroke-miterlimit: 10;
+        stroke-width: .2px;
+      }
+
+      .st7 {
+        stroke-width: 1.6px;
+      }
+
+      .st8 {
+        display: none;
+      }
+    </style>
+  </defs>
+  <g id="guides" class="st8">
+    <rect class="st6" x="10" y="40" width="20" height="20"/>
+    <rect class="st6" x="10" y="60" width="20" height="20"/>
+    <rect class="st6" x="10" y="20" width="20" height="20"/>
+    <rect class="st6" x="10" y="0" width="20" height="20"/>
+  </g>
+  <g id="artwork">
+    <rect class="st7" x="10" y="33.1" width="6.6" height="13.2"/>
+    <rect class="st7" x="103.3" y="33.2" width="6.6" height="13.2"/>
+    <rect class="st1" x="20" y="17.4" width="80.1" height="84.7" transform="translate(.2 119.8) rotate(-89.9)"/>
+    <path class="st5" d="M102.3,27.2"/>
+    <path class="st5" d="M17.6,27.1"/>
+    <rect class="st7" x="10" y="73.2" width="6.6" height="13.2"/>
+    <path class="st5" d="M102.3,99.8"/>
+    <path class="st5" d="M17.6,99.7"/>
+    <rect class="st7" x="103.3" y="73.2" width="6.6" height="13.2"/>
+    <path class="st2" d="M20,39.8h10.1c3.8,0,7.4,1.4,10.1,3.8l39.6,32.4c2.7,2.4,6.3,3.8,10.1,3.8h10.1"/>
+    <path class="st3" d="M100,39.8h-10.1c-3.8,0-7.4,1.4-10.1,3.8l-39.6,32.4c-2.7,2.4-6.3,3.8-10.1,3.8h-10.1"/>
+  </g>
+  <g id="leads">
+    <path class="st4" d="M10,39.7H0"/>
+    <path class="st4" d="M10,79.8H0"/>
+    <path class="st4" d="M110,39.8h10"/>
+    <path class="st4" d="M110,79.8h10"/>
+  </g>
+  <g id="ports">
+    <circle id="port:2" class="st0" cx="120" cy="39.8" r="3"/>
+    <circle id="port:21" data-name="port:2" class="st0" cx="120" cy="79.8" r="3"/>
+    <circle id="port:1" class="st0" cx="0" cy="39.7" r="3"/>
+    <circle id="port:11" data-name="port:1" class="st0" cx="0" cy="79.8" r="3"/>
+  </g>
+</svg>

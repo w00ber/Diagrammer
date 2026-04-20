@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / Editor
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# PySide6 / Qt
+*.qmlc
+*.jsc
+
+# Diagrammer user data (created at runtime)
+# These live in ~/.diagrammer/, not in the repo
+
+# Local development notes (not for repo)
+Initial_Claude_guidance.md
+Additional UI requests.md
+
+# OS files
+Thumbs.db
+Desktop.ini
+Icon?

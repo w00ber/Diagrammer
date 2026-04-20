@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 40 60">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #fff;
+      }
+    </style>
+  </defs>
+  <g id="snap">
+    <circle cx="20" cy="30" r="2"/>
+  </g>
+  <path class="st0" d="M15.3,45.5h8c-.3-.9-.6-2-.6-3.5,0-4.4,2.7-4.4,2.7-8.9s-2.7-4.4-2.7-8.9,2.6-4.5,2.7-8.7h-8c-.1,4.2-2.6,4.3-2.6,8.6s2.7,4.4,2.7,8.9-2.7,4.4-2.7,8.9.3,2.6.6,3.6Z"/>
+</svg>
