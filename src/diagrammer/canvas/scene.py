@@ -559,8 +559,9 @@ class DiagramScene(QGraphicsScene):
                 best_port = source
 
         for port in self._all_port_items():
-            # Skip the source port and ports on the same component
-            if port is source or port.component is source.component:
+            # Skip only the source port itself — ports on the same component
+            # are valid targets (e.g. wiring a loop between an inductor's ends).
+            if port is source:
                 continue
             # Skip ports that already have a connection to the source
             if self._connection_exists(source, port):

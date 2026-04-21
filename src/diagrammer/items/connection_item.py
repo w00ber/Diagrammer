@@ -504,23 +504,52 @@ class ConnectionItem(QGraphicsPathItem):
         For open paths we strip the first and last point (port endpoints)
         and store everything in between.  For closed polygons all expanded
         points are waypoints — none should be stripped.
+
+        JunctionItem endpoints are a special case: the junction is invisible,
+        so the endpoint waypoint IS the user's only grab handle.  We keep
+        it instead of stripping.
         """
         if self._closed:
             self._waypoints = [QPointF(p) for p in expanded]
-        elif len(expanded) <= 2:
-            self._waypoints = []
+            self.update_route()
+            return
+
+        from diagrammer.items.junction_item import JunctionItem
+        src_comp = self._source_port.component if self._source_port else None
+        tgt_comp = self._target_port.component if self._target_port else None
+        src_is_junction = isinstance(src_comp, JunctionItem)
+        tgt_is_junction = isinstance(tgt_comp, JunctionItem)
+        src = self._source_port.scene_center() if self._source_port else QPointF()
+        tgt = self._target_port.scene_center() if self._target_port else QPointF()
+
+        if len(expanded) <= 2:
+            # No interior bends.  Floating (junction) endpoints still need
+            # a waypoint each as their visible grab handle.
+            wps: list[QPointF] = []
+            if src_is_junction:
+                wps.append(QPointF(src))
+            if tgt_is_junction:
+                wps.append(QPointF(tgt))
+            self._waypoints = wps
         else:
             wps = [QPointF(p) for p in expanded[1:-1]]
-            # Strip waypoints that coincide with port endpoints —
-            # approach segments cause port positions to appear as
-            # intermediate expanded points, and storing them as waypoints
-            # creates trailing stubs when the component is later moved.
-            src = self._source_port.scene_center()
-            tgt = self._target_port.scene_center()
-            while wps and point_distance(wps[0], src) < 1.0:
-                wps.pop(0)
-            while wps and point_distance(wps[-1], tgt) < 1.0:
-                wps.pop()
+            # Port-attached endpoints: strip waypoints that coincide with
+            # the port — they are approach-segment artifacts and create
+            # trailing stubs when the component is later moved.
+            # Junction endpoints: ensure the endpoint waypoint is present
+            # as the user's grab handle.
+            if src_is_junction:
+                if not wps or point_distance(wps[0], src) > 1.0:
+                    wps.insert(0, QPointF(src))
+            else:
+                while wps and point_distance(wps[0], src) < 1.0:
+                    wps.pop(0)
+            if tgt_is_junction:
+                if not wps or point_distance(wps[-1], tgt) > 1.0:
+                    wps.append(QPointF(tgt))
+            else:
+                while wps and point_distance(wps[-1], tgt) < 1.0:
+                    wps.pop()
             self._waypoints = wps
         self.update_route()
 
