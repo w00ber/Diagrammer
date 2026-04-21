@@ -48,6 +48,23 @@ Components are simple SVGs with named layers (`artwork`,
 
 ## Installation
 
+### Prebuilt executables (recommended)
+
+Download the latest build for your platform from the
+[Releases page](https://github.com/w00ber/Diagrammer/releases/latest):
+
+- **macOS** — `Diagrammer-macOS.zip`. Unzip and drag `Diagrammer.app` to
+  `/Applications`. The first time you launch it, macOS will block it
+  because the app is unsigned — right-click the app and choose **Open**,
+  then confirm. After that it opens normally.
+- **Windows** — `Diagrammer-Windows.zip`. Unzip anywhere and run
+  `Diagrammer\Diagrammer.exe`. Keep the whole `Diagrammer` folder
+  together; the `_internal` directory next to the `.exe` holds the
+  bundled dependencies. SmartScreen may warn on first launch — choose
+  **More info → Run anyway**.
+
+### From source (for development)
+
 Requires Python 3.10+ and PySide6.
 
 ```bash
@@ -143,7 +160,8 @@ components/
 ```
 
 ## Building an app bundle/executable
-You can use PyInstaller to create a standalone executable or app bundle for distribution. First, install PyInstaller:
+
+You can use PyInstaller to create a standalone executable or app bundle for distribution on your own computer. First, install PyInstaller:
 
 ```bash
 pip install pyinstaller

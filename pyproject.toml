@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "diagrammer"
-version = "0.9.0"
+version = "0.9.1"
 description = "A tool for building diagrams, including flowcharts, circuits, and more"
 readme = "README.md"
 license = "MIT"

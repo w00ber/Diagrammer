@@ -105,3 +105,4 @@ jobs:
             Diagrammer-macOS.zip
             Diagrammer-Windows.zip
           fail_on_unmatched_files: false
+          generate_release_notes: true
