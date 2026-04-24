@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 100">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1 {
+        stroke: #c33;
+        stroke-miterlimit: 10;
+      }
+
+      .st1, .st2, .st3 {
+        fill: none;
+      }
+
+      .st2 {
+        stroke-width: 1.2px;
+      }
+
+      .st2, .st3 {
+        stroke-linecap: round;
+      }
+
+      .st2, .st3, .st4 {
+        stroke: #000;
+        stroke-linejoin: round;
+      }
+
+      .st3 {
+        stroke-width: 1.6px;
+      }
+
+      .st4 {
+        stroke-width: 2px;
+      }
+    </style>
+  </defs>
+  <g id="Layer_12">
+    <g id="stretch">
+      <line id="stretch:h2" class="st1" y1="36.1" x2="80" y2="36.1"/>
+      <line id="stretch:h1" class="st1" y1="63.9" x2="80" y2="63.9"/>
+    </g>
+    <g id="leads">
+      <path class="st4" d="M40.1,36.1V0"/>
+      <path class="st4" d="M40.1,100v-36.1"/>
+    </g>
+    <g id="ports">
+      <circle id="port:bot" class="st0" cx="40" r="3"/>
+      <circle id="port:top" class="st0" cx="40.1" cy="100" r="3"/>
+    </g>
+    <g id="artwork">
+      <g id="tile">
+        <rect class="st3" x="27.6" y="43.8" width="24.9" height="12.3"/>
+        <line class="st2" x1="27.6" y1="50" x2="52.6" y2="50"/>
+        <path class="st4" d="M40.1,43.9v-7.8"/>
+        <path class="st4" d="M40.1,63.9v-7.7"/>
+      </g>
+    </g>
+  </g>
+</svg>

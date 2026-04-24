@@ -12,14 +12,28 @@
         stroke-miterlimit: 10;
       }
 
-      .st1, .st2 {
+      .st1, .st2, .st3 {
         fill: none;
       }
 
+      .st2 {
+        stroke-width: 1.2px;
+      }
+
       .st2, .st3 {
-        stroke: #000;
         stroke-linecap: round;
+      }
+
+      .st2, .st3, .st4 {
+        stroke: #000;
         stroke-linejoin: round;
+      }
+
+      .st3 {
+        stroke-width: 1.6px;
+      }
+
+      .st4 {
         stroke-width: 2px;
       }
     </style>
@@ -29,8 +43,8 @@
     <line id="stretch:h1" class="st1" y1="43.9" x2="80" y2="43.9"/>
   </g>
   <g id="leads">
-    <path class="st3" d="M40.1,30V0"/>
-    <path class="st3" d="M40.1,60v-29.4"/>
+    <path class="st4" d="M40.1,16.1V0"/>
+    <path class="st4" d="M40.1,60v-16.1"/>
   </g>
   <g id="ports">
     <circle id="port:bot" class="st0" cx="40" r="3"/>
@@ -38,8 +52,10 @@
   </g>
   <g id="artwork">
     <g id="tile">
-      <line class="st2" x1="31" y1="24.6" x2="49.3" y2="35.4"/>
-      <line class="st2" x1="49.3" y1="24.6" x2="31" y2="35.4"/>
+      <rect class="st3" x="27.6" y="23.8" width="24.9" height="12.3"/>
+      <line class="st2" x1="27.6" y1="30" x2="52.6" y2="30"/>
     </g>
+    <path class="st4" d="M40.1,43.9v-7.7"/>
+    <path class="st4" d="M40.1,23.8v-7.7"/>
   </g>
 </svg>

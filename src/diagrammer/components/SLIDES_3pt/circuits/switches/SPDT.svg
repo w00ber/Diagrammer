@@ -29,7 +29,7 @@
       }
 
       .st4 {
-        stroke-width: 6px;
+        stroke-width: 3px;
       }
     </style>
   </defs>

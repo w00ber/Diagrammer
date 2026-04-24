@@ -11,13 +11,13 @@
         stroke-width: 2.1px;
       }
 
-      .st1, .st2, .st3, .st4 {
-        stroke: #231f20;
-        stroke-linejoin: round;
+      .st1, .st2 {
+        fill: #fff;
       }
 
-      .st1, .st2, .st4 {
-        fill: #fff;
+      .st1, .st2, .st3 {
+        stroke: #231f20;
+        stroke-linejoin: round;
       }
 
       .st2, .st3 {
@@ -27,14 +27,10 @@
       .st3 {
         fill: none;
       }
-
-      .st4 {
-        stroke-width: 6px;
-      }
     </style>
   </defs>
   <g id="artwork">
-    <rect class="st3" x="10" y="9.6" width="60" height="80" rx="3" ry="3"/>
+    <rect class="st3" x="10" y="13.6" width="60" height="72" rx="3" ry="3"/>
     <circle class="st2" cx="23.8" cy="50" r="4.5"/>
     <circle class="st2" cx="56.2" cy="70" r="4.5"/>
     <circle class="st2" cx="56.2" cy="29.9" r="4.5"/>
@@ -48,8 +44,8 @@
     <circle id="port:2" class="st0" cx="80" cy="70" r="3"/>
   </g>
   <g id="leads">
-    <line id="_x32_" class="st4" x1="60.7" y1="29.9" x2="80" y2="29.9"/>
-    <line id="_x31_" class="st4" x1="60.7" y1="70" x2="80" y2="70"/>
-    <line id="com" class="st4" x1="19.7" y1="50" y2="50"/>
+    <line id="_x32_" class="st2" x1="60.7" y1="29.9" x2="80" y2="29.9"/>
+    <line id="_x31_" class="st2" x1="60.7" y1="70" x2="80" y2="70"/>
+    <line id="com" class="st2" x1="19.7" y1="50" y2="50"/>
   </g>
 </svg>
