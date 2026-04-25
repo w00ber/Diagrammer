@@ -573,6 +573,43 @@ def _inline_svg_use_refs(svg_bytes: bytes) -> bytes:
     return ET2.tostring(root, encoding="utf-8")
 
 
+def _strip_matplotlib_figure_patch(svg_bytes: bytes) -> bytes:
+    """Remove matplotlib's transparent figure-background path from an SVG.
+
+    matplotlib emits ``<g id="patch_1"><path ... style="fill: none"/></g>``
+    as the figure background even when ``transparent=True``. The path has
+    no explicit ``stroke`` attribute, so per spec it should be invisible —
+    but Qt's ``QSvgRenderer``, when painting the SVG into a PDF surface
+    (used by Copy Selection as Image), forwards the path to the painter
+    without resetting the pen, so the painter's default black 1pt pen
+    strokes a rectangle around the math. That rectangle then shows up in
+    Illustrator / PowerPoint after pasting.
+    """
+    _ensure_svg_default_namespace_registered()
+    try:
+        import xml.etree.ElementTree as ET2
+        root = ET2.fromstring(svg_bytes)
+    except ET2.ParseError:
+        return svg_bytes
+
+    SVG_NS = "http://www.w3.org/2000/svg"
+    parent_map = {child: parent for parent in root.iter() for child in parent}
+    for el in list(root.iter()):
+        if el.get("id") != "patch_1":
+            continue
+        if el.tag not in (f"{{{SVG_NS}}}g", "g"):
+            continue
+        parent = parent_map.get(el)
+        if parent is None:
+            continue
+        try:
+            parent.remove(el)
+        except ValueError:
+            pass
+
+    return ET2.tostring(root, encoding="utf-8")
+
+
 def _toplevel_env_to_inner(text: str) -> str:
     r"""Replace top-level amsmath environments with their inner equivalents.
 
@@ -801,7 +838,7 @@ def _render_latex_svg(text: str, font_size: float, color: QColor,
         fig.savefig(buf, format="svg", transparent=True,
                     bbox_inches="tight", pad_inches=0.02)
         plt.close(fig)
-        return buf.getvalue()
+        return _strip_matplotlib_figure_patch(buf.getvalue())
     except Exception:
         logger.warning("primary render failed (use_real_latex=%s)", use_real_latex,
                        exc_info=True)
@@ -835,7 +872,7 @@ def _render_latex_svg(text: str, font_size: float, color: QColor,
                 fig.savefig(buf, format="svg", transparent=True,
                             bbox_inches="tight", pad_inches=0.02)
                 plt.close(fig)
-                return buf.getvalue()
+                return _strip_matplotlib_figure_patch(buf.getvalue())
             except Exception:
                 logger.warning("mathtext fallback also failed", exc_info=True)
                 return None
