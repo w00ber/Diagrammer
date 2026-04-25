@@ -573,17 +573,31 @@ def _inline_svg_use_refs(svg_bytes: bytes) -> bytes:
     return ET2.tostring(root, encoding="utf-8")
 
 
-def _strip_matplotlib_figure_patch(svg_bytes: bytes) -> bytes:
-    """Remove matplotlib's transparent figure-background path from an SVG.
+def _neutralize_qt_pen_leak(svg_bytes: bytes) -> bytes:
+    """Defuse Qt's ``QSvgRenderer`` pen-state leak when rendering to PDF.
 
-    matplotlib emits ``<g id="patch_1"><path ... style="fill: none"/></g>``
-    as the figure background even when ``transparent=True``. The path has
-    no explicit ``stroke`` attribute, so per spec it should be invisible —
-    but Qt's ``QSvgRenderer``, when painting the SVG into a PDF surface
-    (used by Copy Selection as Image), forwards the path to the painter
-    without resetting the pen, so the painter's default black 1pt pen
-    strokes a rectangle around the math. That rectangle then shows up in
-    Illustrator / PowerPoint after pasting.
+    When ``QSvgRenderer`` paints an SVG path that has no explicit
+    ``stroke`` attribute, it forwards the path to the painter without
+    calling ``setPen(NoPen)``. Per SVG spec the default stroke is
+    ``none``, but Qt's painter falls back to its current pen — which on
+    a fresh PDF surface is a 1pt solid black pen. The result: every
+    glyph (matplotlib mathtext / usetex / ziamath all emit fill-only
+    paths) ends up *both* filled and stroked. In Illustrator and
+    PowerPoint the pasted PDF shows each glyph as a filled outline plus
+    a thin outline-following stroke. matplotlib's transparent
+    figure-background path (``<g id="patch_1">``, ``fill: none``) shows
+    only the stroke, producing a black bounding-box rectangle.
+
+    Two fixes applied in one parse/serialize pass:
+
+    1. Strip matplotlib's ``<g id="patch_1">`` figure-background group
+       (no-op on ziamath SVGs, which don't have one).
+    2. Set ``stroke="none"`` on the root ``<svg>`` so all descendants
+       inherit no-stroke. matplotlib and ziamath only ever draw filled
+       paths in math output (fraction bars, sqrt overlines, matrix
+       brackets are all filled rectangles), so blanket no-stroke is
+       safe; descendants that do specify a stroke explicitly will
+       still override the inherited value.
     """
     _ensure_svg_default_namespace_registered()
     try:
@@ -606,6 +620,9 @@ def _strip_matplotlib_figure_patch(svg_bytes: bytes) -> bytes:
             parent.remove(el)
         except ValueError:
             pass
+
+    if root.get("stroke") is None:
+        root.set("stroke", "none")
 
     return ET2.tostring(root, encoding="utf-8")
 
@@ -696,7 +713,8 @@ def _render_with_ziamath(math_body: str, font_size: float,
         # absolute coordinates in the inlined glyphs share the same
         # origin shift.
         normalized = _normalize_svg_viewbox_origin(raw)
-        result = _inline_svg_use_refs(normalized)
+        inlined = _inline_svg_use_refs(normalized)
+        result = _neutralize_qt_pen_leak(inlined)
         logger.debug("ziamath SVG after rewrite: %d bytes", len(result))
         # Dump intermediate forms so we can inspect what Qt is actually
         # being asked to render. These files survive between runs so the
@@ -838,7 +856,7 @@ def _render_latex_svg(text: str, font_size: float, color: QColor,
         fig.savefig(buf, format="svg", transparent=True,
                     bbox_inches="tight", pad_inches=0.02)
         plt.close(fig)
-        return _strip_matplotlib_figure_patch(buf.getvalue())
+        return _neutralize_qt_pen_leak(buf.getvalue())
     except Exception:
         logger.warning("primary render failed (use_real_latex=%s)", use_real_latex,
                        exc_info=True)
@@ -872,7 +890,7 @@ def _render_latex_svg(text: str, font_size: float, color: QColor,
                 fig.savefig(buf, format="svg", transparent=True,
                             bbox_inches="tight", pad_inches=0.02)
                 plt.close(fig)
-                return _strip_matplotlib_figure_patch(buf.getvalue())
+                return _neutralize_qt_pen_leak(buf.getvalue())
             except Exception:
                 logger.warning("mathtext fallback also failed", exc_info=True)
                 return None
