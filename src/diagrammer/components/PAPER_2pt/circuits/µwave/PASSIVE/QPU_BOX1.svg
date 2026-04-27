@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 100 60">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        stroke-width: 3px;
+      }
+
+      .st0, .st1, .st2 {
+        stroke-linejoin: round;
+      }
+
+      .st0, .st1, .st2, .st3 {
+        fill: none;
+      }
+
+      .st0, .st1, .st3 {
+        stroke: #666;
+      }
+
+      .st4 {
+        fill: #666;
+      }
+
+      .st2 {
+        stroke: #231f20;
+        stroke-width: 2px;
+      }
+
+      .st5 {
+        fill: #c33;
+      }
+
+      .st3 {
+        stroke-miterlimit: 10;
+        stroke-width: .25px;
+      }
+    </style>
+  </defs>
+  <g id="artwork">
+    <line class="st0" x1="9.762" y1="10" x2="90" y2="10"/>
+    <rect class="st2" x="9.762" y="5.003" width="80.238" height="50"/>
+    <polyline class="st1" points="20.594 13.211 30.307 13.211 30.307 17.32 24.61 17.32 24.61 21.15 30.307 21.15 30.307 24.885 24.61 24.885 24.61 29.088 30.307 29.088"/>
+    <rect class="st4" x="27.692" y="30.187" width="2.615" height="5.108"/>
+    <rect class="st4" x="27.692" y="37.192" width="2.615" height="5.108"/>
+    <line class="st3" x1="29" y1="35.295" x2="29" y2="37.192"/>
+    <g>
+      <line class="st3" x1="29.597" y1="35.959" x2="28.402" y2="36.529"/>
+      <line class="st3" x1="28.402" y1="35.959" x2="29.597" y2="36.529"/>
+    </g>
+    <polyline class="st1" points="45.024 13.211 54.738 13.211 54.738 17.32 49.04 17.32 49.04 21.15 54.738 21.15 54.738 25.886 49.04 25.886 49.04 31.09 54.738 31.09"/>
+    <rect class="st4" x="52.123" y="32.189" width="2.615" height="5.108"/>
+    <rect class="st4" x="52.123" y="39.194" width="2.615" height="5.108"/>
+    <line class="st3" x1="53.43" y1="37.297" x2="53.43" y2="39.194"/>
+    <g>
+      <line class="st3" x1="54.028" y1="37.96" x2="52.833" y2="38.53"/>
+      <line class="st3" x1="52.833" y1="37.96" x2="54.028" y2="38.53"/>
+    </g>
+    <polyline class="st1" points="69.542 13.211 79.255 13.211 79.255 17.32 73.558 17.32 73.558 21.15 79.255 21.15 79.255 27.888 73.558 27.888 73.558 34.092 79.255 34.092"/>
+    <rect class="st4" x="76.64" y="35.191" width="2.615" height="5.108"/>
+    <rect class="st4" x="76.64" y="42.196" width="2.615" height="5.108"/>
+    <line class="st3" x1="77.948" y1="40.299" x2="77.948" y2="42.196"/>
+    <g>
+      <line class="st3" x1="78.545" y1="40.963" x2="77.35" y2="41.533"/>
+      <line class="st3" x1="77.35" y1="40.963" x2="78.545" y2="41.533"/>
+    </g>
+  </g>
+  <g id="ports">
+    <circle id="port:1" class="st5" cx="100" cy="10" r="1.5"/>
+    <circle id="port:0" class="st5" cy="10" r="1.5"/>
+  </g>
+  <g id="leads">
+    <line id="lead:1" class="st2" x1="90" y1="10" x2="100" y2="10"/>
+    <line id="lead:0" class="st2" y1="10" x2="9.762" y2="10"/>
+  </g>
+</svg>
