@@ -1,0 +1,166 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -10 500 240">
+  <style>
+    .title { font-family: sans-serif; font-size: 11px; font-weight: bold; fill: #444; }
+    .subtitle { font-family: sans-serif; font-size: 9px; fill: #666; }
+    .ann { font-family: sans-serif; font-size: 7.5px; fill: #888; }
+    .ann-bold { font-family: sans-serif; font-size: 7.5px; fill: #555; font-weight: bold; }
+    .ann-blue { font-family: sans-serif; font-size: 7.5px; fill: #0e72ba; font-weight: bold; }
+    .ann-orange { font-family: sans-serif; font-size: 7.5px; fill: #d27017; font-weight: bold; }
+    .ann-red { font-family: sans-serif; font-size: 7.5px; fill: #c03; font-weight: bold; }
+
+    .lead-left  { stroke: #0e72ba; stroke-width: 2.2; stroke-linecap: round;
+                  stroke-linejoin: round; fill: none; }
+    .lead-right { stroke: #d27017; stroke-width: 2.2; stroke-linecap: round;
+                  stroke-linejoin: round; fill: none; }
+    .arrow-fill { fill: #d27017; }
+
+    .port { fill: #c33; opacity: 0.85; }
+
+    .vb-box { fill: none; stroke: #aaa; stroke-width: 0.6; stroke-dasharray: 3,2; }
+
+    .group-box-blue   { fill: #0e72ba; opacity: 0.08; stroke: #0e72ba;
+                         stroke-width: 0.7; stroke-dasharray: 2,1.5; }
+    .group-box-orange { fill: #d27017; opacity: 0.08; stroke: #d27017;
+                         stroke-width: 0.7; stroke-dasharray: 2,1.5; }
+
+    .translate-arrow { stroke: #d27017; stroke-width: 1.1; fill: none;
+                       marker-end: url(#tarrow); }
+  </style>
+
+  <defs>
+    <marker id="tarrow" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto">
+      <path d="M0,0 L6,2 L0,4" fill="#d27017"/>
+    </marker>
+
+    <!-- One full wave period, 20 wide, centered vertically -->
+    <path id="wave-tile" d="M0,0 q5,-10 10,0 q5,10 10,0"
+          fill="none" stroke="#333" stroke-width="1.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </defs>
+
+  <text class="title" x="0" y="5">Direction-tagged leads — each group rides as a unit with its port</text>
+
+  <!-- ============================================================ -->
+  <!-- BEFORE                                                       -->
+  <!-- ============================================================ -->
+  <g transform="translate(0, 25)">
+    <text class="subtitle" x="0" y="0" font-weight="bold">Before:</text>
+
+    <!-- viewBox boundary -->
+    <rect x="0" y="14" width="180" height="42" class="vb-box"/>
+
+    <!-- leads-left group box -->
+    <rect x="0" y="20" width="40" height="30" class="group-box-blue"/>
+    <text class="ann-blue" x="2" y="64">leads-left</text>
+
+    <!-- leads-left content: short straight stem -->
+    <line x1="0" y1="35" x2="40" y2="35" class="lead-left"/>
+
+    <!-- artwork tile (one wave period) -->
+    <rect x="40" y="20" width="40" height="30" fill="#fef3e0" opacity="0.45" stroke="#b80" stroke-width="0.6" stroke-dasharray="2,1.5"/>
+    <use href="#wave-tile" transform="translate(40, 35)"/>
+    <text class="ann-bold" x="60" y="64" text-anchor="middle" fill="#b80">artwork/tile</text>
+
+    <!-- leads-right group box -->
+    <rect x="80" y="20" width="100" height="30" class="group-box-orange"/>
+    <text class="ann-orange" x="178" y="64" text-anchor="end">leads-right</text>
+
+    <!-- leads-right content: continuation curve + arrowhead -->
+    <path d="M80,35 q5,-10 10,0 q5,10 10,0 q5,-10 10,0 q5,10 10,0 q5,-10 10,0
+             L160,35"
+          class="lead-right"/>
+    <polygon points="160,30 175,35 160,40" class="arrow-fill"/>
+
+    <!-- Ports -->
+    <circle cx="0"   cy="35" r="2.5" class="port"/>
+    <circle cx="175" cy="35" r="2.5" class="port"/>
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- AFTER                                                        -->
+  <!-- ============================================================ -->
+  <g transform="translate(230, 25)">
+    <text class="subtitle" x="0" y="0" font-weight="bold">After (stretched +40 pt = 2 extra tiles):</text>
+
+    <!-- viewBox boundary (extended) -->
+    <rect x="0" y="14" width="220" height="42" class="vb-box"/>
+
+    <!-- leads-left group (unchanged position) -->
+    <rect x="0" y="20" width="40" height="30" class="group-box-blue"/>
+    <line x1="0" y1="35" x2="40" y2="35" class="lead-left"/>
+    <text class="ann-blue" x="2" y="64">leads-left  (anchored)</text>
+
+    <!-- artwork tiles: original + 2 clones -->
+    <rect x="40" y="20" width="40" height="30" fill="#fef3e0" opacity="0.45" stroke="#b80" stroke-width="0.6" stroke-dasharray="2,1.5"/>
+    <use href="#wave-tile" transform="translate(40, 35)"/>
+    <text class="ann" x="60" y="48" text-anchor="middle" fill="#b80">1</text>
+
+    <rect x="80" y="20" width="40" height="30" fill="#e8f5e9" opacity="0.55" stroke="#2a7" stroke-width="0.6" stroke-dasharray="2,1.5"/>
+    <use href="#wave-tile" transform="translate(80, 35)"/>
+    <text class="ann" x="100" y="48" text-anchor="middle" fill="#2a7">2</text>
+
+    <rect x="120" y="20" width="40" height="30" fill="#e3f2fd" opacity="0.55" stroke="#07a" stroke-width="0.6" stroke-dasharray="2,1.5"/>
+    <use href="#wave-tile" transform="translate(120, 35)"/>
+    <text class="ann" x="140" y="48" text-anchor="middle" fill="#07a">3</text>
+
+    <!-- leads-right group, translated by +40 — note the shape itself is identical -->
+    <rect x="120" y="20" width="100" height="30" class="group-box-orange"/>
+    <text class="ann-orange" x="218" y="64" text-anchor="end">leads-right  (translated +40)</text>
+    <g transform="translate(40, 0)">
+      <path d="M80,35 q5,-10 10,0 q5,10 10,0 q5,-10 10,0 q5,10 10,0 q5,-10 10,0
+               L160,35"
+            class="lead-right"/>
+      <polygon points="160,30 175,35 160,40" class="arrow-fill"/>
+    </g>
+
+    <!-- Ports -->
+    <circle cx="0"   cy="35" r="2.5" class="port"/>
+    <circle cx="215" cy="35" r="2.5" class="port"/>
+
+    <!-- Translate arrow showing leads-right's group shift -->
+    <path d="M88,12 L128,12" class="translate-arrow"/>
+    <text class="ann-orange" x="108" y="9" text-anchor="middle">translate(+40, 0)</text>
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- LEGACY FAILURE MODE — full-width row below                   -->
+  <!-- ============================================================ -->
+  <g transform="translate(0, 130)">
+    <text class="title" x="0" y="0" fill="#c03">Legacy `leads` failure mode (why we prefer direction-tagged)</text>
+
+    <!-- Before -->
+    <g transform="translate(0, 16)">
+      <text class="subtitle" x="0" y="0" font-weight="bold">Before:</text>
+      <text class="ann" x="200" y="0" text-anchor="end">stretch:v at x=27.5</text>
+
+      <line x1="0" y1="22" x2="200" y2="22" stroke="#aaa" stroke-width="0.4"/>
+      <line x1="100" y1="14" x2="100" y2="40" stroke="#c03" stroke-width="0.7" stroke-dasharray="2,1"/>
+
+      <!-- Lead path (M=27.4 just shy of break at 27.5) -->
+      <path d="M95,22 q5,-7 10,0 q5,7 10,0 q5,-7 10,0 q5,7 10,0 q5,-7 10,0 L165,22"
+            class="lead-right"/>
+      <polygon points="165,17 180,22 165,27" class="arrow-fill"/>
+
+      <text class="ann-red" x="100" y="50" text-anchor="middle">M=27.4 (just shy)</text>
+    </g>
+
+    <!-- After (legacy: arrowhead drifts, lead stuck) -->
+    <g transform="translate(240, 16)">
+      <text class="subtitle" x="0" y="0" font-weight="bold">After stretch (legacy):</text>
+
+      <line x1="0" y1="22" x2="240" y2="22" stroke="#aaa" stroke-width="0.4"/>
+      <line x1="100" y1="14" x2="100" y2="40" stroke="#c03" stroke-width="0.7" stroke-dasharray="2,1" opacity="0.4"/>
+
+      <!-- Lead path stays put because M=27.4 < break -->
+      <path d="M95,22 q5,-7 10,0 q5,7 10,0 q5,-7 10,0 q5,7 10,0 q5,-7 10,0 L165,22"
+            class="lead-right"/>
+
+      <!-- Arrowhead's absolute coords (52.9, 59.9) > break, so it drifts -->
+      <polygon points="205,17 220,22 205,27" class="arrow-fill"/>
+
+      <!-- Visible gap -->
+      <line x1="165" y1="22" x2="205" y2="22" stroke="#c03" stroke-width="0.6" stroke-dasharray="1.5,1"/>
+      <text class="ann-red" x="185" y="18" text-anchor="middle">gap!</text>
+    </g>
+  </g>
+</svg>

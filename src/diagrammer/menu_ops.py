@@ -86,6 +86,11 @@ class MenuMixin:
         create_comp_act.triggered.connect(self._create_component_from_selection)
         file_menu.addAction(create_comp_act)
 
+        refresh_lib_act = QAction("Re&fresh Libraries", self)
+        self._register_shortcut(refresh_lib_act, "file.refresh_libraries")
+        refresh_lib_act.triggered.connect(self._refresh_libraries)
+        file_menu.addAction(refresh_lib_act)
+
         file_menu.addSeparator()
 
         restore_act = QAction("&Restore Previous Session", self)
@@ -413,6 +418,15 @@ class MenuMixin:
         tutorial_act = QAction("&Tutorial", self)
         tutorial_act.triggered.connect(self._show_tutorial)
         help_menu.addAction(tutorial_act)
+
+        help_menu.addSeparator()
+
+        # On macOS Qt automatically relocates any action whose text matches
+        # "About …" into the application menu, regardless of its menu role.
+        about_act = QAction("&About Diagrammer", self)
+        about_act.setMenuRole(QAction.MenuRole.AboutRole)
+        about_act.triggered.connect(self._show_about)
+        help_menu.addAction(about_act)
 
     # ---------------------------------------------------------------- Toolbar
 

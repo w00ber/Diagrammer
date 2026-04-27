@@ -797,7 +797,8 @@ class PropertiesPanel(QDockWidget):
                         css_classes.setdefault(cm.group(1), {}).update(props)
 
         # Walk to find the element by path
-        for layer_id in ("artwork", "leads"):
+        for layer_id in ("artwork", "leads", "leads-left", "leads-right",
+                         "leads-top", "leads-bottom"):
             layer = None
             for elem in root.iter():
                 if _strip_ns(elem.tag) == "g" and elem.get("id") == layer_id:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "diagrammer"
-version = "0.9.2c"
+dynamic = ["version"]
 description = "A tool for building diagrams, including flowcharts, circuits, and more"
 readme = "README.md"
 license = "MIT"
@@ -37,6 +37,9 @@ diagrammer = "diagrammer.__main__:main"
 
 [project.gui-scripts]
 diagrammer-gui = "diagrammer.__main__:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "diagrammer.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]

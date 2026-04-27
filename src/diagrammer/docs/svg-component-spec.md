@@ -45,6 +45,10 @@ All layers are `<g>` elements with specific `id` attributes, placed as **direct 
   <g id="leads">      <!-- connection lead lines (shortened at render time) -->
     ...
   </g>
+  <!-- Or, for stretchable components, split leads by direction
+       (preferred — each group rides as a unit with its port): -->
+  <!-- <g id="leads-left">...</g> <g id="leads-right">...</g>      -->
+  <!-- <g id="leads-top">...</g>  <g id="leads-bottom">...</g>     -->
 
   <g id="ports">      <!-- port markers (hidden, parsed for positions) -->
     ...
@@ -69,10 +73,11 @@ All layers are `<g>` elements with specific `id` attributes, placed as **direct 
 | Layer | Rendered? | Purpose |
 |-------|-----------|---------|
 | `artwork` | Yes | The main visual body of the component |
-| `leads` | Yes (modified) | Lead/stem lines connecting the body to ports. Shortened at render time to accommodate wire corner rounding. |
+| `leads` | Yes (modified) | Lead/stem lines connecting the body to ports. Shortened at render time to accommodate wire corner rounding. Per-coordinate stretch shifting. |
+| `leads-left` / `leads-right` / `leads-top` / `leads-bottom` | Yes (modified) | Same as `leads` but tagged by direction. Each group translates as a single unit when stretched (preferred for stretchable components). |
 | `ports` | No (hidden) | Defines connection port positions |
 | `labels` | No (hidden) | Defines label placeholder positions |
-| `stretch` | No (hidden) | Defines stretch break axes |
+| `stretch` | No (hidden) | Optional explicit stretch break axes. When absent, axes are inferred from `tile` and direction-tagged leads. |
 | `tile` | Yes (cloned) | Tile unit for repeating stretch (inside artwork) |
 | `decorative` | No (hidden) | Marks component as freely resizable |
 | `snap` | No (hidden) | Defines grid snap anchor point |
@@ -122,6 +127,60 @@ Contains the straight line segments that connect the component body to the port 
 - Each lead should be a simple straight line (horizontal or vertical) from the component body to a port position.
 - The lead's endpoint must coincide with the corresponding port's position.
 
+#### Direction-tagged leads (preferred for stretchable components)
+
+Instead of one `leads` group, split leads by the port they serve:
+
+| Group ID       | Behavior under stretch                                       |
+| -------------- | ------------------------------------------------------------ |
+| `leads-left`   | Stays anchored to the left edge — does not move              |
+| `leads-right`  | Translates by the horizontal stretch amount as a single unit |
+| `leads-top`    | Stays anchored to the top edge — does not move               |
+| `leads-bottom` | Translates by the vertical stretch amount as a single unit   |
+
+Why prefer this over the legacy `leads` group? With direction-tagged groups Diagrammer applies a single `transform="translate(dx,0)"` (or `translate(0,dy)`) to the whole group, so every path, polygon, and shape inside rides together. The legacy `leads` group is shifted **per coordinate** based on whether each value lies past the stretch break — which is fragile when an Adobe-exported path begins with one absolute moveto followed by relative segments and the moveto rounds to just shy of the break (the path stays put while the arrowhead next to it slides).
+
+```xml
+<g id="leads-left">
+  <!-- Left-side leads stay put when the component stretches horizontally -->
+  <path d="M0,10 H17" stroke="#000" stroke-width="3"
+        stroke-linecap="round" fill="none"/>
+</g>
+
+<g id="leads-right">
+  <!-- Right-side leads + arrowhead translate together with the right port -->
+  <path d="M27,10 c…"
+        stroke="#000" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <polygon points="53,12 60,10 53,8" fill="#000"/>
+</g>
+```
+
+You can mix direction-tagged groups with a legacy `leads` group; the legacy group still uses per-coordinate shifting. Direction-tagged groups also receive lead shortening, style overrides, and id/class prefixing on compound export — no other authoring changes required.
+
+![Direction-tagged leads: before/after stretch comparison showing leads-right group translating as a single unit, with side-by-side illustration of the legacy `leads` group's coordinate-rounding failure mode where a lead path detaches from its arrowhead](fig-direction-tagged-leads.svg)
+
+**Avoiding visible "comb teeth" on smooth strokes.** When a path is built from many short cubic-Bézier segments (typical of Adobe-Illustrator wave / oscillator artwork), each segment-to-segment join with the SVG default `stroke-linejoin: miter` produces a small spike. Across dozens of segments these spikes look like a regular jagged pattern. Set `stroke-linejoin: round` on the relevant CSS class (or attribute) to absorb those joins:
+
+```css
+.st1 {
+  stroke: #0e72ba;
+  stroke-linecap: round;
+  stroke-linejoin: round;   /* avoids miter-spike artifacts */
+  stroke-width: 1.7px;
+}
+```
+
+**Adobe Illustrator export precision.** When you author or paste a smooth path in Illustrator and then **Save As → SVG**, the export's *Decimal Places* setting controls how aggressively coordinates are rounded. The default is **1**, which is far too coarse for typical component viewBoxes — a control point at `(17.4523, 13.9217)` rounds to `(17.5, 13.9)`, and across a smooth multi-segment cubic those rounding errors break G1 continuity at the joints, producing visibly kinked curves. (You can spot this by reopening the saved SVG in Illustrator: the curves there will look just as jagged as in Diagrammer — the precision is already lost in the file.)
+
+In the **SVG Options** dialog, expand **More Options** and set:
+
+- **Decimal Places: 3** (or **4** if your viewBox is unusually small).
+- **CSS Properties: Style Elements** — emits a single `<style>` block with `.st0`/`.st1`/… class rules, matching the convention of the bundled components. ("Style Attributes" inlines `style="…"` on every element, which works but defeats the per-class style-override system Diagrammer uses.)
+
+A complementary practice: author at a **larger working viewBox** (e.g., `0 0 600 200` instead of `0 0 60 20`). Adobe's interactive tools are less twitchy at larger scales, and any residual rounding error becomes proportionally smaller. The on-canvas rendered size in Diagrammer is unaffected — viewBox sets the internal coordinate system, not the placed size.
+
+Don't open and re-save an already-degraded SVG to "fix" it — each Save round-trip compounds the precision loss. If a component looks wrong, re-export from the original Illustrator source with higher Decimal Places.
+
 ### `ports` — Connection Ports
 
 Defines where wires can connect to the component. Each port is a `<circle>` element with a specific `id` format.
@@ -168,7 +227,7 @@ Defines positions where text labels can be placed on the component.
 
 **Label naming:** `id="label:{name}"` where `{name}` identifies the label type.
 
-### `stretch` — Stretch Axes
+### `stretch` — Stretch Axes (optional override)
 
 Defines break lines for stretchable components. A break line indicates where the component can be stretched along a particular axis.
 
@@ -182,12 +241,28 @@ Defines break lines for stretchable components. A break line indicates where the
 </g>
 ```
 
+#### When you can omit the stretch layer
+
+For each axis, Diagrammer infers stretchability from the new layer convention if no `<g id="stretch">` declaration exists for that axis:
+
+1. **Repeat stretch** is inferred from a `<g id="tile">` group inside `<g id="artwork">`. The tile element's bbox along the stretch axis (X for horizontal, Y for vertical) becomes the repeat region. The axis is chosen by which direction-tagged lead groups are present (`leads-left`/`leads-right` → horizontal, `leads-top`/`leads-bottom` → vertical). With no directional leads at all, a tile is assumed to be horizontal.
+2. **Anchored gap stretch** is inferred from direction-tagged lead groups when no tile is present. The break line sits between the inner edges of the two groups (`leads-left.right` ↔ `leads-right.left`, or top/bottom equivalents) so the moving lead group translates while everything else stays put.
+3. The **explicit stretch layer takes precedence per-axis**: if you declare `stretch:v` but not `stretch:h`, Diagrammer uses your X-axis declaration and infers Y from the layer convention.
+
+When to keep an explicit `<g id="stretch">`:
+
+- Your tile element extends visually past its repeat region (e.g., overlapping rounded caps), so the bbox-based inference would be too wide. Declare `stretch:v1`/`v2` precisely.
+- You want gap stretch on a component with no direction-tagged leads (legacy `<g id="leads">` only).
+- Your component has artwork past the tile region that should stay anchored differently than what the inferred break line would do.
+
 **Gap stretch (single break line):**
 - A vertical break line (`stretch:v`) at X=B means: everything with X > B shifts right when the component is stretched horizontally.
 - A horizontal break line (`stretch:h`) at Y=B means: everything with Y > B shifts down when stretched vertically.
 - SVG element coordinates beyond the break line are modified at render time.
 - Port positions beyond the break also shift accordingly.
 - The SVG content at the break line is extended to fill the gap (vector stretch, not raster).
+
+> **Tip:** Direction-tagged lead groups (`leads-right`, `leads-bottom`) are *not* per-coordinate-shifted — they translate as a unit by the stretch amount, regardless of where their inner coordinates fall relative to the break. The break line still applies to the legacy `leads` group and to `artwork`. Use direction-tagged groups whenever a lead path uses Adobe-style `M` + relative-curves authoring (the moveto can land just shy of the break and detach the rest of the path).
 
 **Repeating stretch (two break lines):**
 

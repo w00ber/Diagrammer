@@ -25,6 +25,13 @@ STRETCH_HANDLE_HOVER_COLOR = QColor(255, 180, 60)   # lighter orange
 STRETCH_HANDLE_PEN = QPen(QColor(180, 100, 0), 2.0)
 STRETCH_HANDLE_HIT_MARGIN = 8.0  # extra margin for hit-testing
 
+# Lead layer IDs. Legacy authors use a single "leads" group with
+# coordinate-based stretch classification. New authors should use
+# direction-tagged groups (leads-left/right/top/bottom) so each layer
+# rides as a unit with the port it serves — no coordinate sniffing.
+LEAD_LAYER_IDS = ("leads", "leads-left", "leads-right", "leads-top", "leads-bottom")
+DIRECTIONAL_LEAD_IDS = ("leads-left", "leads-right", "leads-top", "leads-bottom")
+
 
 class ComponentItem(QGraphicsItem):
     """A diagram component rendered from an SVG definition.
@@ -279,18 +286,23 @@ class ComponentItem(QGraphicsItem):
         """Reposition port items to account for the current stretch amounts.
 
         Ports on the far side of a break line are shifted by the stretch delta.
+        For repeat mode, the far side is past the second break line.
         """
         cdef = self._def
         for port, port_def in zip(self._ports, cdef.ports):
             px = port_def.x
             py = port_def.y
 
-            # Horizontal stretch (vertical break line at X = stretch_v_pos)
+            # Horizontal stretch
             if cdef.stretch_v_pos is not None and px > cdef.stretch_v_pos:
                 px += self._stretch_dx
+            elif cdef.stretch_v_repeat is not None and px > cdef.stretch_v_repeat[1]:
+                px += self._stretch_dx
 
-            # Vertical stretch (horizontal break line at Y = stretch_h_pos)
+            # Vertical stretch
             if cdef.stretch_h_pos is not None and py > cdef.stretch_h_pos:
+                py += self._stretch_dy
+            elif cdef.stretch_h_repeat is not None and py > cdef.stretch_h_repeat[1]:
                 py += self._stretch_dy
 
             port.setPos(px, py)
@@ -608,7 +620,7 @@ class ComponentItem(QGraphicsItem):
         if not ovr_dict:
             return
 
-        for layer_id in ("artwork", "leads"):
+        for layer_id in ("artwork",) + LEAD_LAYER_IDS:
             for elem in root.iter():
                 tag = _strip_ns(elem.tag)
                 if tag == "g" and elem.get("id") == layer_id:
@@ -618,22 +630,22 @@ class ComponentItem(QGraphicsItem):
     @staticmethod
     def _shorten_leads_in_svg(root, lead_shortening: dict[str, float],
                                port_positions: list, name_map: dict) -> None:
-        """Shorten lead elements per-port based on actual connection angles."""
-        leads_group = None
+        """Shorten lead elements per-port based on actual connection angles.
+
+        Searches every recognized lead-layer ID so both the legacy ``leads``
+        layer and direction-tagged ``leads-left``/``leads-right``/
+        ``leads-top``/``leads-bottom`` layers receive shortening.
+        """
         for elem in root.iter():
             tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-            if tag == "g" and elem.get("id") == "leads":
-                leads_group = elem
-                break
-        if leads_group is None:
-            return
-
-        for elem in leads_group:
-            tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-            if tag == "line":
-                ComponentItem._shorten_line_elem(elem, lead_shortening, port_positions, name_map)
-            elif tag == "path":
-                ComponentItem._shorten_path_elem(elem, lead_shortening, port_positions, name_map)
+            if tag != "g" or elem.get("id") not in LEAD_LAYER_IDS:
+                continue
+            for child in elem:
+                ctag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+                if ctag == "line":
+                    ComponentItem._shorten_line_elem(child, lead_shortening, port_positions, name_map)
+                elif ctag == "path":
+                    ComponentItem._shorten_path_elem(child, lead_shortening, port_positions, name_map)
 
     @staticmethod
     def _find_port_at(x: float, y: float, port_positions: list, name_map: dict) -> tuple[str | None, float]:
@@ -973,7 +985,11 @@ class ComponentItem(QGraphicsItem):
         # Apply stretch offset if element is past the break line
         if cdef.stretch_v_pos is not None and x > cdef.stretch_v_pos:
             x += self._stretch_dx
+        elif cdef.stretch_v_repeat is not None and x > cdef.stretch_v_repeat[1]:
+            x += self._stretch_dx
         if cdef.stretch_h_pos is not None and y > cdef.stretch_h_pos:
+            y += self._stretch_dy
+        elif cdef.stretch_h_repeat is not None and y > cdef.stretch_h_repeat[1]:
             y += self._stretch_dy
         return QRectF(x, y, w, h)
 
@@ -1026,7 +1042,17 @@ class ComponentItem(QGraphicsItem):
             return None
 
         artwork = _find_layer("artwork")
-        leads = _find_layer("leads")
+        leads = _find_layer("leads")  # legacy: per-coord shifted
+        # Direction-tagged leads (new convention): translated as a whole.
+        # leads-left / leads-top stay anchored; leads-right / leads-bottom
+        # ride with the moving port via a group transform — no coord sniffing.
+        leads_right = _find_layer("leads-right")
+        leads_bottom = _find_layer("leads-bottom")
+
+        # Track total per-axis stretch deltas so we can translate
+        # direction-tagged lead layers after the per-coord shift logic runs.
+        total_dx = 0.0
+        total_dy = 0.0
 
         if v_repeat and dx != 0:
             import copy
@@ -1034,23 +1060,22 @@ class ComponentItem(QGraphicsItem):
             if tile_w > 0:
                 n_extra = max(0, int(round(dx / tile_w)))
                 total_growth = n_extra * tile_w
-                # Snapshot ORIGINAL children BEFORE shift (for clean tile cloning)
-                orig_snapshots = {}
-                for layer in (artwork, leads):
-                    if layer is not None:
-                        orig_snapshots[layer] = [copy.deepcopy(c) for c in layer]
-                # Shift elements past break2 to make room for tiles
+                total_dx = total_growth
+                # Snapshot ORIGINAL artwork children BEFORE shift (for clean tile cloning)
+                orig_artwork = [copy.deepcopy(c) for c in artwork] if artwork is not None else None
+                # Shift elements past break2 to make room for tiles (both layers)
                 for layer in (artwork, leads):
                     if layer is not None:
                         self._shift_svg_element(layer, v_repeat[1], None, total_growth, 0)
-                # Insert tiles using the pre-shift snapshot
-                for layer in (artwork, leads):
-                    if layer is not None:
-                        self._tile_layer_elements(root, layer, "x",
-                                                  v_repeat[0], v_repeat[1],
-                                                  n_extra, total_growth,
-                                                  orig_snapshots.get(layer))
+                # Tile only the artwork layer; leads are connection paths and
+                # should translate as a whole, not be cloned per slot.
+                if artwork is not None:
+                    self._tile_layer_elements(root, artwork, "x",
+                                              v_repeat[0], v_repeat[1],
+                                              n_extra, total_growth,
+                                              orig_artwork)
         elif bx is not None and dx != 0:
+            total_dx = dx
             for layer in (artwork, leads):
                 if layer is not None:
                     self._shift_svg_element(layer, bx, None, dx, 0)
@@ -1061,23 +1086,30 @@ class ComponentItem(QGraphicsItem):
             if tile_h > 0:
                 n_extra = max(0, int(round(dy / tile_h)))
                 total_growth = n_extra * tile_h
-                orig_snapshots = {}
-                for layer in (artwork, leads):
-                    if layer is not None:
-                        orig_snapshots[layer] = [copy.deepcopy(c) for c in layer]
+                total_dy = total_growth
+                orig_artwork = [copy.deepcopy(c) for c in artwork] if artwork is not None else None
                 for layer in (artwork, leads):
                     if layer is not None:
                         self._shift_svg_element(layer, None, h_repeat[1], 0, total_growth)
-                for layer in (artwork, leads):
-                    if layer is not None:
-                        self._tile_layer_elements(root, layer, "y",
-                                                  h_repeat[0], h_repeat[1],
-                                                  n_extra, total_growth,
-                                                  orig_snapshots.get(layer))
+                if artwork is not None:
+                    self._tile_layer_elements(root, artwork, "y",
+                                              h_repeat[0], h_repeat[1],
+                                              n_extra, total_growth,
+                                              orig_artwork)
         elif by is not None and dy != 0:
+            total_dy = dy
             for layer in (artwork, leads):
                 if layer is not None:
                     self._shift_svg_element(layer, None, by, 0, dy)
+
+        # Apply group translation to direction-tagged lead layers.
+        # The whole layer rides with its port — no per-coordinate shifting,
+        # so authors don't have to worry about path commands straddling a
+        # break line. leads-left / leads-top stay anchored.
+        if leads_right is not None and total_dx != 0:
+            self._prepend_transform(leads_right, f"translate({total_dx},0)")
+        if leads_bottom is not None and total_dy != 0:
+            self._prepend_transform(leads_bottom, f"translate(0,{total_dy})")
 
         # Inline CSS url() references (see _prepare_svg_bytes)
         self._inline_css_url_refs(root)
@@ -1243,6 +1275,17 @@ class ComponentItem(QGraphicsItem):
         # Recurse into child elements (g, etc.)
         for child in elem:
             cls._shift_svg_element(child, bx, by, dx, dy)
+
+    @staticmethod
+    def _prepend_transform(elem, transform_str: str) -> None:
+        """Prepend ``transform_str`` to the element's transform attribute.
+
+        SVG composes transforms left-to-right, so prepending makes the new
+        translate apply *after* any existing transform — i.e., it shifts
+        the already-transformed layer in the parent's coord system.
+        """
+        existing = (elem.get("transform") or "").strip()
+        elem.set("transform", f"{transform_str} {existing}".strip())
 
     @staticmethod
     def _shift_attr(elem, attr: str, break_pos: float | None, delta: float) -> None:
@@ -1493,11 +1536,13 @@ class ComponentItem(QGraphicsItem):
             else:
                 raw_dx = self._stretch_drag_start_dx + projected
             snapped_dx = self._snap_stretch_to_grid(raw_dx)
-            old_dx = self._stretch_dx
             self.set_stretch(snapped_dx, self._stretch_dy)
 
-            if side == "left" and snapped_dx != old_dx:
-                growth = snapped_dx - self._stretch_drag_start_dx
+            if side == "left":
+                # Use the post-clamp stretch value so position tracks the
+                # actual width change (set_stretch may snap to tile multiples
+                # and clamp at zero for repeat mode).
+                growth = self._stretch_dx - self._stretch_drag_start_dx
                 scene_offset = QPointF(axis_dir.x() * growth, axis_dir.y() * growth)
                 start_pos = getattr(self, '_stretch_drag_start_comp_pos', self.pos())
                 self._skip_snap = True
@@ -1523,11 +1568,10 @@ class ComponentItem(QGraphicsItem):
             else:
                 raw_dy = self._stretch_drag_start_dy + projected
             snapped_dy = self._snap_stretch_to_grid(raw_dy)
-            old_dy = self._stretch_dy
             self.set_stretch(self._stretch_dx, snapped_dy)
 
-            if side == "top" and snapped_dy != old_dy:
-                growth = snapped_dy - self._stretch_drag_start_dy
+            if side == "top":
+                growth = self._stretch_dy - self._stretch_drag_start_dy
                 scene_offset = QPointF(axis_dir.x() * growth, axis_dir.y() * growth)
                 start_pos = getattr(self, '_stretch_drag_start_comp_pos', self.pos())
                 self._skip_snap = True

@@ -38,14 +38,14 @@
       }
     </style>
   </defs>
-  <g id="Layer_11" data-name="Layer_1">
+  <g id="Layer_11">
     <g id="stretch">
       <line id="stretch:h2" class="st1" y1="16.1" x2="80" y2="16.1"/>
       <line id="stretch:h1" class="st1" y1="43.9" x2="80" y2="43.9"/>
     </g>
     <g id="leads">
-      <path class="st4" d="M40.1,23.8V0"/>
-      <path class="st4" d="M40.1,60v-23.2"/>
+      <path class="st4" d="M40.1,16.1V0"/>
+      <path class="st4" d="M40.1,60v-16.1"/>
     </g>
     <g id="ports">
       <circle id="port:bot" class="st0" cx="40" r="3"/>
@@ -55,6 +55,8 @@
       <g id="tile">
         <rect class="st2" x="27.6" y="23.8" width="24.9" height="12.3"/>
         <line class="st3" x1="27.6" y1="30" x2="52.6" y2="30"/>
+        <path class="st4" d="M40.1,23.8v-7.7"/>
+        <path class="st4" d="M40.1,43.9v-7.1"/>
       </g>
     </g>
   </g>

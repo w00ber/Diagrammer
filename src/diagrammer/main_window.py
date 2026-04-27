@@ -369,6 +369,20 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             app_settings.user_compound_files = surviving
             app_settings.save()
 
+    def _refresh_libraries(self) -> None:
+        """Re-scan SVG component sources and refresh the library panel.
+
+        Existing canvas items keep their current ComponentDef references,
+        so open diagrams are unaffected. Only newly placed components
+        pick up the freshly-scanned artwork.
+        """
+        self._rebuild_library()
+        self._library_panel._refresh_views()
+        count = len(self._library.all_defs())
+        self.statusBar().showMessage(
+            f"Libraries refreshed — {count} components loaded", 3000
+        )
+
     def _is_under_builtin(self, folder: Path) -> bool:
         """True if ``folder`` is the built-in components dir or a subdir."""
         if not self._builtin_components_path.is_dir():
@@ -1057,6 +1071,28 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
     def _show_tutorial(self) -> None:
         from diagrammer.panels.help_window import HelpWindow
         HelpWindow.show_tutorial(self)
+
+    def _show_about(self) -> None:
+        import sys
+
+        import PySide6
+        from PySide6.QtCore import qVersion
+        from PySide6.QtWidgets import QMessageBox
+
+        from diagrammer import __version__
+
+        py = ".".join(str(p) for p in sys.version_info[:3])
+        text = (
+            f"<h3>Diagrammer {__version__}</h3>"
+            "<p>A tool for building diagrams, including flowcharts, "
+            "circuits, and more.</p>"
+            f"<p><small>PySide6 {PySide6.__version__} &middot; "
+            f"Qt {qVersion()} &middot; Python {py}</small></p>"
+            "<p><small>&copy; J Aumentado &middot; "
+            "<a href='https://github.com/w00ber/Diagrammer'>"
+            "github.com/w00ber/Diagrammer</a></small></p>"
+        )
+        QMessageBox.about(self, "About Diagrammer", text)
 
     def _update_title(self) -> None:
         name = Path(self._current_file).name if self._current_file else "Untitled"

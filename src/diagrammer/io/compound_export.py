@@ -194,32 +194,35 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
                     return e
             return None
         artwork_l = _find("artwork")
-        leads_l = _find("leads")
+        leads_l = _find("leads")  # legacy: per-coord shifted
+        # Direction-tagged leads (new convention): translated as a unit
+        leads_right_l = _find("leads-right")
+        leads_bottom_l = _find("leads-bottom")
         # Use the same stretch logic as _get_stretched_renderer
         import copy
         v_repeat = cdef.stretch_v_repeat
         h_repeat = cdef.stretch_h_repeat
         dx = comp.stretch_dx
         dy = comp.stretch_dy
+        total_dx = 0.0
+        total_dy = 0.0
         if v_repeat and dx != 0:
             tile_w = v_repeat[1] - v_repeat[0]
             if tile_w > 0:
                 n_extra = max(0, int(round(dx / tile_w)))
                 total_growth = n_extra * tile_w
-                orig_snaps = {}
-                for layer in (artwork_l, leads_l):
-                    if layer is not None:
-                        orig_snaps[layer] = [copy.deepcopy(c) for c in layer]
+                total_dx = total_growth
+                orig_artwork = [copy.deepcopy(c) for c in artwork_l] if artwork_l is not None else None
                 for layer in (artwork_l, leads_l):
                     if layer is not None:
                         ComponentItem._shift_svg_element(layer, v_repeat[1], None, total_growth, 0)
-                for layer in (artwork_l, leads_l):
-                    if layer is not None:
-                        ComponentItem._tile_layer_elements(root, layer, "x",
-                                                           v_repeat[0], v_repeat[1],
-                                                           n_extra, total_growth,
-                                                           orig_snaps.get(layer))
+                if artwork_l is not None:
+                    ComponentItem._tile_layer_elements(root, artwork_l, "x",
+                                                       v_repeat[0], v_repeat[1],
+                                                       n_extra, total_growth,
+                                                       orig_artwork)
         elif cdef.stretch_v_pos is not None and dx != 0:
+            total_dx = dx
             for layer in (artwork_l, leads_l):
                 if layer is not None:
                     ComponentItem._shift_svg_element(layer, cdef.stretch_v_pos, None, dx, 0)
@@ -228,23 +231,26 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
             if tile_h > 0:
                 n_extra = max(0, int(round(dy / tile_h)))
                 total_growth = n_extra * tile_h
-                orig_snaps = {}
-                for layer in (artwork_l, leads_l):
-                    if layer is not None:
-                        orig_snaps[layer] = [copy.deepcopy(c) for c in layer]
+                total_dy = total_growth
+                orig_artwork = [copy.deepcopy(c) for c in artwork_l] if artwork_l is not None else None
                 for layer in (artwork_l, leads_l):
                     if layer is not None:
                         ComponentItem._shift_svg_element(layer, None, h_repeat[1], 0, total_growth)
-                for layer in (artwork_l, leads_l):
-                    if layer is not None:
-                        ComponentItem._tile_layer_elements(root, layer, "y",
-                                                           h_repeat[0], h_repeat[1],
-                                                           n_extra, total_growth,
-                                                           orig_snaps.get(layer))
+                if artwork_l is not None:
+                    ComponentItem._tile_layer_elements(root, artwork_l, "y",
+                                                       h_repeat[0], h_repeat[1],
+                                                       n_extra, total_growth,
+                                                       orig_artwork)
         elif cdef.stretch_h_pos is not None and dy != 0:
+            total_dy = dy
             for layer in (artwork_l, leads_l):
                 if layer is not None:
                     ComponentItem._shift_svg_element(layer, None, cdef.stretch_h_pos, 0, dy)
+        # Translate direction-tagged lead layers as a whole
+        if leads_right_l is not None and total_dx != 0:
+            ComponentItem._prepend_transform(leads_right_l, f"translate({total_dx},0)")
+        if leads_bottom_l is not None and total_dy != 0:
+            ComponentItem._prepend_transform(leads_bottom_l, f"translate(0,{total_dy})")
     else:
         tree = ET2.parse(str(cdef.svg_path))
         root = tree.getroot()
@@ -266,15 +272,18 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
             art_elem = elem
             break
 
-    # Find leads group
-    leads_elem = None
+    # Find every lead group: legacy "leads" plus direction-tagged variants.
+    # All are emitted into the compound; downstream code that previously
+    # walked a single ``leads_elem`` is updated to iterate this list.
+    _lead_ids = ("leads", "leads-left", "leads-right", "leads-top", "leads-bottom")
+    leads_elems: list[ET.Element] = []
     for elem in root.iter():
         tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-        if tag == "g" and elem.get("id") == "leads":
-            leads_elem = elem
-            break
+        if tag == "g" and elem.get("id") in _lead_ids:
+            leads_elems.append(elem)
+    leads_elem = leads_elems[0] if leads_elems else None  # legacy alias
 
-    if art_elem is None and leads_elem is None:
+    if art_elem is None and not leads_elems:
         return
 
     # Build transform: translate to scene pos, apply rotation/flip
@@ -307,7 +316,8 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
     # the elbow body lose its fill and gain a red stroke.
     prefix = f"c{instance_index}_"
     rename_map: dict[str, str] = {}
-    for subtree in (defs_elem, art_elem, leads_elem):
+    _id_subtrees = [defs_elem, art_elem] + leads_elems
+    for subtree in _id_subtrees:
         if subtree is None:
             continue
         for el in subtree.iter():
@@ -327,7 +337,7 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
                 value,
             )
 
-        for subtree in (defs_elem, art_elem, leads_elem):
+        for subtree in _id_subtrees:
             if subtree is None:
                 continue
             for el in subtree.iter():
@@ -344,7 +354,8 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
     # are actually referenced so we don't mangle unrelated rules.
     import re
     used_classes: set[str] = set()
-    for subtree in (art_elem, leads_elem):
+    _class_subtrees = [art_elem] + leads_elems
+    for subtree in _class_subtrees:
         if subtree is None:
             continue
         for el in subtree.iter():
@@ -355,7 +366,7 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
 
     if used_classes:
         # Rewrite class attributes in artwork/leads.
-        for subtree in (art_elem, leads_elem):
+        for subtree in _class_subtrees:
             if subtree is None:
                 continue
             for el in subtree.iter():
@@ -410,10 +421,16 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
         for child in art_elem:
             g.append(child)
 
-    # Copy leads elements
-    if leads_elem is not None:
-        for child in leads_elem:
-            g.append(child)
+    # Copy leads elements. Direction-tagged layers (leads-right etc.)
+    # may carry a translate(dx,0) transform applied during the stretch
+    # bake; we preserve that by copying the wrapping <g> when a transform
+    # exists, and flatten otherwise (legacy behavior).
+    for lead_layer in leads_elems:
+        if lead_layer.get("transform"):
+            g.append(lead_layer)
+        else:
+            for child in lead_layer:
+                g.append(child)
 
 
 def _render_connection(parent: ET.Element, conn, ox: float, oy: float) -> None:

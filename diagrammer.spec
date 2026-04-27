@@ -8,6 +8,7 @@ Produces a one-folder distribution in dist/Diagrammer/.
 On macOS it creates a .app bundle in dist/Diagrammer.app.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -19,6 +20,15 @@ block_cipher = None
 HERE = Path(SPECPATH)
 SRC = HERE / "src"
 PKG = SRC / "diagrammer"
+
+# Single source of truth for the version: src/diagrammer/__init__.py.
+# Parsed via regex (not imported) so we don't pull PySide6/matplotlib
+# into PyInstaller's spec-evaluation environment.
+_init_text = (PKG / "__init__.py").read_text(encoding="utf-8")
+_match = re.search(r'^__version__\s*=\s*[\'"]([^\'"]+)[\'"]', _init_text, re.M)
+if not _match:
+    raise RuntimeError("Could not find __version__ in src/diagrammer/__init__.py")
+APP_VERSION = _match.group(1)
 
 # ── Platform helpers ───────────────────────────────────────────────────
 IS_MAC = sys.platform == "darwin"
@@ -240,7 +250,7 @@ if IS_MAC:
         bundle_identifier="com.diagrammer.app",
         info_plist={
             "CFBundleDisplayName": "Diagrammer",
-            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleShortVersionString": APP_VERSION,
             "NSHighResolutionCapable": True,
             "LSMinimumSystemVersion": "12.0",
         },

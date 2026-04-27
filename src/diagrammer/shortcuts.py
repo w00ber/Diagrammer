@@ -147,6 +147,7 @@ _reg("file.open",      QKeySequence.StandardKey.Open,     description="Open...",
 _reg("file.save",      QKeySequence.StandardKey.Save,     description="Save",              category="File")
 _reg("file.save_as",   QKeySequence.StandardKey.SaveAs,   description="Save As...",        category="File")
 _reg("file.quit",      QKeySequence.StandardKey.Quit,     description="Quit",              category="File")
+_reg("file.refresh_libraries", _ks("F5"),                  description="Refresh Libraries", category="File")
 
 # ----- Edit -----
 _reg("edit.undo",      QKeySequence.StandardKey.Undo,     description="Undo",              category="Edit")

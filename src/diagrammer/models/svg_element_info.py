@@ -48,7 +48,8 @@ def enumerate_svg_elements(svg_path: Path) -> list[SvgElementInfo]:
     root = tree.getroot()
     results: list[SvgElementInfo] = []
 
-    for layer_id in ("artwork", "leads"):
+    for layer_id in ("artwork", "leads", "leads-left", "leads-right",
+                     "leads-top", "leads-bottom"):
         group = _find_group(root, layer_id)
         if group is None:
             continue

@@ -1,3 +1,3 @@
 """Diagrammer — a tool for building diagrams, including flowcharts, circuits, and more."""
 
-__version__ = "0.9.2c"
+__version__ = "0.9.3"

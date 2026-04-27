@@ -45,10 +45,13 @@ def _get_lead_stroke_width(port: PortItem) -> float | None:
                 for cm in re.finditer(r'\.(\w+)', m.group(1)):
                     css_classes.setdefault(cm.group(1), {}).update(props)
 
-    # Find leads layer
+    # Find any lead layer (legacy "leads" or direction-tagged variants).
+    # We pick whichever appears first; their stroke-width should match
+    # since they all represent the same lead style.
     leads = None
+    lead_ids = ("leads", "leads-left", "leads-right", "leads-top", "leads-bottom")
     for elem in root.iter():
-        if _strip_ns(elem.tag) == "g" and elem.get("id") == "leads":
+        if _strip_ns(elem.tag) == "g" and elem.get("id") in lead_ids:
             leads = elem
             break
 

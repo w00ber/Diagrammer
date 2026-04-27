@@ -36,44 +36,28 @@
       .st4 {
         stroke-width: 3px;
       }
-
-      .st5 {
-        display: none;
-      }
     </style>
   </defs>
-  <g id="stretch">
-    <line id="stretch:h2" class="st1" y1="36.1" x2="80" y2="36.1"/>
-    <line id="stretch:h1" class="st1" y1="63.9" x2="80" y2="63.9"/>
-  </g>
-  <g id="Layer_11" data-name="Layer_1">
-    <g id="leads">
-      <path class="st4" d="M40.1,43.9V0"/>
-      <path class="st4" d="M40.1,100v-43.8"/>
+  <g id="Layer_12">
+    <g id="stretch">
+      <line id="stretch:h2" class="st1" y1="26.1" x2="80" y2="26.1"/>
+      <line id="stretch:h1" class="st1" y1="73.9" x2="80" y2="73.9"/>
     </g>
     <g id="ports">
       <circle id="port:bot" class="st0" cx="40" r="3"/>
       <circle id="port:top" class="st0" cx="40.1" cy="100" r="3"/>
     </g>
-  </g>
-  <g id="Layer_12" data-name="Layer_1">
-    <g id="stretch1" data-name="stretch" class="st5">
-      <line id="stretch:h21" data-name="stretch:h2" class="st1" y1="36.1" x2="80" y2="36.1"/>
-      <line id="stretch:h11" data-name="stretch:h1" class="st1" y1="63.9" x2="80" y2="63.9"/>
-    </g>
-    <g id="leads1" data-name="leads" class="st5">
-      <path class="st4" d="M40.1,43.8v-23.8"/>
-      <path class="st4" d="M40.1,80v-23.2"/>
-    </g>
-    <g id="ports1" data-name="ports" class="st5">
-      <circle id="port:bot1" data-name="port:bot" class="st0" cx="40" cy="20" r="3"/>
-      <circle id="port:top1" data-name="port:top" class="st0" cx="40.1" cy="80" r="3"/>
-    </g>
     <g id="artwork">
       <g id="tile">
         <rect class="st2" x="27.6" y="43.8" width="24.9" height="12.3"/>
         <line class="st3" x1="27.6" y1="50" x2="52.6" y2="50"/>
+        <path class="st4" d="M40.1,43.9v-17.8"/>
+        <path class="st4" d="M40.1,73.9v-17.7"/>
       </g>
+    </g>
+    <g id="leads">
+      <path class="st4" d="M40.1,26.1V0"/>
+      <path class="st4" d="M40.1,100v-26.1"/>
     </g>
   </g>
 </svg>

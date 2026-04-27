@@ -144,6 +144,19 @@ class ComponentDef:
         # Parse stretch layer for break-line positions
         stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat = _parse_stretch_layer(root)
 
+        # Fall back to convention-based inference when the stretch layer
+        # is absent or only partially specified. <g id="tile"> defines a
+        # repeat region; direction-tagged leads (leads-left/-right/-top/
+        # -bottom) define an anchored gap stretch.
+        if (stretch_v_pos is None and stretch_v_repeat is None) or \
+           (stretch_h_pos is None and stretch_h_repeat is None):
+            (stretch_h_pos, stretch_v_pos,
+             stretch_h_repeat, stretch_v_repeat) = _infer_stretch_from_layers(
+                path, root,
+                stretch_h_pos, stretch_v_pos,
+                stretch_h_repeat, stretch_v_repeat,
+            )
+
         # If the stretch layer defines axes, ensure the booleans are set
         if stretch_h_pos is not None or stretch_h_repeat is not None:
             stretch_h = True
@@ -335,6 +348,275 @@ def _parse_stretch_layer(root: ET.Element) -> tuple[
 
     stretch_h_repeat = (min(h1, h2), max(h1, h2)) if h1 is not None and h2 is not None else None
     stretch_v_repeat = (min(v1, v2), max(v1, v2)) if v1 is not None and v2 is not None else None
+
+    return stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat
+
+
+def _svg_path_geometric_bbox(d: str) -> tuple[float, float, float, float] | None:
+    """Compute (x_min, y_min, x_max, y_max) of an SVG path's geometry.
+
+    Walks absolute and relative path commands, tracking current position,
+    and accumulates extents from every endpoint and Bézier control point.
+    Stroke padding is **not** included — this is bare path geometry,
+    suitable for tile-region inference where ``QSvgRenderer.boundsOnElement``
+    would over-estimate by half the stroke width on each side.
+    """
+    import re
+    tokens = re.findall(
+        r'[A-Za-z]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?', d)
+    cmd_args = {
+        'M': 2, 'L': 2, 'H': 1, 'V': 1,
+        'C': 6, 'S': 4, 'Q': 4, 'T': 2, 'A': 7, 'Z': 0,
+    }
+    cx = cy = sx = sy = 0.0
+    pts: list[tuple[float, float]] = []
+    cmd = ""
+    nums: list[float] = []
+
+    def consume() -> None:
+        nonlocal cx, cy, sx, sy, cmd
+        if not cmd or cmd.upper() == 'Z':
+            return
+        u = cmd.upper()
+        is_rel = cmd.islower()
+        n = cmd_args.get(u, 0)
+        if n == 0:
+            return
+        i = 0
+        # After the first M, additional coordinate pairs are implicit L's.
+        first_m = (u == 'M')
+        while i + n <= len(nums):
+            args = nums[i:i + n]
+            i += n
+            if u == 'M' or u == 'L':
+                if is_rel:
+                    cx += args[0]; cy += args[1]
+                else:
+                    cx, cy = args[0], args[1]
+                if u == 'M' and first_m:
+                    sx, sy = cx, cy
+                    u = 'L'
+                    first_m = False
+                pts.append((cx, cy))
+            elif u == 'H':
+                if is_rel: cx += args[0]
+                else: cx = args[0]
+                pts.append((cx, cy))
+            elif u == 'V':
+                if is_rel: cy += args[0]
+                else: cy = args[0]
+                pts.append((cx, cy))
+            elif u == 'C':
+                if is_rel:
+                    pts.append((cx + args[0], cy + args[1]))
+                    pts.append((cx + args[2], cy + args[3]))
+                    cx += args[4]; cy += args[5]
+                else:
+                    pts.append((args[0], args[1]))
+                    pts.append((args[2], args[3]))
+                    cx, cy = args[4], args[5]
+                pts.append((cx, cy))
+            elif u == 'S':
+                if is_rel:
+                    pts.append((cx + args[0], cy + args[1]))
+                    cx += args[2]; cy += args[3]
+                else:
+                    pts.append((args[0], args[1]))
+                    cx, cy = args[2], args[3]
+                pts.append((cx, cy))
+            elif u == 'Q':
+                if is_rel:
+                    pts.append((cx + args[0], cy + args[1]))
+                    cx += args[2]; cy += args[3]
+                else:
+                    pts.append((args[0], args[1]))
+                    cx, cy = args[2], args[3]
+                pts.append((cx, cy))
+            elif u == 'T':
+                if is_rel:
+                    cx += args[0]; cy += args[1]
+                else:
+                    cx, cy = args[0], args[1]
+                pts.append((cx, cy))
+            elif u == 'A':
+                # Last 2 args are the endpoint; arc shape detail not needed
+                # for axis-aligned bbox approximation.
+                if is_rel:
+                    cx += args[5]; cy += args[6]
+                else:
+                    cx, cy = args[5], args[6]
+                pts.append((cx, cy))
+
+    for t in tokens:
+        if t.isalpha():
+            consume()
+            cmd = t
+            nums = []
+            if t.upper() == 'Z':
+                cx, cy = sx, sy
+                cmd = ""
+        else:
+            try:
+                nums.append(float(t))
+            except ValueError:
+                continue
+    consume()
+
+    if not pts:
+        return None
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _layer_geometric_bbox(group: ET.Element) -> tuple[float, float, float, float] | None:
+    """Union of geometric (stroke-less) bboxes of all leaf elements in a group."""
+    bboxes: list[tuple[float, float, float, float]] = []
+    for elem in group.iter():
+        tag = _strip_ns(elem.tag)
+        try:
+            if tag == "path":
+                b = _svg_path_geometric_bbox(elem.get("d", ""))
+                if b: bboxes.append(b)
+            elif tag in ("polyline", "polygon"):
+                pts_attr = elem.get("points", "")
+                import re
+                nums = [float(n) for n in re.findall(
+                    r'[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?', pts_attr)]
+                pairs = [(nums[i], nums[i+1]) for i in range(0, len(nums) - 1, 2)]
+                if pairs:
+                    xs = [p[0] for p in pairs]; ys = [p[1] for p in pairs]
+                    bboxes.append((min(xs), min(ys), max(xs), max(ys)))
+            elif tag == "line":
+                x1 = float(elem.get("x1", "0")); y1 = float(elem.get("y1", "0"))
+                x2 = float(elem.get("x2", "0")); y2 = float(elem.get("y2", "0"))
+                bboxes.append((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
+            elif tag == "rect":
+                x = float(elem.get("x", "0")); y = float(elem.get("y", "0"))
+                w = float(elem.get("width", "0")); h = float(elem.get("height", "0"))
+                bboxes.append((x, y, x + w, y + h))
+            elif tag == "circle":
+                cx = float(elem.get("cx", "0")); cy = float(elem.get("cy", "0"))
+                r = float(elem.get("r", "0"))
+                bboxes.append((cx - r, cy - r, cx + r, cy + r))
+            elif tag == "ellipse":
+                cx = float(elem.get("cx", "0")); cy = float(elem.get("cy", "0"))
+                rx = float(elem.get("rx", "0")); ry = float(elem.get("ry", "0"))
+                bboxes.append((cx - rx, cy - ry, cx + rx, cy + ry))
+        except (ValueError, TypeError):
+            continue
+    if not bboxes:
+        return None
+    return (
+        min(b[0] for b in bboxes), min(b[1] for b in bboxes),
+        max(b[2] for b in bboxes), max(b[3] for b in bboxes),
+    )
+
+
+def _infer_stretch_from_layers(
+    svg_path: Path,
+    root: ET.Element,
+    stretch_h_pos: float | None,
+    stretch_v_pos: float | None,
+    stretch_h_repeat: tuple[float, float] | None,
+    stretch_v_repeat: tuple[float, float] | None,
+) -> tuple[
+    float | None, float | None,
+    tuple[float, float] | None, tuple[float, float] | None,
+]:
+    """Infer missing stretch break-line positions from the new layer convention.
+
+    Per axis (horizontal first, then vertical), and only if no explicit
+    break line was already declared via ``<g id="stretch">``:
+
+    1. If a ``<g id="tile">`` element is present, derive a *repeat stretch*
+       from its **geometric** bbox (path centerlines, no stroke padding) so
+       cloned tiles abut cleanly without gaps.
+    2. Otherwise, if direction-tagged lead groups (``leads-left`` /
+       ``leads-right`` / ``leads-top`` / ``leads-bottom``) are present,
+       derive an *anchored gap stretch*: the break sits between the
+       inner edges of the two groups so that the moving lead group
+       translates on stretch while the rest stays put.
+
+    For lead-group bboxes we use ``QSvgRenderer.boundsOnElement()``
+    (stroke-aware is fine for choosing a midpoint break line). For tile
+    bboxes we walk the path data ourselves — ``boundsOnElement`` would
+    add half the stroke width on each side, leaving visible gaps between
+    cloned tiles when the renderer spaces clones by that wider extent.
+    """
+    # If both axes are already declared, nothing to infer.
+    if (stretch_h_pos is not None or stretch_h_repeat is not None) and \
+       (stretch_v_pos is not None or stretch_v_repeat is not None):
+        return stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat
+
+    try:
+        from PySide6.QtSvg import QSvgRenderer
+    except ImportError:
+        return stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat
+
+    renderer = QSvgRenderer(str(svg_path))
+    if not renderer.isValid():
+        return stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat
+
+    def _bbox(elem_id: str):
+        if not renderer.elementExists(elem_id):
+            return None
+        b = renderer.boundsOnElement(elem_id)
+        if b.isNull() or b.isEmpty():
+            return None
+        return b
+
+    # Tile bbox: path-data geometric extent (no stroke padding).
+    tile_g = _find_group_by_id(root, "tile")
+    tile_geom = _layer_geometric_bbox(tile_g) if tile_g is not None else None
+
+    # Lead-group bboxes: stroke-aware is fine for break-line midpoints.
+    ll_b = _bbox("leads-left")
+    lr_b = _bbox("leads-right")
+    lt_b = _bbox("leads-top")
+    lb_b = _bbox("leads-bottom")
+
+    # If the author already explicitly declared one axis (via
+    # ``<g id="stretch">``), the ``<g id="tile">`` is presumed to
+    # belong to that declared axis. Don't claim it for the other axis
+    # — many legacy components have a tile alongside an explicit
+    # ``stretch:h1``/``h2`` declaration; auto-claiming the tile for
+    # the horizontal axis would silently change their behavior.
+    explicit_h_declared = stretch_h_pos is not None or stretch_h_repeat is not None
+    explicit_v_declared = stretch_v_pos is not None or stretch_v_repeat is not None
+
+    # ---------------- Horizontal axis ----------------
+    if not explicit_v_declared:
+        wants_horiz = ll_b is not None or lr_b is not None
+        wants_vert = lt_b is not None or lb_b is not None
+        # Use the tile for horizontal stretch only if direction-tagged
+        # leads point that way, OR if there's no other intent at all
+        # (no directional leads, no explicit declaration on the other
+        # axis either).
+        if tile_geom is not None and (
+            wants_horiz
+            or (not wants_vert and not explicit_h_declared)
+        ):
+            stretch_v_repeat = (tile_geom[0], tile_geom[2])
+        elif ll_b is not None and lr_b is not None:
+            stretch_v_pos = (ll_b.right() + lr_b.x()) / 2
+        elif lr_b is not None:
+            stretch_v_pos = lr_b.x()
+        elif ll_b is not None:
+            stretch_v_pos = ll_b.right()
+
+    # ---------------- Vertical axis ----------------
+    if not explicit_h_declared:
+        wants_vert = lt_b is not None or lb_b is not None
+        used_tile_for_h = stretch_v_repeat is not None and tile_geom is not None
+        if tile_geom is not None and wants_vert and not used_tile_for_h:
+            stretch_h_repeat = (tile_geom[1], tile_geom[3])
+        elif lt_b is not None and lb_b is not None:
+            stretch_h_pos = (lt_b.bottom() + lb_b.y()) / 2
+        elif lb_b is not None:
+            stretch_h_pos = lb_b.y()
+        elif lt_b is not None:
+            stretch_h_pos = lt_b.bottom()
 
     return stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat
 

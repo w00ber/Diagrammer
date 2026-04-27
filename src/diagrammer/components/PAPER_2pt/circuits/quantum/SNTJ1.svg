@@ -54,8 +54,8 @@
     <g id="tile">
       <rect class="st3" x="27.6" y="23.8" width="24.9" height="12.3"/>
       <line class="st2" x1="27.6" y1="30" x2="52.6" y2="30"/>
+      <path class="st4" d="M40.1,43.9v-7.7"/>
+      <path class="st4" d="M40.1,23.8v-7.7"/>
     </g>
-    <path class="st4" d="M40.1,43.9v-7.7"/>
-    <path class="st4" d="M40.1,23.8v-7.7"/>
   </g>
 </svg>
