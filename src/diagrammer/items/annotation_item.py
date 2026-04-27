@@ -627,6 +627,27 @@ def _neutralize_qt_pen_leak(svg_bytes: bytes) -> bytes:
     return ET2.tostring(root, encoding="utf-8")
 
 
+def _dump_svg_snapshots(snapshots: dict[str, bytes]) -> None:
+    """Write SVG snapshots to the temp dir for post-mortem inspection.
+
+    Files land in ``tempfile.gettempdir()`` (on macOS, the per-user
+    ``$TMPDIR`` like ``/var/folders/.../T/``, *not* ``/tmp``) named
+    ``diagrammer_math_<key>.svg``. They're overwritten each render and
+    survive between runs so the dumps from a misbehaving build can be
+    compared against a known-good build.
+    """
+    try:
+        import os
+        import tempfile
+        tmp = tempfile.gettempdir()
+        for key, data in snapshots.items():
+            with open(os.path.join(tmp, f"diagrammer_math_{key}.svg"), "wb") as f:
+                f.write(data)
+        logger.debug("SVG snapshots written to %s/diagrammer_math_*.svg", tmp)
+    except Exception:
+        logger.debug("failed to dump SVG snapshots", exc_info=True)
+
+
 def _toplevel_env_to_inner(text: str) -> str:
     r"""Replace top-level amsmath environments with their inner equivalents.
 
@@ -716,21 +737,11 @@ def _render_with_ziamath(math_body: str, font_size: float,
         inlined = _inline_svg_use_refs(normalized)
         result = _neutralize_qt_pen_leak(inlined)
         logger.debug("ziamath SVG after rewrite: %d bytes", len(result))
-        # Dump intermediate forms so we can inspect what Qt is actually
-        # being asked to render. These files survive between runs so the
-        # user can open them in a real SVG viewer for comparison.
-        try:
-            import tempfile, os
-            tmp = tempfile.gettempdir()
-            with open(os.path.join(tmp, "diagrammer_math_raw.svg"), "wb") as f:
-                f.write(raw)
-            with open(os.path.join(tmp, "diagrammer_math_normalized.svg"), "wb") as f:
-                f.write(normalized)
-            with open(os.path.join(tmp, "diagrammer_math_final.svg"), "wb") as f:
-                f.write(result)
-            logger.debug("SVG snapshots written to %s/diagrammer_math_*.svg", tmp)
-        except Exception:
-            logger.debug("failed to dump SVG snapshots", exc_info=True)
+        _dump_svg_snapshots({
+            "ziamath_raw": raw,
+            "ziamath_normalized": normalized,
+            "ziamath_final": result,
+        })
         return result
     except Exception:
         logger.warning("ziamath render failed", exc_info=True)
@@ -856,7 +867,10 @@ def _render_latex_svg(text: str, font_size: float, color: QColor,
         fig.savefig(buf, format="svg", transparent=True,
                     bbox_inches="tight", pad_inches=0.02)
         plt.close(fig)
-        return _neutralize_qt_pen_leak(buf.getvalue())
+        raw = buf.getvalue()
+        result = _neutralize_qt_pen_leak(raw)
+        _dump_svg_snapshots({"mpl_raw": raw, "mpl_final": result})
+        return result
     except Exception:
         logger.warning("primary render failed (use_real_latex=%s)", use_real_latex,
                        exc_info=True)
@@ -890,7 +904,13 @@ def _render_latex_svg(text: str, font_size: float, color: QColor,
                 fig.savefig(buf, format="svg", transparent=True,
                             bbox_inches="tight", pad_inches=0.02)
                 plt.close(fig)
-                return _neutralize_qt_pen_leak(buf.getvalue())
+                raw = buf.getvalue()
+                result = _neutralize_qt_pen_leak(raw)
+                _dump_svg_snapshots({
+                    "mpl_fallback_raw": raw,
+                    "mpl_fallback_final": result,
+                })
+                return result
             except Exception:
                 logger.warning("mathtext fallback also failed", exc_info=True)
                 return None
@@ -1245,16 +1265,25 @@ class AnnotationItem(QGraphicsTextItem):
             # at screen DPI and rescales on playback) doubles up with the
             # transform that scene.render() applies, causing math annotations
             # to be massively enlarged in PDF/PNG exports.
+            # Belt-and-suspenders for the QSvgRenderer pen-state leak (see
+            # ``_neutralize_qt_pen_leak``): force the painter's pen to NoPen
+            # before rendering so fill-only paths can't pick up a default
+            # 1pt black stroke from the painter. The SVG-side mutation
+            # already handles this on Qt 6.8, but Qt 6.11+ stopped
+            # honoring the inherited root ``stroke="none"``, which made
+            # the SVG-side fix insufficient on its own.
             from PySide6.QtSvg import QSvgGenerator
             if isinstance(painter.device(), QSvgGenerator):
                 pic = QPicture()
                 ppainter = QPainter(pic)
                 ppainter.setRenderHint(QPainter.RenderHint.Antialiasing)
                 ppainter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+                ppainter.setPen(Qt.PenStyle.NoPen)
                 self._math_renderer.render(ppainter, vs)
                 ppainter.end()
                 pic.play(painter)
             else:
+                painter.setPen(Qt.PenStyle.NoPen)
                 self._math_renderer.render(painter, vs)
             painter.restore()
             # Selection highlight (suppressed for grouped items)
