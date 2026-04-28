@@ -13,7 +13,16 @@ authors = [
     {name = "J Aumentado"},
 ]
 dependencies = [
-    "PySide6-Essentials>=6.6",
+    # Pinned to the Qt 6.8 line: Qt 6.11's QSvgRenderer ignores
+    # ``stroke="none"`` (root, per-element, and ``<use>`` site) when
+    # painting to QPrinter's PDF surface, leaking the painter's
+    # default 1pt black pen onto every fill-only path. This breaks
+    # Copy Selection as Image for LaTeX annotations on Qt 6.11+.
+    # The painter-side ``setPen(NoPen)`` workaround also fails because
+    # QSvgRenderer.render() resets pen state internally. Until either
+    # the math render path is rasterized for PDF or Qt fixes the
+    # regression upstream, stay on the 6.8 line.
+    "PySide6-Essentials>=6.8,<6.9",
     "matplotlib>=3.5",
     # Pure-Python LaTeX-math-to-SVG renderer used for display math
     # (e.g. matrices) in annotations. Bundling it as a base dependency

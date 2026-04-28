@@ -588,7 +588,7 @@ def _neutralize_qt_pen_leak(svg_bytes: bytes) -> bytes:
     figure-background path (``<g id="patch_1">``, ``fill: none``) shows
     only the stroke, producing a black bounding-box rectangle.
 
-    Two fixes applied in one parse/serialize pass:
+    Three fixes applied in one parse/serialize pass:
 
     1. Strip matplotlib's ``<g id="patch_1">`` figure-background group
        (no-op on ziamath SVGs, which don't have one).
@@ -598,6 +598,15 @@ def _neutralize_qt_pen_leak(svg_bytes: bytes) -> bytes:
        brackets are all filled rectangles), so blanket no-stroke is
        safe; descendants that do specify a stroke explicitly will
        still override the inherited value.
+    3. Set ``stroke="none"`` directly on every drawable element
+       (``<path>``, ``<rect>``, ``<circle>``, ``<ellipse>``,
+       ``<line>``, ``<polygon>``, ``<polyline>``) that doesn't
+       already specify a stroke. Qt 6.11's ``QSvgRenderer`` stopped
+       honoring root-level inheritance *and* ignores the painter's
+       pen for un-styled paths (so the painter-side
+       ``setPen(Qt.PenStyle.NoPen)`` belt also fails). An explicit
+       per-element ``stroke="none"`` is the only thing the renderer
+       can't bypass.
     """
     _ensure_svg_default_namespace_registered()
     try:
@@ -623,6 +632,25 @@ def _neutralize_qt_pen_leak(svg_bytes: bytes) -> bytes:
 
     if root.get("stroke") is None:
         root.set("stroke", "none")
+
+    # Includes ``use`` because matplotlib renders glyphs as
+    # ``<use xlink:href="#glyph"/>`` referencing ``<path>`` defs. Per
+    # SVG, stroke cascades from the *use site*, not the referenced
+    # element — so ``stroke="none"`` on the ``<path>`` def is invisible
+    # to the renderer when it paints the use instance. The ``<use>``
+    # itself needs the attribute.
+    drawable_tags = {f"{{{SVG_NS}}}{t}" for t in
+                     ("path", "rect", "circle", "ellipse",
+                      "line", "polygon", "polyline", "use")}
+    for el in root.iter():
+        if el.tag not in drawable_tags:
+            continue
+        if el.get("stroke") is not None:
+            continue
+        style = el.get("style") or ""
+        if "stroke:" in style:
+            continue
+        el.set("stroke", "none")
 
     return ET2.tostring(root, encoding="utf-8")
 
