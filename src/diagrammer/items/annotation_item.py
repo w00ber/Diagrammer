@@ -16,7 +16,7 @@ import logging
 import re
 import uuid
 
-from PySide6.QtCore import QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPicture, QTextCursor
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
@@ -278,25 +278,36 @@ def _warn_font_fallback(requested: str, actual: str) -> None:
 
 import sys as _sys
 
-# Common font families grouped by category, with platform-appropriate choices
+# A unified font menu across platforms. The first six entries (the
+# "math-friendly" set) are what the typical user reaches for in
+# annotated diagrams, so they sit at the top regardless of OS.
+#
+# CMU Serif / CMU Sans Serif / STIX Two Text are not bundled with macOS
+# or Windows by default — the README points at install commands. Until
+# they're installed, Qt substitutes a fallback and we log a one-time
+# warning via ``_warn_font_fallback``.
+#
+# Only the trailing monospace block varies by OS, since Menlo/Monaco
+# only exist on macOS, Consolas/Lucida Console only on Windows, etc.
+_COMMON_FONTS = [
+    "STIX Two Text", "CMU Serif", "CMU Sans Serif",
+    "Helvetica", "Arial", "Verdana",
+    "Times New Roman", "Georgia",
+]
+
 if _sys.platform == "darwin":
-    FONT_FAMILIES = [
-        "STIX Two Text", "CMU Serif", "CMU Sans Serif",
-        "Helvetica", "Arial", "Verdana",
-        "Times New Roman", "Georgia", "Palatino",
+    FONT_FAMILIES = _COMMON_FONTS + [
+        "Palatino",
         "Courier New", "Menlo", "Monaco",
     ]
 elif _sys.platform == "win32":
-    FONT_FAMILIES = [
-        "CMU Serif", "CMU Sans Serif",
-        "Cambria Math", "Times New Roman", "Calibri",
-        "Arial", "Verdana", "Segoe UI",
-        "Georgia", "Palatino Linotype",
+    FONT_FAMILIES = _COMMON_FONTS + [
+        "Palatino Linotype", "Cambria Math", "Calibri", "Segoe UI",
         "Courier New", "Consolas", "Lucida Console",
     ]
 else:  # Linux
-    FONT_FAMILIES = [
-        "STIX Two Text", "DejaVu Serif", "Liberation Serif",
+    FONT_FAMILIES = _COMMON_FONTS + [
+        "DejaVu Serif", "Liberation Serif",
         "DejaVu Sans", "Liberation Sans", "Noto Sans",
         "DejaVu Sans Mono", "Liberation Mono", "Noto Mono",
     ]
@@ -311,12 +322,18 @@ _MATH_FONTSET_MAP = {
     "Times New Roman": "stix",
     "Georgia": "stix",
     "Palatino": "stix",
+    "Palatino Linotype": "stix",
+    "Cambria Math": "stix",
     "Helvetica": "stixsans",
     "Arial": "stixsans",
+    "Calibri": "stixsans",
+    "Segoe UI": "stixsans",
     "Verdana": "dejavusans",
     "Courier New": "stix",
     "Menlo": "dejavusans",
     "Monaco": "dejavusans",
+    "Consolas": "dejavusans",
+    "Lucida Console": "dejavusans",
 }
 
 
@@ -950,6 +967,80 @@ def _render_latex_svg(text: str, font_size: float, color: QColor,
             matplotlib.rcParams[k] = v
 
 
+def _painter_target_is_vector_export(painter: QPainter) -> bool:
+    """Return True if *painter* is drawing onto a QSvgGenerator or QPrinter.
+
+    Those are the two vector targets where Qt would otherwise embed text
+    as live type — which fails to render reliably in Illustrator on
+    machines that don't have the source font installed (the font
+    silently substitutes). Raster targets (QImage / widget) don't have
+    this problem because text becomes pixels at paint time anyway, so
+    we leave them alone.
+    """
+    from PySide6.QtSvg import QSvgGenerator
+    dev = painter.device()
+    if isinstance(dev, QSvgGenerator):
+        return True
+    try:
+        from PySide6.QtPrintSupport import QPrinter
+    except ImportError:
+        return False
+    return isinstance(dev, QPrinter)
+
+
+def _outlines_setting_enabled() -> bool:
+    """Return True if the user wants text-as-outlines on copy/export."""
+    try:
+        from diagrammer.panels.settings_dialog import app_settings
+        return bool(getattr(app_settings, "annotation_text_as_outlines", True))
+    except Exception:
+        logger.debug("Could not load annotation_text_as_outlines setting", exc_info=True)
+        return True
+
+
+def _paint_document_as_outlines(painter: QPainter,
+                                doc,
+                                color: QColor) -> None:
+    """Render every glyph in *doc* as a filled QPainterPath.
+
+    Walks the document's blocks, lines, and glyph runs; converts each
+    glyph to a path via ``QRawFont.pathForGlyph()`` and accumulates them
+    into a single path that is filled with *color*.
+
+    Two design points worth noting:
+
+    * Color is uniform (taken from the item's ``defaultTextColor``).
+      Annotations are edited as plain text, so per-character formatting
+      is rare; if a saved file carries rich-text spans with mixed
+      colors they will all paint in the default color in outline mode.
+
+    * ``painter.fillPath`` is used (rather than ``drawPath``) because it
+      ignores the painter's current pen entirely. That sidesteps the
+      "fill + 1pt black stroke" doubled-outline artifact that bit our
+      math SVG rendering on PDF surfaces (see ``_neutralize_qt_pen_leak``).
+      No pen state can leak into the output.
+    """
+    out_path = QPainterPath()
+    block = doc.firstBlock()
+    while block.isValid():
+        layout = block.layout()
+        block_pos = layout.position()
+        for i in range(layout.lineCount()):
+            line = layout.lineAt(i)
+            for run in line.glyphRuns():
+                rf = run.rawFont()
+                indexes = run.glyphIndexes()
+                positions = run.positions()
+                for gi, pos in zip(indexes, positions):
+                    gp = rf.pathForGlyph(gi)
+                    gp.translate(block_pos.x() + pos.x(),
+                                 block_pos.y() + pos.y())
+                    out_path.addPath(gp)
+        block = block.next()
+    if not out_path.isEmpty():
+        painter.fillPath(out_path, color)
+
+
 class AnnotationItem(QGraphicsTextItem):
     """A rich-text annotation that can be placed and edited on the canvas.
 
@@ -1332,6 +1423,18 @@ class AnnotationItem(QGraphicsTextItem):
             painter.setPen(pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(self.boundingRect().adjusted(-2, -2, 2, 2))
+
+        # On vector export targets (QSvgGenerator, QPrinter / clipboard PDF),
+        # convert text to filled outlines so pasted output renders the
+        # same on machines that don't have the source font installed.
+        # Screen and editing always use live text rendering so the
+        # caret, selection, and IME work correctly.
+        if (not self._editing
+                and _painter_target_is_vector_export(painter)
+                and _outlines_setting_enabled()):
+            _paint_document_as_outlines(
+                painter, self.document(), self.defaultTextColor())
+            return
 
         # Let QGraphicsTextItem handle text rendering
         super().paint(painter, option, widget)

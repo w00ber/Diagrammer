@@ -127,6 +127,14 @@ class AppSettings:
         self.default_annotation_bold = _d("annotation", "bold", False)
         self.default_annotation_italic = _d("annotation", "italic", False)
 
+        # Convert annotation text to filled outlines (paths) when copying
+        # to the clipboard or exporting to SVG/PDF. Default on so pasted
+        # output renders identically on machines that don't have the
+        # source font installed — the alternative is type objects that
+        # silently fall back to a different glyph set in Illustrator.
+        # LaTeX math is unaffected: it's already path-based.
+        self.annotation_text_as_outlines: bool = True
+
         # Shape/line annotation defaults
         self.default_shape_stroke_color = QColor(_d("shape", "stroke_color", "#323232"))
         self.default_shape_stroke_width = _d("shape", "stroke_width", 2.0)
@@ -264,6 +272,7 @@ class AppSettings:
                 "default_annotation_color": self.default_annotation_color.name(),
                 "default_annotation_bold": self.default_annotation_bold,
                 "default_annotation_italic": self.default_annotation_italic,
+                "annotation_text_as_outlines": self.annotation_text_as_outlines,
                 "default_shape_stroke_color": self.default_shape_stroke_color.name(),
                 "default_shape_stroke_width": self.default_shape_stroke_width,
                 # Serialize the fill color as both an explicit RGBA
@@ -354,6 +363,9 @@ class AppSettings:
                     self.default_annotation_color = QColor(ac)
                 self.default_annotation_bold = data.get("default_annotation_bold", self.default_annotation_bold)
                 self.default_annotation_italic = data.get("default_annotation_italic", self.default_annotation_italic)
+                self.annotation_text_as_outlines = data.get(
+                    "annotation_text_as_outlines",
+                    self.annotation_text_as_outlines)
                 sc = data.get("default_shape_stroke_color")
                 if sc:
                     self.default_shape_stroke_color = QColor(sc)
@@ -836,6 +848,23 @@ class SettingsDialog(QDialog):
         annot_group.setLayout(annot_form)
         annot_layout.addWidget(annot_group)
 
+        # Copy/export: convert text to filled outlines (paths) so pasted
+        # output renders identically in Illustrator, etc. on machines
+        # that don't have the source font installed.
+        self._annot_outlines_cb = QCheckBox(
+            "Convert text to outlines on copy / SVG / PDF export")
+        self._annot_outlines_cb.setChecked(settings.annotation_text_as_outlines)
+        self._annot_outlines_cb.setToolTip(
+            "When on, annotation text is rendered as filled vector paths "
+            "in clipboard PDFs and exported SVG / PDF files. The result "
+            "pastes into Illustrator and other apps with consistent glyph "
+            "shapes even when the source font isn't installed on the "
+            "destination machine — at the cost of the text no longer "
+            "being editable as type. LaTeX math is always path-based and "
+            "is unaffected."
+        )
+        annot_layout.addWidget(self._annot_outlines_cb)
+
         annot_hint = QLabel("Use $...$ in annotations for inline LaTeX math\n"
                             "and $$...$$ for display math (matrices, etc.).\n"
                             "STIX Two Text and CMU Serif closely match\n"
@@ -1216,6 +1245,7 @@ class SettingsDialog(QDialog):
         self._annot_size_spin.setValue(self._settings.default_annotation_size)
         self._annot_color = QColor(self._settings.default_annotation_color)
         self._update_color_btn(self._annot_color_btn, self._annot_color)
+        self._annot_outlines_cb.setChecked(self._settings.annotation_text_as_outlines)
         self._export_scale_spin.setValue(self._settings.export_scale * 100.0)
 
     def _pick_annot_color(self) -> None:
@@ -1457,6 +1487,7 @@ class SettingsDialog(QDialog):
         self._settings.default_annotation_font = self._annot_font_combo.currentText()
         self._settings.default_annotation_size = self._annot_size_spin.value()
         self._settings.default_annotation_color = QColor(self._annot_color)
+        self._settings.annotation_text_as_outlines = self._annot_outlines_cb.isChecked()
         # Keyboard shortcut overrides
         from diagrammer import shortcuts as _sc
         for aid, row in self._sc_rows.items():

@@ -35,9 +35,12 @@ Components are simple SVGs with named layers (`artwork`,
 - **Simple shape drawing** — rectangles, ellipses, and lines with
   editable properties and resize handles.
 - **Annotations with LaTeX math** — inline `$...$` and display `$$...$$`
-  (matrices, `align`, etc.) rendered as resolution-independent SVG. See
-  [docs/math-annotations.md](docs/math-annotations.md) for the rendering
-  backends and optional system-LaTeX setup.
+  (matrices, `align`, etc.) rendered as resolution-independent SVG. Text
+  is converted to vector outlines on copy / SVG / PDF export so pasted
+  output looks the same on machines without the source font installed.
+  See [docs/math-annotations.md](docs/math-annotations.md) for rendering
+  backends, optional system-LaTeX setup, and the recommended math fonts
+  (CMU Serif, STIX Two Text) and how to install them on each platform.
 - **Undo/redo** for every operation, plus cut/copy/paste that preserves
   connection topology.
 - **Zoom & pan** — scroll-wheel zoom at cursor, zoom-window mode, fit-all,

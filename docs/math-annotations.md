@@ -97,6 +97,64 @@ When `usetex` mode is active, matrix layout uses two settings exposed in
 These only affect `usetex` output. ziamath has its own internal layout
 and ignores them.
 
+## Fonts
+
+The font menu in **Settings → Annotations** lists a math-friendly set
+at the top — STIX Two Text, CMU Serif, CMU Sans Serif — that closely
+match TeX's Computer Modern style. Neither macOS nor Windows ships
+these by default, so you'll need to install them once per machine.
+
+**macOS** (Homebrew):
+
+```bash
+brew install --cask font-computer-modern   # CMU Serif / CMU Sans Serif
+brew install --cask font-stix-two-text     # STIX Two Text
+```
+
+(If you're on a fresh Homebrew install you may need to `brew tap
+homebrew/cask-fonts` first; recent versions have the fonts in the main
+cask repo.)
+
+**Windows**: the official upstream releases are the simplest route:
+
+- Computer Modern Unicode (CMU): <https://sourceforge.net/projects/cm-unicode/>
+  — download the latest `.zip`, unzip, right-click each `.otf` and choose
+  **Install for all users**.
+- STIX Two Text: <https://www.stixfonts.org/> — download the OpenType
+  bundle and install all `.otf` files the same way.
+
+You can also install them per-user from the [Microsoft Store](https://apps.microsoft.com/)
+or the cross-platform [`font-stix`](https://www.npmjs.com/package/@fontsource/stix-two-text)
+/ [`font-cmu`](https://www.npmjs.com/package/cmu-fonts) `npm` packages
+if you have Node tooling available.
+
+**Linux**: the fonts are usually packaged. On Debian / Ubuntu:
+
+```bash
+sudo apt install fonts-cmu fonts-stix
+```
+
+If a font isn't installed, Qt silently substitutes a fallback (typically
+the platform default sans-serif) and Diagrammer logs a one-time warning
+to the terminal. The annotation will still render, just with the
+substitute glyphs — math via mathtext / ziamath is unaffected because
+those backends embed their own fonts inside the math SVG.
+
+## Copy / export portability
+
+When you copy an annotation to the clipboard or export the diagram to
+SVG / PDF, Diagrammer can render annotation text as **filled vector
+outlines** instead of live type. Pasting into Illustrator, Inkscape, or
+PowerPoint then yields path objects that look identical on every
+machine, regardless of which fonts are installed there.
+
+The toggle lives in **Settings → Annotations → "Convert text to
+outlines on copy / SVG / PDF export"** and is on by default. Turn it
+off if you want pasted text to remain editable as type — at the cost
+of relying on the destination machine to have the source font.
+
+LaTeX math is always path-based, so it's unaffected by this setting.
+
 ## Troubleshooting
 
 - *"Display math (`$$...$$`) was detected, but no renderer is
