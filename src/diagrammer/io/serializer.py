@@ -351,7 +351,6 @@ class DiagramSerializer:
 
         # Load SVG images
         for sid in data.get("svg_images", []):
-            import base64
             svg_data = base64.b64decode(sid["svg_data"])
             item = SvgImageItem(
                 svg_data,
@@ -513,7 +512,6 @@ def _serialize_line(item) -> dict:
 
 
 def _serialize_svg_image(item) -> dict:
-    import base64
     return {
         "id": item.instance_id,
         "pos": [item.pos().x(), item.pos().y()],
