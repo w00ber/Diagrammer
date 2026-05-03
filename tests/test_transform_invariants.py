@@ -188,44 +188,34 @@ class TestWireFollowsPort:
         assert conn._source_port.scene_center().x() == pytest.approx(new_src.x())
         assert conn._source_port.scene_center().y() == pytest.approx(new_src.y())
 
-    @pytest.mark.xfail(
-        reason="Phase B: waypoints are absolute scene coords and don't follow "
-               "the port when its parent component is rotated.",
-        strict=False,
-    )
     def test_waypoint_follows_anchor_port_through_rotation(self, scene, library):
+        """A waypoint anchored to a port must move with that port through any
+        component transform. Port-relative storage (Phase B) makes this
+        automatic: the (port, dx, dy) tuple is invariant; only the resolved
+        scene point changes when the port moves."""
         cdef = _two_port_def(library)
         comp_a = _place_component(scene, cdef, QPointF(0, 0))
         comp_b = _place_component(scene, cdef, QPointF(300, 0))
-        # Place a waypoint right next to comp_a's source port. The "natural"
-        # anchor for that waypoint is comp_a's port; after rotating comp_a
-        # the waypoint's position relative to that port should be unchanged.
-        src_pt = comp_a.ports[-1].scene_center()
+        # Waypoint near comp_a's source port — closest-port heuristic
+        # binds it to that port.
+        src_port = comp_a.ports[-1]
+        src_pt = src_port.scene_center()
         wp = QPointF(src_pt.x() + 10, src_pt.y() - 20)
-        conn = _connect(scene, comp_a, comp_a.ports[-1].port_name,
+        conn = _connect(scene, comp_a, src_port.port_name,
                         comp_b, comp_b.ports[0].port_name, waypoints=[wp])
-        # Capture (port -> waypoint) offset.
-        before_offset = (
-            conn._waypoints[0].x() - comp_a.ports[-1].scene_center().x(),
-            conn._waypoints[0].y() - comp_a.ports[-1].scene_center().y(),
-        )
+        # The anchor must have been bound to comp_a's port.
+        assert conn._anchors[0].anchor is src_port
+        anchor_dx = conn._anchors[0].dx
+        anchor_dy = conn._anchors[0].dy
+        # Rotate the component; the anchor offset is invariant in the
+        # port's local frame, so dx/dy don't change.
         scene.undo_stack.push(RotateComponentCommand(comp_a, 90))
-        # The Phase B contract: a port-anchored waypoint stays at the same
-        # offset relative to its anchor port. Today, the waypoint stays put
-        # in scene space, so this offset changes — hence xfail.
-        wp_now = conn._waypoints[0]
-        if hasattr(wp_now, "to_scene"):
-            wp_now = wp_now.to_scene()
-        after_offset = (
-            wp_now.x() - comp_a.ports[-1].scene_center().x(),
-            wp_now.y() - comp_a.ports[-1].scene_center().y(),
-        )
-        # Allow rotation of the offset vector (rotating the component
-        # rotates the local frame). Compare magnitudes.
-        import math
-        before_mag = math.hypot(*before_offset)
-        after_mag = math.hypot(*after_offset)
-        assert after_mag == pytest.approx(before_mag, abs=0.5)
+        assert conn._anchors[0].dx == pytest.approx(anchor_dx)
+        assert conn._anchors[0].dy == pytest.approx(anchor_dy)
+        # And the resolved scene point matches the anchor's new position.
+        expected = src_port.scene_center()
+        assert conn._waypoints[0].x() == pytest.approx(expected.x() + anchor_dx)
+        assert conn._waypoints[0].y() == pytest.approx(expected.y() + anchor_dy)
 
 
 # ---------------------------------------------------------------------------
@@ -376,6 +366,51 @@ class TestSaveLoadRoundtrip:
         assert_snapshots_equal(before, scene_snapshot(scene2),
                                msg="Wire waypoints must round-trip")
 
+    def test_v1_format_file_loads_via_migration(
+        self, scene, library, tmp_path: Path,
+    ):
+        """A pre-Phase-B v1 file (absolute waypoints) must load and rebind
+        each waypoint to its closest port — geometry preserved."""
+        import json
+        from diagrammer.canvas.scene import DiagramScene
+        from diagrammer.io.serializer import DiagramSerializer
+
+        cdef = _two_port_def(library)
+        comp_a = _place_component(scene, cdef, QPointF(0, 0))
+        comp_b = _place_component(scene, cdef, QPointF(300, 0))
+        src_port = comp_a.ports[-1]
+        tgt_port = comp_b.ports[0]
+        src_pt = src_port.scene_center()
+        tgt_pt = tgt_port.scene_center()
+        wp = QPointF((src_pt.x() + tgt_pt.x()) / 2,
+                     (src_pt.y() + tgt_pt.y()) / 2 - 40)
+        _connect(scene, comp_a, src_port.port_name,
+                 comp_b, tgt_port.port_name, waypoints=[wp])
+
+        # Save in v2, then rewrite the file as v1 (absolute waypoints)
+        # to simulate a file written by the old code.
+        path = tmp_path / "v1.dgm"
+        DiagramSerializer.save(scene, path)
+        data = json.loads(path.read_text())
+        data["version"] = "1.1"
+        for cd in data["connections"]:
+            cd["waypoints"] = [[wp.x(), wp.y()]]
+        path.write_text(json.dumps(data))
+
+        scene2 = DiagramScene(library=library)
+        DiagramSerializer.load(scene2, path, library=library)
+        # The migrated wire's waypoint should resolve to the same scene point.
+        from diagrammer.items.connection_item import ConnectionItem
+        conns = [i for i in scene2.items() if isinstance(i, ConnectionItem)]
+        assert len(conns) == 1
+        loaded = conns[0]
+        assert len(loaded._waypoints) == 1
+        assert loaded._waypoints[0].x() == pytest.approx(wp.x(), abs=0.5)
+        assert loaded._waypoints[0].y() == pytest.approx(wp.y(), abs=0.5)
+        # And it should be port-anchored (closest port wins; here source
+        # is closer because PASTE_OFFSET-style offset isn't in play).
+        assert loaded._anchors[0].anchor in (loaded.source_port, loaded.target_port)
+
 
 # ---------------------------------------------------------------------------
 # Clipboard round-trip — gates Phase B (port-relative waypoints in the
@@ -436,10 +471,47 @@ class TestClipboardRoundtrip:
         scene.undo_stack.push(RotateItemCommand(rect, 30))
         rect.setSelected(True)
         host._copy()
-        # The copied dict must carry enough state to reproduce the rotation.
-        # Today the entry has neither 'rotation' nor 'rotation_angle'.
         copied = [e for e in host._clipboard if e.get("type") == "rectangle"]
         assert copied, "rectangle not copied"
         assert "rotation" in copied[0] or "rotation_angle" in copied[0], (
             "shape clipboard entry is missing rotation state"
         )
+
+    def test_paste_preserves_wire_shape_relative_to_components(
+        self, scene, library,
+    ):
+        """Copying a (component, component, wire-with-waypoint) selection and
+        pasting should reproduce the wire shape relative to the pasted
+        components — i.e. the waypoint sits at the same offset from its
+        anchor port. Pre-Phase-B this drifted because waypoints were shifted
+        by PASTE_OFFSET while the ports were also shifted, double-offsetting."""
+        host = _make_clipboard_host(scene, library)
+        cdef = _two_port_def(library)
+        comp_a = _place_component(scene, cdef, QPointF(0, 0))
+        comp_b = _place_component(scene, cdef, QPointF(300, 0))
+        src_port = comp_a.ports[-1]
+        tgt_port = comp_b.ports[0]
+        src_pt = src_port.scene_center()
+        tgt_pt = tgt_port.scene_center()
+        wp = QPointF((src_pt.x() + tgt_pt.x()) / 2,
+                     (src_pt.y() + tgt_pt.y()) / 2 - 40)
+        conn = _connect(scene, comp_a, src_port.port_name,
+                        comp_b, tgt_port.port_name, waypoints=[wp])
+        # Capture the wire's anchor offsets before copy.
+        original_offsets = [(a.dx, a.dy) for a in conn._anchors]
+
+        for item in (comp_a, comp_b, conn):
+            item.setSelected(True)
+        host._copy()
+        host._paste()
+
+        # Two new components and one new wire should now exist.
+        from diagrammer.items.component_item import ComponentItem
+        from diagrammer.items.connection_item import ConnectionItem
+        all_comps = [i for i in scene.items() if isinstance(i, ComponentItem)]
+        all_conns = [i for i in scene.items() if isinstance(i, ConnectionItem)]
+        assert len(all_comps) == 4
+        assert len(all_conns) == 2
+        pasted_conn = next(c for c in all_conns if c is not conn)
+        pasted_offsets = [(a.dx, a.dy) for a in pasted_conn._anchors]
+        assert pasted_offsets == pytest.approx(original_offsets, abs=0.5)

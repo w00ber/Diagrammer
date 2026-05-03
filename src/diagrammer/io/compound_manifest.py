@@ -28,7 +28,7 @@ from PySide6.QtGui import QColor
 
 logger = logging.getLogger(__name__)
 
-MANIFEST_VERSION = "1.0"
+MANIFEST_VERSION = "2.0"
 MANIFEST_SUFFIX = ".dgmcomp"
 
 
@@ -155,8 +155,9 @@ def save_compound_manifest(
         x, y = blob["pos"]
         blob["pos"] = [x - ox, y - oy]
 
-    for blob in conn_blobs:
-        blob["waypoints"] = [[wx - ox, wy - oy] for wx, wy in blob.get("waypoints", [])]
+    # Connection waypoints are now stored port-relative ({"a", "dx", "dy"}),
+    # so they follow their endpoint ports through the manifest's positional
+    # offset automatically — no per-waypoint shift needed.
 
     data = {
         "version": MANIFEST_VERSION,
@@ -292,10 +293,23 @@ def instantiate_compound(
             conn.routing_mode = cd["routing_mode"]
         if cd.get("closed"):
             conn.closed = True
-        if cd.get("waypoints"):
+        wps = cd.get("waypoints") or []
+        if wps and isinstance(wps[0], dict):
+            from diagrammer.items.connection_item import Waypoint
+            anchors = []
+            for wd in wps:
+                anchor_port = src_port if wd.get("a", "src") == "src" else tgt_port
+                anchors.append(Waypoint(anchor_port,
+                                        float(wd.get("dx", 0.0)),
+                                        float(wd.get("dy", 0.0))))
+            conn._anchors = anchors
+            conn._waypoints = [a.to_scene() for a in anchors]
+            conn.update_route()
+        elif wps:
+            # Legacy v1 manifest: absolute waypoints offset by drop position.
             conn.vertices = [
                 QPointF(drop_pos.x() + wx, drop_pos.y() + wy)
-                for wx, wy in cd["waypoints"]
+                for wx, wy in wps
             ]
         # Connections don't have a "pos" — skip the positional offset.
         _apply_layer_and_pos(conn, cd, set_pos=False)

@@ -41,6 +41,36 @@ ROUTE_DIRECT = "direct"      # Straight lines between waypoints (for rotated gro
 if TYPE_CHECKING:
     from diagrammer.items.port_item import PortItem
 
+
+class Waypoint:
+    """A user-placed wire bend, stored relative to a connection port.
+
+    Each waypoint anchors to one of the connection's two endpoint ports
+    (``source_port`` or ``target_port``) by an offset ``(dx, dy)`` in
+    scene units. Its scene position is reconstructed on demand:
+
+        scene_pt = anchor.scene_center() + (dx, dy)
+
+    So when the anchor port moves with its parent component (drag,
+    rotate, flip), the waypoint follows automatically — no special-case
+    transform code needed at the call site.
+    """
+
+    __slots__ = ("anchor", "dx", "dy")
+
+    def __init__(self, anchor: "PortItem", dx: float, dy: float) -> None:
+        self.anchor = anchor
+        self.dx = float(dx)
+        self.dy = float(dy)
+
+    def to_scene(self) -> QPointF:
+        c = self.anchor.scene_center()
+        return QPointF(c.x() + self.dx, c.y() + self.dy)
+
+    def __repr__(self) -> str:
+        port_name = getattr(self.anchor, "port_name", "?")
+        return f"Waypoint({port_name}, {self.dx:.1f}, {self.dy:.1f})"
+
 # ---------------------------------------------------------------------------
 # Visual defaults
 # ---------------------------------------------------------------------------
@@ -101,7 +131,18 @@ class ConnectionItem(QGraphicsPathItem):
         self._routing_mode: str = ROUTE_ORTHO  # default; scene can override
         self._closed: bool = False  # True for closed polygon (source == target)
 
-        # Waypoints (user-placed intermediate points, NOT port endpoints) -
+        # Waypoints. Two parallel representations:
+        #   ``_anchors`` is the canonical port-relative storage (Waypoint
+        #   objects). It survives port motion: anchored waypoints follow
+        #   their port through any transform.
+        #   ``_waypoints`` is a scene-space cache derived from anchors,
+        #   exposed for compat with the (large) body of code that reads
+        #   ``conn._waypoints[i]`` as a QPointF. The two stay in sync
+        #   through the helper methods on this class — direct writes to
+        #   ``_waypoints`` will go stale on the next ``update_route()``,
+        #   so call sites that mutate must use ``_set_waypoint_at`` /
+        #   ``_set_waypoints_from_scene`` / ``_pop_waypoint_at`` instead.
+        self._anchors: list[Waypoint] = []
         self._waypoints: list[QPointF] = []
 
         # Cached expanded route (rebuilt by update_route) -----------------
@@ -206,8 +247,55 @@ class ConnectionItem(QGraphicsPathItem):
 
     @vertices.setter
     def vertices(self, verts: list[QPointF]) -> None:
-        self._waypoints = [QPointF(v) for v in verts]
+        self._set_waypoints_from_scene(verts)
         self.update_route()
+
+    # ----- port-relative waypoint storage helpers ------------------------
+
+    def _make_anchor(self, scene_pt: QPointF) -> "Waypoint":
+        """Bind *scene_pt* to whichever endpoint port is closer (manhattan).
+
+        The source port wins ties so anchor selection is deterministic.
+        Returns a ``Waypoint`` object whose ``to_scene()`` reproduces
+        the original point exactly (modulo float precision).
+        """
+        sc_src = self._source_port.scene_center()
+        sc_tgt = self._target_port.scene_center()
+        d_src = abs(scene_pt.x() - sc_src.x()) + abs(scene_pt.y() - sc_src.y())
+        d_tgt = abs(scene_pt.x() - sc_tgt.x()) + abs(scene_pt.y() - sc_tgt.y())
+        anchor = self._source_port if d_src <= d_tgt else self._target_port
+        c = anchor.scene_center()
+        return Waypoint(anchor, scene_pt.x() - c.x(), scene_pt.y() - c.y())
+
+    def _set_waypoints_from_scene(self, scene_pts) -> None:
+        """Replace all waypoints by rebinding each scene point to a port."""
+        self._anchors = [self._make_anchor(QPointF(p)) for p in scene_pts]
+        self._waypoints = [a.to_scene() for a in self._anchors]
+
+    def _set_waypoint_at(self, idx: int, scene_pt: QPointF) -> None:
+        """Replace waypoint *idx*, rebinding to the now-closest port."""
+        self._anchors[idx] = self._make_anchor(QPointF(scene_pt))
+        self._waypoints[idx] = self._anchors[idx].to_scene()
+
+    def _pop_waypoint_at(self, idx: int) -> QPointF:
+        """Remove waypoint *idx* (in lockstep across both representations)."""
+        anchor = self._anchors.pop(idx)
+        self._waypoints.pop(idx)
+        return anchor.to_scene()
+
+    def _refresh_from_anchors(self) -> None:
+        """Recompute the scene-space cache from anchors.
+
+        Call before any logic that reads ``_waypoints`` if the endpoint
+        ports may have moved (component drag/rotate/flip). Safe to call
+        eagerly — does no work beyond ``port.scene_center()`` lookups.
+        """
+        if len(self._anchors) != len(self._waypoints):
+            # Defensive: recover from any direct write that bypassed the
+            # helpers (treat ``_waypoints`` as the truth in that case).
+            self._anchors = [self._make_anchor(QPointF(p))
+                             for p in self._waypoints]
+        self._waypoints = [a.to_scene() for a in self._anchors]
 
     # =====================================================================
     # Route expansion
@@ -467,7 +555,13 @@ class ConnectionItem(QGraphicsPathItem):
         return list(self._expanded)
 
     def update_route(self) -> None:
-        """Rebuild the expanded route and QPainterPath."""
+        """Rebuild the expanded route and QPainterPath.
+
+        Refreshes the scene-space waypoint cache from anchors first so the
+        wire automatically follows ports that have moved (component drag,
+        rotate, flip) since the last route build.
+        """
+        self._refresh_from_anchors()
         self._expanded = self._build_expanded()
         path = build_rounded_path(
             self._expanded, self._corner_radius, closed=self._closed,
@@ -510,7 +604,7 @@ class ConnectionItem(QGraphicsPathItem):
         it instead of stripping.
         """
         if self._closed:
-            self._waypoints = [QPointF(p) for p in expanded]
+            self._set_waypoints_from_scene([QPointF(p) for p in expanded])
             self.update_route()
             return
 
@@ -530,7 +624,6 @@ class ConnectionItem(QGraphicsPathItem):
                 wps.append(QPointF(src))
             if tgt_is_junction:
                 wps.append(QPointF(tgt))
-            self._waypoints = wps
         else:
             wps = [QPointF(p) for p in expanded[1:-1]]
             # Port-attached endpoints: strip waypoints that coincide with
@@ -550,7 +643,7 @@ class ConnectionItem(QGraphicsPathItem):
             else:
                 while wps and point_distance(wps[-1], tgt) < 1.0:
                     wps.pop()
-            self._waypoints = wps
+        self._set_waypoints_from_scene(wps)
         self.update_route()
 
     # =====================================================================

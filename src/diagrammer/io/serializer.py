@@ -55,10 +55,14 @@ from PySide6.QtWidgets import QGraphicsScene
 # Version history:
 #   1.0 - initial format
 #   1.1 - embed SVG data + metadata in each component for portability
+#   2.0 - wire waypoints stored as port-relative offsets:
+#         {"a": "src"|"tgt", "dx": float, "dy": float}.
+#         The v1 absolute-coordinate form ([x, y]) is still accepted on
+#         load and rebound to the closest endpoint port automatically.
 # ---------------------------------------------------------------------------
 
-FORMAT_MAJOR = 1
-FORMAT_MINOR = 1
+FORMAT_MAJOR = 2
+FORMAT_MINOR = 0
 FORMAT_VERSION = f"{FORMAT_MAJOR}.{FORMAT_MINOR}"
 
 
@@ -287,9 +291,24 @@ class DiagramSerializer:
                 conn.routing_mode = cd["routing_mode"]
             if cd.get("closed"):
                 conn.closed = True
-            # Apply waypoints
-            if cd.get("waypoints"):
-                conn.vertices = [QPointF(w[0], w[1]) for w in cd["waypoints"]]
+            # Apply waypoints. The v2 form is {"a", "dx", "dy"} and binds
+            # directly to the resolved port. The legacy v1 form is [x, y]
+            # in scene coordinates and rebinds via the closest-port helper
+            # for backward compat (see version history above).
+            wps = cd.get("waypoints") or []
+            if wps and isinstance(wps[0], dict):
+                from diagrammer.items.connection_item import Waypoint
+                anchors = []
+                for wd in wps:
+                    anchor_port = src_port if wd.get("a", "src") == "src" else tgt_port
+                    anchors.append(Waypoint(anchor_port,
+                                            float(wd.get("dx", 0.0)),
+                                            float(wd.get("dy", 0.0))))
+                conn._anchors = anchors
+                conn._waypoints = [a.to_scene() for a in anchors]
+                conn.update_route()
+            elif wps:
+                conn.vertices = [QPointF(w[0], w[1]) for w in wps]
             conn._layer_index = cd.get("layer", 0)
             scene.addItem(conn)
             scene.register_connection(conn)
@@ -456,7 +475,11 @@ def _serialize_connection(item) -> dict:
             "component_id": tgt_port.component.instance_id,
             "port_name": tgt_port.port_name,
         },
-        "waypoints": [[w.x(), w.y()] for w in item.vertices],
+        "waypoints": [
+            {"a": "src" if a.anchor is item.source_port else "tgt",
+             "dx": a.dx, "dy": a.dy}
+            for a in item._anchors
+        ],
         "line_width": item.line_width,
         "line_color": item.line_color.name(),
         "corner_radius": item.corner_radius,

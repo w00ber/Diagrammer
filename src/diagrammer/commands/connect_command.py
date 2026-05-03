@@ -159,11 +159,11 @@ class EditWaypointsCommand(QUndoCommand):
         self.setText("Edit connection route")
 
     def redo(self) -> None:
-        self._connection._waypoints = [QPointF(w) for w in self._new]
+        self._connection._set_waypoints_from_scene(self._new)
         self._connection.update_route()
 
     def undo(self) -> None:
-        self._connection._waypoints = [QPointF(w) for w in self._old]
+        self._connection._set_waypoints_from_scene(self._old)
         self._connection.update_route()
 
 

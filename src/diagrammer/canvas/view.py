@@ -512,7 +512,7 @@ class DiagramView(QGraphicsView):
                         anchor.x() + (v.x() - anchor.x()) * sx,
                         anchor.y() + (v.y() - anchor.y()) * sy,
                     ))
-                m._waypoints = new_verts
+                m._set_waypoints_from_scene(new_verts)
                 m.update_route()
                 continue
 
@@ -605,7 +605,7 @@ class DiagramView(QGraphicsView):
                         m._height = a_h
                         m.update()
                     elif isinstance(m, ConnectionItem) and a_verts is not None:
-                        m._waypoints = [QPointF(v) for v in a_verts]
+                        m._set_waypoints_from_scene(a_verts)
                         m.update_route()
                 self._scene.update_connections()
 
@@ -624,7 +624,7 @@ class DiagramView(QGraphicsView):
                         m._height = o_h
                         m.update()
                     elif isinstance(m, ConnectionItem) and o_verts is not None:
-                        m._waypoints = [QPointF(v) for v in o_verts]
+                        m._set_waypoints_from_scene(o_verts)
                         m.update_route()
                 self._scene.update_connections()
 
@@ -1338,20 +1338,20 @@ class DiagramView(QGraphicsView):
                 sel_indices = self._selected_waypoint_set.get(conn_id, set())
                 for idx in sel_indices:
                     if 0 <= idx < len(conn._waypoints) and idx < len(orig_wps):
-                        conn._waypoints[idx] = QPointF(
+                        conn._set_waypoint_at(idx, QPointF(
                             orig_wps[idx].x() + delta.x(),
                             orig_wps[idx].y() + delta.y(),
-                        )
+                        ))
                 conn.update_route()
 
             # Shift internal connection waypoints
             for conn in self._drag_internal_conns:
                 orig_wps = self._drag_conn_waypoints.get(conn.instance_id, [])
                 if orig_wps:
-                    conn._waypoints = [
+                    conn._set_waypoints_from_scene([
                         QPointF(w.x() + delta.x(), w.y() + delta.y())
                         for w in orig_wps
-                    ]
+                    ])
                 conn.update_route()
 
             # Update external connections
@@ -1417,10 +1417,10 @@ class DiagramView(QGraphicsView):
                 for conn in self._drag_internal_conns:
                     orig_wps = self._drag_conn_waypoints.get(conn.instance_id, [])
                     if orig_wps:
-                        conn._waypoints = [
+                        conn._set_waypoints_from_scene([
                             QPointF(w.x() + delta.x(), w.y() + delta.y())
                             for w in orig_wps
-                        ]
+                        ])
                     conn.update_route()
 
                 # Update non-internal connections (external wires to the group)
@@ -1777,12 +1777,12 @@ class DiagramView(QGraphicsView):
             if tgt_in:
                 tgt_pos = si.target_port.scene_center()
                 while si._waypoints and point_distance(si._waypoints[-1], tgt_pos) < 1.0:
-                    si._waypoints.pop()
+                    si._pop_waypoint_at(len(si._waypoints) - 1)
                     changed = True
             if src_in:
                 src_pos = si.source_port.scene_center()
                 while si._waypoints and point_distance(si._waypoints[0], src_pos) < 1.0:
-                    si._waypoints.pop(0)
+                    si._pop_waypoint_at(0)
                     changed = True
             if changed:
                 self._drag_ext_conn_orig_wps[si.instance_id] = orig
