@@ -664,6 +664,64 @@ class TestGroupTransform:
             assert a.x() == pytest.approx(e.x(), abs=0.5)
             assert a.y() == pytest.approx(e.y(), abs=0.5)
 
+    def test_flip_then_rotate_keeps_wire_shape_rigid(self, scene, library):
+        """User-reported regression: flipping a wired group, then rotating
+        it, sent everything to random positions. Cause: ``_flip_selected``
+        relied on port-local offsets to flip wire shapes, which is wrong
+        for auto-routed bends and for closed-polygon waypoints (whose
+        anchor port lives on a junction that doesn't carry the flip).
+
+        Invariant: the wire's expanded route, projected into each
+        anchored port's local frame, is unchanged across the
+        composite flip+rotate. That is the definition of "rigid body
+        congruent with the parent components".
+        """
+        import math as _math
+        cdef = _two_port_def(library)
+        comp_a = _place_component(scene, cdef, QPointF(0, 0))
+        comp_b = _place_component(scene, cdef, QPointF(300, 100))
+        wp = QPointF(225, 60)
+        conn = _connect(scene, comp_a, comp_a.ports[-1].port_name,
+                        comp_b, comp_b.ports[0].port_name, waypoints=[wp])
+
+        # Capture each wire interior point as (anchor_port, port_local).
+        # After any rigid-body transform, those triples must be
+        # invariant — the parent's transform changes the port frame
+        # but the local offset within that frame doesn't.
+        def _interior_in_anchor_local(c):
+            out = []
+            for p in c.all_points()[1:-1]:
+                sc_src = c.source_port.scene_center()
+                sc_tgt = c.target_port.scene_center()
+                d_src = abs(p.x() - sc_src.x()) + abs(p.y() - sc_src.y())
+                d_tgt = abs(p.x() - sc_tgt.x()) + abs(p.y() - sc_tgt.y())
+                anchor = c.source_port if d_src <= d_tgt else c.target_port
+                out.append((anchor, anchor.mapFromScene(QPointF(p))))
+            return out
+
+        before = _interior_in_anchor_local(conn)
+
+        host = _make_transform_host(scene, library)
+        for item in (comp_a, comp_b, conn):
+            item.setSelected(True)
+        host._flip_selected(horizontal=True)
+        for item in (comp_a, comp_b, conn):
+            item.setSelected(True)
+        host._rotate_selected(90)
+
+        after = _interior_in_anchor_local(conn)
+        assert len(after) == len(before), (
+            "wire gained/lost interior points during flip+rotate"
+        )
+        for (a_port_b, a_local_b), (a_port_a, a_local_a) in zip(before, after):
+            # Anchor port may differ if a point sat on the boundary
+            # between source and target neighborhoods, but the
+            # port-local offset within whichever port it picks must
+            # round-trip the same scene shape; assert the resolved
+            # scene point matches the rotated+mirrored original.
+            assert a_local_a.x() == pytest.approx(a_local_b.x(), abs=2.0)
+            assert a_local_a.y() == pytest.approx(a_local_b.y(), abs=2.0)
+
     def test_group_rotate_identity_round_trip_with_undo(self, scene, library):
         """Undo of a group rotation must restore exact geometry — every
         mutation in the macro lives in a QUndoCommand."""
