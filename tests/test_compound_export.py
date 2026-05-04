@@ -66,6 +66,54 @@ class TestCompoundExportRoundtrip:
         # Original component had ports — the compound preserves them.
         assert len(loaded.ports) == len(cdef.ports)
 
+    def test_unnamed_artwork_group_is_preserved(
+        self, scene, library, tmp_path: Path,
+    ):
+        """User-reported regression: the QPS1 SVG keeps its visible
+        artwork in an unnamed ``<g>`` (rather than ``<g id="artwork">``),
+        and the compound exporter only copied the named group — so
+        QPS1's diamond + bar were silently dropped on export and the
+        re-placed compound appeared as just the leads. Falling back
+        to "any non-hidden top-level child of the root" matches
+        ``ComponentDef.from_svg``'s own fallback for these SVGs."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QImage, QPainter
+        from PySide6.QtSvg import QSvgRenderer
+
+        # QPS1 (or any component whose artwork is in an unnamed <g>)
+        # — try both bundled paths so the test isn't tied to a single
+        # category folder.
+        qps1 = (library.get("SLIDES_3pt/circuits/quantum/QPS1")
+                or library.get("PAPER_2pt/circuits/quantum/QPS1"))
+        if qps1 is None:
+            pytest.skip("QPS1 fixture not present in bundled library")
+
+        comp = ComponentItem(qps1)
+        comp.setPos(QPointF(0, 0))
+        scene.addItem(comp)
+        out = tmp_path / "qps1_compound.svg"
+        export_compound_component(scene, [comp], out, component_name="qps1c")
+
+        # Render the exported compound. With the bug present, only the
+        # two leads render (~tens of non-white pixels). With the fix,
+        # the diamond + bar render too — many more non-white pixels.
+        r = QSvgRenderer(str(out))
+        assert r.isValid()
+        img = QImage(200, 200, QImage.Format.Format_ARGB32)
+        img.fill(Qt.GlobalColor.white)
+        p = QPainter(img)
+        r.render(p)
+        p.end()
+        non_white = sum(
+            1 for y in range(img.height()) for x in range(img.width())
+            if img.pixel(x, y) != 0xffffffff
+        )
+        assert non_white >= 200, (
+            f"Compound SVG renders only {non_white} non-white pixels; "
+            f"expected the artwork (diamond + bar) to add several "
+            f"hundred more on top of the leads."
+        )
+
     def test_user_compound_folder_scans_cleanly(
         self, scene, library, tmp_path: Path,
     ):

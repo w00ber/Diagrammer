@@ -271,13 +271,27 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
     if hasattr(comp, '_style_overrides') and not comp.style_overrides.is_empty():
         ComponentItem._apply_style_overrides(root, comp.style_overrides)
 
-    # Find artwork group
+    # Find artwork group. SVGs that follow the convention use
+    # ``<g id="artwork">`` and we copy its direct children. Components
+    # whose visible artwork lives in an unnamed ``<g>`` (e.g. QPS1) or
+    # is mixed at the root level fall back to ``art_root`` below — we
+    # treat the SVG root itself as the source and emit every top-level
+    # child that isn't one of the known-hidden layer kinds (ports,
+    # labels, stretch, snap, decorative, guides). That mirrors how
+    # ``ComponentItem`` renders these on canvas, so the compound
+    # export looks the same as the placed component.
     art_elem = None
     for elem in root.iter():
         tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
         if tag == "g" and elem.get("id") == "artwork":
             art_elem = elem
             break
+    art_root = root if art_elem is None else None
+    _hidden_layer_ids = ("ports", "labels", "stretch", "snap",
+                         "decorative", "guides", "leads",
+                         "leads-left", "leads-right",
+                         "leads-top", "leads-bottom",
+                         "tile")
 
     # Find every lead group: legacy "leads" plus direction-tagged variants.
     # All are emitted into the compound; downstream code that previously
@@ -290,7 +304,7 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
             leads_elems.append(elem)
     leads_elem = leads_elems[0] if leads_elems else None  # legacy alias
 
-    if art_elem is None and not leads_elems:
+    if art_elem is None and art_root is None and not leads_elems:
         return
 
     # Build transform: translate to scene pos, apply rotation/flip
@@ -321,9 +335,24 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
     # ".st1 { fill: gray }" is overridden by the coax's ".st1 { stroke: red;
     # fill: none }" (whichever <style> block appears later wins), making
     # the elbow body lose its fill and gain a red stroke.
+    # When there is no explicit ``<g id="artwork">``, harvest each
+    # top-level child of the root that isn't a known-hidden layer or
+    # a non-graphical element (defs/style/metadata/etc.). These are
+    # the elements we'll copy into the compound's artwork group below.
+    rootless_artwork: list = []
+    if art_root is not None:
+        _non_graphical = {"defs", "style", "title", "desc", "metadata"}
+        for child in list(art_root):
+            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+            if tag in _non_graphical:
+                continue
+            if tag == "g" and child.get("id") in _hidden_layer_ids:
+                continue
+            rootless_artwork.append(child)
+
     prefix = f"c{instance_index}_"
     rename_map: dict[str, str] = {}
-    _id_subtrees = [defs_elem, art_elem] + leads_elems
+    _id_subtrees = [defs_elem, art_elem] + leads_elems + rootless_artwork
     for subtree in _id_subtrees:
         if subtree is None:
             continue
@@ -423,9 +452,14 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
         for child in defs_elem:
             defs_copy.append(child)
 
-    # Copy artwork elements
+    # Copy artwork elements. The named artwork group wins; otherwise
+    # we use the rootless-artwork list harvested above (visible
+    # top-level children of the root that aren't hidden layers).
     if art_elem is not None:
         for child in art_elem:
+            g.append(child)
+    else:
+        for child in rootless_artwork:
             g.append(child)
 
     # Copy leads elements. Direction-tagged layers (leads-right etc.)
