@@ -80,9 +80,16 @@ def export_compound_component(
     ox, oy = union.x(), union.y()
     vb_w, vb_h = union.width(), union.height()
 
-    # Build SVG
-    svg = ET.Element("svg")
-    svg.set("xmlns", "http://www.w3.org/2000/svg")
+    # Build SVG. Use the namespaced tag (rather than a plain "svg" tag
+    # plus an explicit ``xmlns`` attribute) because ``_render_component``
+    # below appends children parsed from the source SVG — those land in
+    # the SVG namespace, and ElementTree auto-emits ``xmlns`` on the
+    # root when serializing namespaced children. The combination of an
+    # explicit ``xmlns`` set + an auto-emitted ``xmlns`` produced two
+    # duplicate attributes that broke later parsing.
+    from diagrammer.items.annotation_item import _ensure_svg_default_namespace_registered
+    _ensure_svg_default_namespace_registered()
+    svg = ET.Element("{http://www.w3.org/2000/svg}svg")
     svg.set("viewBox", f"0 0 {vb_w:.1f} {vb_h:.1f}")
 
     artwork = ET.SubElement(svg, "g")

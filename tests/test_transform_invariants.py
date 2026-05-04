@@ -617,36 +617,52 @@ class TestGroupTransform:
 
     def test_group_rotate_preserves_internal_wire_shape(self, scene, library):
         """Two components connected by an L-shaped wire, rotated as a
-        group, must keep the relative wire shape — this used to require
-        the pre-capture / ROUTE_DIRECT hack and now falls out from
-        Phase B's port-local waypoints."""
+        group, must keep the rotated visible route — auto-routed bends
+        included. The orthogonal router can pick a different L-shape
+        from rotated key-points than the rotated original would have,
+        so transform_ops snapshots the full expanded route, rotates the
+        snapshot, and pins routing to ROUTE_DIRECT to keep auto-routing
+        from second-guessing.
+        """
+        import math as _math
         cdef = _two_port_def(library)
         comp_a = _place_component(scene, cdef, QPointF(0, 0))
         comp_b = _place_component(scene, cdef, QPointF(300, 100))  # offset so we get a real L
         src_port = comp_a.ports[-1]
         tgt_port = comp_b.ports[0]
-        wp = QPointF(src_port.scene_center().x() + 50,
-                     src_port.scene_center().y())
         conn = _connect(scene, comp_a, src_port.port_name,
-                        comp_b, tgt_port.port_name, waypoints=[wp])
-        # Capture the offset of the waypoint from its anchor port in
-        # port-local coords — invariant under any rigid-body transform.
-        anchor_local = (conn._anchors[0].dx, conn._anchors[0].dy)
+                        comp_b, tgt_port.port_name)
+        # Capture the visible interior (auto-routed bends) before rotation.
+        before_interior = [QPointF(p) for p in conn.all_points()[1:-1]]
+        gcx = (comp_a.intrinsic_anchor().x() + comp_b.pos().x() + comp_b.intrinsic_anchor().x()) / 2
+        # Use the same group-center formula transform_ops uses.
+        from diagrammer.transform_ops import _scene_center
+        centers = [_scene_center(comp_a), _scene_center(comp_b)]
+        gcx = (centers[0].x() + centers[1].x()) / 2
+        gcy = (centers[0].y() + centers[1].y()) / 2
 
         for item in (comp_a, comp_b, conn):
             item.setSelected(True)
         host = _make_transform_host(scene, library)
         host._rotate_selected(90)
 
-        # Waypoint anchor unchanged, anchor offset (port-local)
-        # unchanged → wire shape rotated with the components.
-        assert conn._anchors[0].anchor in (conn.source_port, conn.target_port)
-        assert conn._anchors[0].dx == pytest.approx(anchor_local[0])
-        assert conn._anchors[0].dy == pytest.approx(anchor_local[1])
-        # Phase D contract: with port-local waypoints, the routing mode
-        # does NOT need to switch to ROUTE_DIRECT for 90° rotations.
+        # Routing mode pinned to direct so the rotated shape isn't
+        # re-derived by the orthogonal router.
         from diagrammer.items.connection_item import ROUTE_DIRECT
-        assert conn.routing_mode != ROUTE_DIRECT
+        assert conn.routing_mode == ROUTE_DIRECT
+        # Visible interior matches the rotated original (within float tol).
+        rad = _math.radians(90)
+        cos_a, sin_a = _math.cos(rad), _math.sin(rad)
+        expected = [
+            QPointF(gcx + (p.x() - gcx) * cos_a - (p.y() - gcy) * sin_a,
+                    gcy + (p.x() - gcx) * sin_a + (p.y() - gcy) * cos_a)
+            for p in before_interior
+        ]
+        actual = [QPointF(p) for p in conn.all_points()[1:-1]]
+        assert len(actual) == len(expected)
+        for a, e in zip(actual, expected):
+            assert a.x() == pytest.approx(e.x(), abs=0.5)
+            assert a.y() == pytest.approx(e.y(), abs=0.5)
 
     def test_group_rotate_identity_round_trip_with_undo(self, scene, library):
         """Undo of a group rotation must restore exact geometry — every
