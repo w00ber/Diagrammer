@@ -722,6 +722,96 @@ class TestGroupTransform:
             assert a_local_a.x() == pytest.approx(a_local_b.x(), abs=2.0)
             assert a_local_a.y() == pytest.approx(a_local_b.y(), abs=2.0)
 
+    def test_group_rotate_after_flip_matches_visual_expectation(self, scene, library):
+        """User-reported regression: flip H, then group-rotate, sent the
+        components to the right *positions* but the wrong *orientation*.
+
+        The persistent transform is ``scale(flip) * rotate(angle)`` —
+        adding ``+degrees`` to ``rotation_angle`` while a single-axis
+        flip is set rotates the component visibly the opposite way of
+        the orbit that ``_rotate_selected`` applies, so port positions
+        end up mirrored across the rotation axis. The group-rotate
+        invariant test below catches it: each port lands where you'd
+        get by visually applying ``flip h``, then rotating the result
+        around the group center.
+        """
+        import math as _math
+        cdef = _two_port_def(library)
+        comp_a = _place_component(scene, cdef, QPointF(0, 0))
+        comp_b = _place_component(scene, cdef, QPointF(300, 0))
+
+        from diagrammer.transform_ops import _scene_center
+        centers = [_scene_center(comp_a), _scene_center(comp_b)]
+        gcx = (centers[0].x() + centers[1].x()) / 2
+        gcy = (centers[0].y() + centers[1].y()) / 2
+
+        # Reference: visual flip-h-then-rotate-90-CW on each port's
+        # original scene position around the group center.
+        rad = _math.radians(90)
+        cos_a, sin_a = _math.cos(rad), _math.sin(rad)
+        expected = []
+        for comp in (comp_a, comp_b):
+            for port in comp.ports:
+                sc = port.scene_center()
+                fx, fy = 2 * gcx - sc.x(), sc.y()           # flip h
+                dx, dy = fx - gcx, fy - gcy
+                expected.append(QPointF(
+                    gcx + dx * cos_a - dy * sin_a,           # rotate CW
+                    gcy + dx * sin_a + dy * cos_a,
+                ))
+
+        host = _make_transform_host(scene, library)
+        for item in (comp_a, comp_b):
+            item.setSelected(True)
+        host._flip_selected(horizontal=True)
+        for item in (comp_a, comp_b):
+            item.setSelected(True)
+        host._rotate_selected(90)
+
+        actual = [p.scene_center() for comp in (comp_a, comp_b) for p in comp.ports]
+        for got, want in zip(actual, expected):
+            assert got.x() == pytest.approx(want.x(), abs=1e-3)
+            assert got.y() == pytest.approx(want.y(), abs=1e-3)
+
+    def test_fine_rotate_after_flip_matches_visual_expectation(self, scene, library):
+        """Same as above but fine-rotation (non-axis-aligned) — the user
+        reported the bug for both 90-step and fine rotations."""
+        import math as _math
+        cdef = _two_port_def(library)
+        comp_a = _place_component(scene, cdef, QPointF(0, 0))
+        comp_b = _place_component(scene, cdef, QPointF(300, 0))
+
+        from diagrammer.transform_ops import _scene_center
+        centers = [_scene_center(comp_a), _scene_center(comp_b)]
+        gcx = (centers[0].x() + centers[1].x()) / 2
+        gcy = (centers[0].y() + centers[1].y()) / 2
+
+        rad = _math.radians(30)
+        cos_a, sin_a = _math.cos(rad), _math.sin(rad)
+        expected = []
+        for comp in (comp_a, comp_b):
+            for port in comp.ports:
+                sc = port.scene_center()
+                fx, fy = 2 * gcx - sc.x(), sc.y()
+                dx, dy = fx - gcx, fy - gcy
+                expected.append(QPointF(
+                    gcx + dx * cos_a - dy * sin_a,
+                    gcy + dx * sin_a + dy * cos_a,
+                ))
+
+        host = _make_transform_host(scene, library)
+        for item in (comp_a, comp_b):
+            item.setSelected(True)
+        host._flip_selected(horizontal=True)
+        for item in (comp_a, comp_b):
+            item.setSelected(True)
+        host._fine_rotate_selected(30)
+
+        actual = [p.scene_center() for comp in (comp_a, comp_b) for p in comp.ports]
+        for got, want in zip(actual, expected):
+            assert got.x() == pytest.approx(want.x(), abs=1e-3)
+            assert got.y() == pytest.approx(want.y(), abs=1e-3)
+
     def test_group_rotate_identity_round_trip_with_undo(self, scene, library):
         """Undo of a group rotation must restore exact geometry — every
         mutation in the macro lives in a QUndoCommand."""

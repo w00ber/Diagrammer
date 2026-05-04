@@ -374,7 +374,18 @@ class ComponentItem(QGraphicsItem):
         return QPointF(self._def.width / 2, self._def.height / 2)
 
     def rotate_by(self, degrees: float) -> None:
-        """Rotate the component by the given degrees (about component center)."""
+        """Rotate the component by the given degrees (about component center).
+
+        ``degrees`` is the *visible* rotation (CW positive). The persistent
+        transform composes as ``scale(flip) * rotate(angle)``, so when an
+        odd number of single-axis flips are set, adding ``degrees`` to
+        ``_rotation_angle`` would visibly rotate the component the
+        opposite way (the reflection inverts the rotation direction).
+        Negate when exactly one axis is flipped so the visible result
+        matches the caller's intent regardless of flip state.
+        """
+        if self._flip_h != self._flip_v:
+            degrees = -degrees
         self._rotation_angle = (self._rotation_angle + degrees) % 360
         self._apply_transform()
 
@@ -386,17 +397,19 @@ class ComponentItem(QGraphicsItem):
         # Record the port's scene position before rotation
         pivot = port.scene_center()
 
-        # Apply the rotation to the item's angle
-        self._rotation_angle = (self._rotation_angle + degrees) % 360
+        # Apply the rotation to the item's angle. See rotate_by for the
+        # flip-XOR adjustment — same composition issue.
+        delta = -degrees if self._flip_h != self._flip_v else degrees
+        self._rotation_angle = (self._rotation_angle + delta) % 360
         self._apply_transform()
 
         # After rotating the transform, the port has moved in scene space.
         # Translate the component so the port returns to its original scene position.
         # Bypass snap-to-grid during this correction to maintain exact port placement.
         new_pivot = port.scene_center()
-        delta = pivot - new_pivot
+        delta_pos = pivot - new_pivot
         self._skip_snap = True
-        self.setPos(self.pos() + delta)
+        self.setPos(self.pos() + delta_pos)
         self._skip_snap = False
 
     def set_flip_h(self, flipped: bool) -> None:
