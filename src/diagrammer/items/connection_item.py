@@ -1044,7 +1044,9 @@ class ConnectionItem(QGraphicsPathItem):
                     for si in self._selected_waypoints:
                         if 0 <= si < len(self._waypoints) and si < len(self._drag_start_waypoints):
                             orig = self._drag_start_waypoints[si]
-                            self._waypoints[si] = QPointF(orig.x() + delta.x(), orig.y() + delta.y())
+                            self._set_waypoint_at(
+                                si, QPointF(orig.x() + delta.x(), orig.y() + delta.y()),
+                            )
                     # Move adjacent junctions when endpoint waypoints are dragged
                     self._move_endpoint_junctions()
                 self.update_route()
@@ -1052,7 +1054,7 @@ class ConnectionItem(QGraphicsPathItem):
                 # Single waypoint drag
                 wi = self._dragging_waypoint
                 if 0 <= wi < len(self._waypoints):
-                    self._waypoints[wi] = self._snap_to_grid(pos)
+                    self._set_waypoint_at(wi, self._snap_to_grid(pos))
                     # Move adjacent junction when dragging the first or last waypoint
                     self._move_endpoint_junctions()
                     self.update_route()

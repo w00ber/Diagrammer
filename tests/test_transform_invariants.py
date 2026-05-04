@@ -508,6 +508,52 @@ def _decorative_def(library):
     pytest.skip("No decorative (port-less) component in library")
 
 
+class TestWaypointDrag:
+    """Regression: Phase B's _refresh_from_anchors hook in update_route
+    silently overwrote any direct ``_waypoints[idx] = ...`` write — so
+    the in-class waypoint drag handlers (which I missed during the
+    write-site audit because I only looked at view.py) saw the user's
+    drag clobbered back to the anchor-derived position. Symptom:
+    "I added a waypoint but I cannot drag it."
+    """
+
+    def test_single_waypoint_drag_persists_through_update_route(self, scene, library):
+        """Simulate the connection_item drag flow: set _dragging_waypoint
+        and feed a mouseMoveEvent. The new position must survive the
+        update_route() refresh that fires inside the move handler."""
+        cdef = _two_port_def(library)
+        comp_a = _place_component(scene, cdef, QPointF(0, 0))
+        comp_b = _place_component(scene, cdef, QPointF(300, 0))
+        src_pt = comp_a.ports[-1].scene_center()
+        tgt_pt = comp_b.ports[0].scene_center()
+        wp = QPointF((src_pt.x() + tgt_pt.x()) / 2,
+                     (src_pt.y() + tgt_pt.y()) / 2)
+        conn = _connect(scene, comp_a, comp_a.ports[-1].port_name,
+                        comp_b, comp_b.ports[0].port_name, waypoints=[wp])
+        # Bypass the press handler (which needs view-level event setup)
+        # and put the connection straight into "dragging waypoint 0".
+        conn._dragging_waypoint = 0
+
+        # Drag the waypoint 50 units up. Build a synthetic QMouseEvent
+        # that the connection's mouseMoveEvent can read scenePos from.
+        target = QPointF(wp.x(), wp.y() - 50)
+
+        class _FakeMoveEvent:
+            def __init__(self, sp):
+                self._sp = sp
+            def scenePos(self):
+                return self._sp
+            def accept(self):
+                pass
+
+        conn.mouseMoveEvent(_FakeMoveEvent(target))
+        # The waypoint must be at (or near, after grid snap) the target,
+        # not back at the original position.
+        moved = conn._waypoints[0]
+        assert abs(moved.y() - target.y()) <= 10  # within one grid cell
+        assert moved.y() < wp.y()  # genuinely moved upward
+
+
 class TestPortlessComponentRotation:
     """Regression tests for the ``i.ports`` filter that silently dropped
     decorative components from fine-rotate (and from group fine-rotate).
