@@ -363,6 +363,16 @@ class ComponentItem(QGraphicsItem):
     def flip_v(self) -> bool:
         return self._flip_v
 
+    def intrinsic_anchor(self) -> QPointF:
+        """Local-coords pivot used for rotation and flip.
+
+        Matches the unstretched-center anchor used by ``_apply_transform``,
+        so the unified group-transform code in ``transform_ops`` can compute
+        a consistent scene center across every item type via
+        ``item.mapToScene(item.intrinsic_anchor())``.
+        """
+        return QPointF(self._def.width / 2, self._def.height / 2)
+
     def rotate_by(self, degrees: float) -> None:
         """Rotate the component by the given degrees (about component center)."""
         self._rotation_angle = (self._rotation_angle + degrees) % 360

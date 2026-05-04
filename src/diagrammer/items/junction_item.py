@@ -61,3 +61,9 @@ class JunctionItem(QGraphicsItem):
 
     def paint(self, painter, option, widget=None) -> None:
         pass
+
+    def intrinsic_anchor(self) -> QPointF:
+        """Local-coords pivot for rotation/flip — junction has no extent,
+        so the anchor is its origin (which coincides with its single port)."""
+        from PySide6.QtCore import QPointF
+        return QPointF(0, 0)

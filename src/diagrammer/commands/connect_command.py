@@ -186,9 +186,37 @@ class MoveVertexCommand(QUndoCommand):
         self.setText("Move connection vertex")
 
     def redo(self) -> None:
-        self._connection.vertices[self._vertex_index] = QPointF(self._new_pos)
+        self._connection._set_waypoint_at(self._vertex_index, self._new_pos)
         self._connection.update_route()
 
     def undo(self) -> None:
-        self._connection.vertices[self._vertex_index] = QPointF(self._old_pos)
+        self._connection._set_waypoint_at(self._vertex_index, self._old_pos)
         self._connection.update_route()
+
+
+class SetRoutingModeCommand(QUndoCommand):
+    """Switch a connection's routing_mode (undoable).
+
+    Used by transform_ops when fine-rotating a wire by a non-90° angle:
+    the orthogonal router can't represent the rotated shape, so the
+    rotation code switches the wire to ROUTE_DIRECT. This wraps that
+    one-line mutation so undo restores the previous routing mode.
+    """
+
+    def __init__(
+        self,
+        connection: ConnectionItem,
+        new_mode: str,
+        parent: QUndoCommand | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._connection = connection
+        self._old_mode = connection.routing_mode
+        self._new_mode = new_mode
+        self.setText("Switch wire routing mode")
+
+    def redo(self) -> None:
+        self._connection.routing_mode = self._new_mode
+
+    def undo(self) -> None:
+        self._connection.routing_mode = self._old_mode

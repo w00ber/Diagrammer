@@ -9,6 +9,20 @@ from PySide6.QtCore import QPointF
 logger = logging.getLogger(__name__)
 
 
+def _scene_center(item) -> QPointF:
+    """Return the item's intrinsic anchor in scene coordinates.
+
+    After Phase C every persistent item type (component, annotation,
+    shape, line, junction) exposes ``intrinsic_anchor`` returning a
+    local-coords pivot. Mapping that through the item's own transform
+    gives the visible center used for group rotation, flip, and any
+    other rigid-body operation — one formula across all item types.
+    """
+    if hasattr(item, "intrinsic_anchor"):
+        return item.mapToScene(item.intrinsic_anchor())
+    return item.mapToScene(QPointF(0, 0))
+
+
 class TransformMixin:
     """Mixin providing rotate, flip, and align operations.
 
@@ -60,17 +74,27 @@ class TransformMixin:
     # ---------------------------------------------------------- rotate 90
 
     def _rotate_selected(self, degrees: float) -> None:
+        """Rotate the selection rigidly by *degrees* (90 / 180 / -90 etc.).
+
+        With Phase B's port-local waypoints and Phase C's intrinsic
+        transform model, the wire shape automatically follows its
+        endpoint components — so this no longer needs to pre-capture
+        the expanded route or force ROUTE_DIRECT. Each item rotates
+        internally AND orbits around the group center; wires take
+        care of themselves.
+        """
         import math
         from diagrammer.commands.add_command import MoveComponentCommand
-        from diagrammer.commands.connect_command import EditWaypointsCommand
-        from diagrammer.commands.transform_command import RotateComponentCommand
+        from diagrammer.commands.transform_command import (
+            RotateComponentCommand,
+            RotateItemCommand,
+        )
         from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.items.junction_item import JunctionItem
         from diagrammer.items.shape_item import ShapeItem
 
-        # Collect all movable selected items
         comp_targets = [i for i in self._scene.selectedItems() if isinstance(i, ComponentItem)]
         junc_targets = [i for i in self._scene.selectedItems() if isinstance(i, JunctionItem)]
         annot_targets = [i for i in self._scene.selectedItems() if isinstance(i, AnnotationItem)]
@@ -82,7 +106,10 @@ class TransformMixin:
         if not movable and not conn_targets:
             return
 
-        # Standalone connection rotation (closed polygons or free wires)
+        # Standalone connection rotation (closed polygons or free wires).
+        # Closed polygons still need explicit waypoint rotation: their
+        # anchor (a junction) has no rotation of its own, so port-local
+        # offsets don't help — we rotate the offsets directly.
         if not movable and conn_targets:
             closed = [c for c in conn_targets if c.closed]
             if closed:
@@ -92,12 +119,10 @@ class TransformMixin:
                 self._scene.update_connections()
                 return
 
-        # Auto-include connected junctions
+        # Auto-include connected junctions and endpoint junctions from
+        # selected connections so they participate in the rotation.
         extra_juncs = self._gather_connected_junctions(movable)
         junc_targets.extend(extra_juncs)
-
-        # Include endpoint junctions from selected connections
-        # so they participate in group rotation
         for conn in conn_targets:
             for port in (conn.source_port, conn.target_port):
                 junc = port.component
@@ -109,35 +134,19 @@ class TransformMixin:
         self._scene.undo_stack.beginMacro(f"Rotate {len(movable)} items")
 
         if len(movable) == 1 and len(comp_targets) == 1:
-            # Single component: rotate around its own center
-            cmd = RotateComponentCommand(comp_targets[0], degrees)
-            self._scene.undo_stack.push(cmd)
+            self._scene.undo_stack.push(RotateComponentCommand(comp_targets[0], degrees))
         elif len(movable) == 1 and isinstance(movable[0], (AnnotationItem, ShapeItem)):
-            # Single annotation/shape: rotate around its own center
-            from diagrammer.commands.transform_command import RotateItemCommand
-            cmd = RotateItemCommand(movable[0], degrees)
-            self._scene.undo_stack.push(cmd)
+            self._scene.undo_stack.push(RotateItemCommand(movable[0], degrees))
         else:
-            # Group rotation: rigid-body
-            # Compute scene center for each item
-            def _scene_center(item):
-                if isinstance(item, ComponentItem):
-                    return item.mapToScene(QPointF(item._def.width / 2, item._def.height / 2))
-                elif isinstance(item, AnnotationItem):
-                    br = item.boundingRect()
-                    return item.mapToScene(br.center())
-                elif isinstance(item, ShapeItem):
-                    return item.mapToScene(QPointF(item.shape_width / 2, item.shape_height / 2))
-                else:
-                    return item.mapToScene(QPointF(0, 0))
-
+            # Group rotation: each item rotates internally AND orbits
+            # around the group center. One scene-center formula across
+            # every item type via _scene_center.
             scene_centers = [_scene_center(item) for item in movable]
             gcx = sum(p.x() for p in scene_centers) / len(scene_centers)
             gcy = sum(p.y() for p in scene_centers) / len(scene_centers)
             rad = math.radians(degrees)
             cos_a, sin_a = math.cos(rad), math.sin(rad)
 
-            # Pre-compute orbited target positions
             target_centers = []
             for sc in scene_centers:
                 dx, dy = sc.x() - gcx, sc.y() - gcy
@@ -146,78 +155,19 @@ class TransformMixin:
                     gcy + dx * sin_a + dy * cos_a,
                 ))
 
-            from diagrammer.commands.transform_command import RotateItemCommand
-
-            # Pre-capture the FULL expanded route (not just user waypoints)
-            # so that after rotation the wire shape is preserved exactly.
-            # The expanded points become the new waypoints, and _expand_route
-            # between adjacent points produces near-straight segments.
-            pre_captured_expanded: dict[int, list[QPointF]] = {}
-            pre_captured_routing: dict[int, str] = {}
-            item_ids = set(id(c) for c in movable)
-            for citem in self._scene.items():
-                if not isinstance(citem, ConnectionItem):
-                    continue
-                if (id(citem.source_port.component) in item_ids and
-                        id(citem.target_port.component) in item_ids):
-                    # Capture the full expanded route minus endpoints (which are port positions)
-                    expanded = citem.all_points()
-                    if len(expanded) > 2:
-                        pre_captured_expanded[id(citem)] = [QPointF(p) for p in expanded[1:-1]]
-                    elif expanded:
-                        mid = QPointF(
-                            (expanded[0].x() + expanded[-1].x()) / 2,
-                            (expanded[0].y() + expanded[-1].y()) / 2,
-                        )
-                        pre_captured_expanded[id(citem)] = [mid]
-                    else:
-                        pre_captured_expanded[id(citem)] = []
-                    pre_captured_routing[id(citem)] = citem.routing_mode
-
             for i, item in enumerate(movable):
                 if isinstance(item, ComponentItem):
-                    # Rotate internally AND orbit
-                    cmd = RotateComponentCommand(item, degrees)
-                    self._scene.undo_stack.push(cmd)
+                    self._scene.undo_stack.push(RotateComponentCommand(item, degrees))
                 elif isinstance(item, (AnnotationItem, ShapeItem)):
-                    # Rotate internally (Qt rotation) AND orbit
-                    cmd = RotateItemCommand(item, degrees)
-                    self._scene.undo_stack.push(cmd)
-                # All items: orbit position around group center
+                    self._scene.undo_stack.push(RotateItemCommand(item, degrees))
                 cur_sc = _scene_center(item)
                 offset = target_centers[i] - cur_sc
                 new_pos = item.pos() + offset
                 if hasattr(item, '_skip_snap'):
                     item._skip_snap = True
-                move_cmd = MoveComponentCommand(item, item.pos(), new_pos)
-                self._scene.undo_stack.push(move_cmd)
+                self._scene.undo_stack.push(MoveComponentCommand(item, item.pos(), new_pos))
                 if hasattr(item, '_skip_snap'):
                     item._skip_snap = False
-
-            # Rotate internal connection expanded-route points around group center,
-            # set them as new waypoints, and switch to ROUTE_DIRECT so the
-            # rotated shape is preserved exactly (ortho routing would re-route).
-            from diagrammer.items.connection_item import ROUTE_DIRECT
-            for item in self._scene.items():
-                if not isinstance(item, ConnectionItem):
-                    continue
-                if id(item) not in pre_captured_expanded:
-                    continue
-                old_expanded = pre_captured_expanded[id(item)]
-
-                if old_expanded:
-                    new_wps = []
-                    for wp in old_expanded:
-                        dx, dy = wp.x() - gcx, wp.y() - gcy
-                        new_wps.append(QPointF(
-                            gcx + dx * cos_a - dy * sin_a,
-                            gcy + dx * sin_a + dy * cos_a,
-                        ))
-                    cmd = EditWaypointsCommand(item, [QPointF(w) for w in item.vertices], new_wps)
-                    self._scene.undo_stack.push(cmd)
-                    # Switch to direct routing so the rotated shape is preserved
-                    if item.routing_mode != ROUTE_DIRECT:
-                        item.routing_mode = ROUTE_DIRECT
 
         self._scene.undo_stack.endMacro()
         self._scene.update_connections()
@@ -225,19 +175,26 @@ class TransformMixin:
     # -------------------------------------------------------- fine rotate
 
     def _fine_rotate_selected(self, degrees: float) -> None:
-        """Fine-rotate selected items as a rigid body around the group center.
+        """Fine-rotate the selection by an arbitrary *degrees* around the
+        rotation pivot port (or group center if no pivot is set).
 
-        Uses the same rigid-body approach as _rotate_selected: each component
-        rotates internally AND orbits around the pivot. Non-component items
-        (annotations, shapes, junctions) orbit only.
+        For non-90° rotations the orthogonal router can't represent the
+        rotated wire shape, so internal wires (both endpoints in the
+        rotated set) switch to ROUTE_DIRECT — wrapped in
+        ``SetRoutingModeCommand`` so undo restores the previous mode.
+        Wire SHAPE follows automatically via Phase B's port-local
+        waypoints; no pre-capture needed.
         """
         import math
         from diagrammer.commands.add_command import MoveComponentCommand
-        from diagrammer.commands.connect_command import EditWaypointsCommand
-        from diagrammer.commands.transform_command import RotateComponentCommand
+        from diagrammer.commands.connect_command import SetRoutingModeCommand
+        from diagrammer.commands.transform_command import (
+            RotateComponentCommand,
+            RotateItemCommand,
+        )
         from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.component_item import ComponentItem
-        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.connection_item import ROUTE_DIRECT, ConnectionItem
         from diagrammer.items.junction_item import JunctionItem
         from diagrammer.items.shape_item import ShapeItem
 
@@ -256,7 +213,6 @@ class TransformMixin:
         if not movable and not conn_targets:
             return
 
-        # Standalone connection rotation (closed polygons or free wires)
         if not movable and conn_targets:
             closed = [c for c in conn_targets if c.closed]
             if closed:
@@ -268,8 +224,6 @@ class TransformMixin:
 
         extra_juncs = self._gather_connected_junctions(movable)
         junc_targets.extend(extra_juncs)
-
-        # Include endpoint junctions from selected connections
         for conn in conn_targets:
             for port in (conn.source_port, conn.target_port):
                 junc = port.component
@@ -280,18 +234,7 @@ class TransformMixin:
 
         self._scene.undo_stack.beginMacro(f"Fine rotate {len(movable)} items")
 
-        # Use the same rigid-body rotation as _rotate_selected
-        def _scene_center(item):
-            if isinstance(item, ComponentItem):
-                return item.mapToScene(QPointF(item._def.width / 2, item._def.height / 2))
-            elif isinstance(item, AnnotationItem):
-                return item.mapToScene(item.boundingRect().center())
-            elif isinstance(item, ShapeItem):
-                return item.mapToScene(QPointF(item.shape_width / 2, item.shape_height / 2))
-            else:
-                return item.mapToScene(QPointF(0, 0))
-
-        # Determine pivot
+        # Pivot: explicit port pin > single component's first port > group center.
         pivot = self._scene.rotation_pivot_port
         if pivot is not None:
             pivot_scene = pivot.scene_center()
@@ -308,38 +251,12 @@ class TransformMixin:
         cos_a, sin_a = math.cos(rad), math.sin(rad)
         px, py = pivot_scene.x(), pivot_scene.y()
 
-        from diagrammer.commands.transform_command import RotateItemCommand
-
-        # Pre-capture the FULL expanded route so the rotated shape is preserved
-        pre_captured_expanded: dict[int, list[QPointF]] = {}
-        item_ids = set(id(c) for c in movable)
-        for citem in self._scene.items():
-            if not isinstance(citem, ConnectionItem):
-                continue
-            if (id(citem.source_port.component) in item_ids and
-                    id(citem.target_port.component) in item_ids):
-                expanded = citem.all_points()
-                if len(expanded) > 2:
-                    pre_captured_expanded[id(citem)] = [QPointF(p) for p in expanded[1:-1]]
-                elif expanded:
-                    mid = QPointF(
-                        (expanded[0].x() + expanded[-1].x()) / 2,
-                        (expanded[0].y() + expanded[-1].y()) / 2,
-                    )
-                    pre_captured_expanded[id(citem)] = [mid]
-                else:
-                    pre_captured_expanded[id(citem)] = []
-
         for item in movable:
             if isinstance(item, ComponentItem):
-                # Rotate internally
-                cmd = RotateComponentCommand(item, degrees)
-                self._scene.undo_stack.push(cmd)
+                self._scene.undo_stack.push(RotateComponentCommand(item, degrees))
             elif isinstance(item, (AnnotationItem, ShapeItem)):
-                cmd = RotateItemCommand(item, degrees)
-                self._scene.undo_stack.push(cmd)
+                self._scene.undo_stack.push(RotateItemCommand(item, degrees))
 
-            # Orbit around pivot (all item types)
             cur_sc = _scene_center(item)
             dx, dy = cur_sc.x() - px, cur_sc.y() - py
             new_sc = QPointF(px + dx * cos_a - dy * sin_a,
@@ -348,29 +265,26 @@ class TransformMixin:
             new_pos = item.pos() + offset
             if hasattr(item, '_skip_snap'):
                 item._skip_snap = True
-            move_cmd = MoveComponentCommand(item, item.pos(), new_pos)
-            self._scene.undo_stack.push(move_cmd)
+            self._scene.undo_stack.push(MoveComponentCommand(item, item.pos(), new_pos))
             if hasattr(item, '_skip_snap'):
                 item._skip_snap = False
 
-        # Rotate internal connection expanded-route points around pivot,
-        # switch to ROUTE_DIRECT to preserve the rotated shape.
-        from diagrammer.items.connection_item import ROUTE_DIRECT
-        for item in self._scene.items():
-            if not isinstance(item, ConnectionItem):
-                continue
-            if id(item) not in pre_captured_expanded:
-                continue
-            old_expanded = pre_captured_expanded[id(item)]
-            if old_expanded:
-                new_wps = [QPointF(px + (w.x()-px)*cos_a - (w.y()-py)*sin_a,
-                                   py + (w.x()-px)*sin_a + (w.y()-py)*cos_a)
-                           for w in old_expanded]
-                cmd = EditWaypointsCommand(item, [QPointF(w) for w in item.vertices], new_wps)
-                self._scene.undo_stack.push(cmd)
-                # Switch to direct routing so the rotated shape is preserved
-                if item.routing_mode != ROUTE_DIRECT:
-                    item.routing_mode = ROUTE_DIRECT
+        # For non-90° rotations the orthogonal router can't represent
+        # the rotated wire shape, so internal wires (both endpoints
+        # rotated) switch to direct routing. Port-local waypoints
+        # (Phase B) handle the shape preservation automatically; this
+        # command exists only to keep ortho from re-routing on top.
+        if degrees % 90 != 0:
+            item_ids = set(id(c) for c in movable)
+            for citem in self._scene.items():
+                if not isinstance(citem, ConnectionItem):
+                    continue
+                if (id(citem.source_port.component) in item_ids and
+                        id(citem.target_port.component) in item_ids and
+                        citem.routing_mode != ROUTE_DIRECT):
+                    self._scene.undo_stack.push(
+                        SetRoutingModeCommand(citem, ROUTE_DIRECT)
+                    )
 
         self._scene.undo_stack.endMacro()
         self._scene.update_connections()
@@ -379,7 +293,6 @@ class TransformMixin:
 
     def _flip_selected(self, horizontal: bool) -> None:
         from diagrammer.commands.add_command import MoveComponentCommand
-        from diagrammer.commands.connect_command import EditWaypointsCommand
         from diagrammer.commands.transform_command import FlipComponentCommand
         from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.component_item import ComponentItem
@@ -421,25 +334,12 @@ class TransformMixin:
             self._scene.update_connections()
             return
 
-        # Compute group center using mapToScene for consistency with transforms.
-        # For components, use the base (unstretched) center as the reference
-        # since the flip transform pivots around the base center.
-        def _scene_center(item):
-            if isinstance(item, ComponentItem):
-                return item.mapToScene(QPointF(item._width / 2, item._height / 2))
-            elif isinstance(item, AnnotationItem):
-                br = item.boundingRect()
-                return item.mapToScene(br.center())
-            elif isinstance(item, ShapeItem):
-                return item.mapToScene(QPointF(item.shape_width / 2, item.shape_height / 2))
-            else:
-                return item.mapToScene(QPointF(0, 0))
-
+        # Compute group center using mapToScene for consistency with
+        # transforms. After Phase C every item exposes intrinsic_anchor,
+        # so the module-level _scene_center handles all types.
         centers = [_scene_center(item) for item in all_movable]
         group_cx = sum(p.x() for p in centers) / len(centers)
         group_cy = sum(p.y() for p in centers) / len(centers)
-
-        item_set = set(id(c) for c in all_movable)
 
         # Flip and mirror components using scene-center mirroring.
         # Compute each component's scene center, mirror it, then derive
@@ -487,22 +387,11 @@ class TransformMixin:
             if hasattr(item, '_skip_snap'):
                 item._skip_snap = False
 
-        # Mirror connection waypoints
-        for item in self._scene.items():
-            if not isinstance(item, ConnectionItem):
-                continue
-            if (id(item.source_port.component) in item_set and
-                    id(item.target_port.component) in item_set):
-                old_wps = [QPointF(w) for w in item.vertices]
-                if old_wps:
-                    new_wps = []
-                    for wp in old_wps:
-                        if horizontal:
-                            new_wps.append(QPointF(2 * group_cx - wp.x(), wp.y()))
-                        else:
-                            new_wps.append(QPointF(wp.x(), 2 * group_cy - wp.y()))
-                    cmd = EditWaypointsCommand(item, old_wps, new_wps)
-                    self._scene.undo_stack.push(cmd)
+        # Internal-wire waypoint mirroring is handled automatically
+        # by Phase B's port-local offsets: when both endpoint
+        # components flip, their port-local waypoint offsets flip
+        # along with the parents — the wire shape mirrors as a
+        # rigid body without explicit per-waypoint code here.
 
         self._scene.undo_stack.endMacro()
         self._scene.update_connections()

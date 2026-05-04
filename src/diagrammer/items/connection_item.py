@@ -47,13 +47,15 @@ class Waypoint:
 
     Each waypoint anchors to one of the connection's two endpoint ports
     (``source_port`` or ``target_port``) by an offset ``(dx, dy)`` in
-    scene units. Its scene position is reconstructed on demand:
+    the port's *local* coordinate system. Its scene position is
+    reconstructed on demand via ``anchor.mapToScene((dx, dy))``.
 
-        scene_pt = anchor.scene_center() + (dx, dy)
-
-    So when the anchor port moves with its parent component (drag,
-    rotate, flip), the waypoint follows automatically — no special-case
-    transform code needed at the call site.
+    Because the port inherits its parent component's transform,
+    port-local offsets rotate / flip with the parent automatically —
+    so when the user transforms the parent (or a group containing it),
+    the wire shape follows as a rigid body without any special-case
+    transform code at the call site. This is what lets the group-rotate
+    code drop the pre-capture / ROUTE_DIRECT hack.
     """
 
     __slots__ = ("anchor", "dx", "dy")
@@ -64,8 +66,7 @@ class Waypoint:
         self.dy = float(dy)
 
     def to_scene(self) -> QPointF:
-        c = self.anchor.scene_center()
-        return QPointF(c.x() + self.dx, c.y() + self.dy)
+        return self.anchor.mapToScene(QPointF(self.dx, self.dy))
 
     def __repr__(self) -> str:
         port_name = getattr(self.anchor, "port_name", "?")
@@ -256,16 +257,18 @@ class ConnectionItem(QGraphicsPathItem):
         """Bind *scene_pt* to whichever endpoint port is closer (manhattan).
 
         The source port wins ties so anchor selection is deterministic.
-        Returns a ``Waypoint`` object whose ``to_scene()`` reproduces
-        the original point exactly (modulo float precision).
+        The offset is stored in the chosen port's *local* coordinate
+        system so the waypoint rotates/flips with the parent component
+        automatically. Returns a ``Waypoint`` whose ``to_scene()``
+        reproduces the original point (modulo float precision).
         """
         sc_src = self._source_port.scene_center()
         sc_tgt = self._target_port.scene_center()
         d_src = abs(scene_pt.x() - sc_src.x()) + abs(scene_pt.y() - sc_src.y())
         d_tgt = abs(scene_pt.x() - sc_tgt.x()) + abs(scene_pt.y() - sc_tgt.y())
         anchor = self._source_port if d_src <= d_tgt else self._target_port
-        c = anchor.scene_center()
-        return Waypoint(anchor, scene_pt.x() - c.x(), scene_pt.y() - c.y())
+        local = anchor.mapFromScene(scene_pt)
+        return Waypoint(anchor, local.x(), local.y())
 
     def _set_waypoints_from_scene(self, scene_pts) -> None:
         """Replace all waypoints by rebinding each scene point to a port."""

@@ -189,10 +189,10 @@ class TestWireFollowsPort:
         assert conn._source_port.scene_center().y() == pytest.approx(new_src.y())
 
     def test_waypoint_follows_anchor_port_through_rotation(self, scene, library):
-        """A waypoint anchored to a port must move with that port through any
-        component transform. Port-relative storage (Phase B) makes this
-        automatic: the (port, dx, dy) tuple is invariant; only the resolved
-        scene point changes when the port moves."""
+        """A waypoint anchored to a port must move with that port through
+        any component transform. Port-relative offsets are stored in the
+        port's local coords (Phase D semantics), so the waypoint rotates
+        with the parent component automatically."""
         cdef = _two_port_def(library)
         comp_a = _place_component(scene, cdef, QPointF(0, 0))
         comp_b = _place_component(scene, cdef, QPointF(300, 0))
@@ -207,15 +207,17 @@ class TestWireFollowsPort:
         assert conn._anchors[0].anchor is src_port
         anchor_dx = conn._anchors[0].dx
         anchor_dy = conn._anchors[0].dy
-        # Rotate the component; the anchor offset is invariant in the
-        # port's local frame, so dx/dy don't change.
+        # Rotate the component; the anchor's port-LOCAL offset is
+        # invariant under any parent transform.
         scene.undo_stack.push(RotateComponentCommand(comp_a, 90))
         assert conn._anchors[0].dx == pytest.approx(anchor_dx)
         assert conn._anchors[0].dy == pytest.approx(anchor_dy)
-        # And the resolved scene point matches the anchor's new position.
-        expected = src_port.scene_center()
-        assert conn._waypoints[0].x() == pytest.approx(expected.x() + anchor_dx)
-        assert conn._waypoints[0].y() == pytest.approx(expected.y() + anchor_dy)
+        # And the resolved scene point matches the rotated frame —
+        # i.e., the waypoint rotated 90 around the port along with
+        # the rest of the component, not just translated.
+        rotated_scene = src_port.mapToScene(QPointF(anchor_dx, anchor_dy))
+        assert conn._waypoints[0].x() == pytest.approx(rotated_scene.x(), abs=0.5)
+        assert conn._waypoints[0].y() == pytest.approx(rotated_scene.y(), abs=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +440,24 @@ class TestSaveLoadRoundtrip:
 # ---------------------------------------------------------------------------
 
 
+def _make_transform_host(scene, library):
+    """Build a minimal host satisfying TransformMixin's protocol for tests.
+
+    Combines TransformMixin and ClipboardMixin (the former depends on
+    ``_gather_connected_junctions`` from the latter).
+    """
+    from diagrammer.clipboard_ops import ClipboardMixin
+    from diagrammer.transform_ops import TransformMixin
+
+    class _Host(TransformMixin, ClipboardMixin):
+        def __init__(self):
+            self._scene = scene
+            self._library = library
+            self._clipboard: list[dict] = []
+
+    return _Host()
+
+
 def _make_clipboard_host(scene, library):
     """Build a minimal host that satisfies ClipboardMixin's protocol.
 
@@ -474,6 +494,79 @@ def _make_clipboard_host(scene, library):
             return _StubStatusBar()
 
     return _Host()
+
+
+class TestGroupTransform:
+    """End-to-end tests through TransformMixin — these were the
+    bug-prone paths the refactor was aimed at."""
+
+    def test_group_rotate_90_then_minus_90_is_identity(self, scene, library):
+        cdef = _two_port_def(library)
+        comp_a = _place_component(scene, cdef, QPointF(0, 0))
+        comp_b = _place_component(scene, cdef, QPointF(300, 0))
+        annot = AnnotationItem("hi")
+        annot.setPos(QPointF(150, 100))
+        scene.addItem(annot)
+        rect = RectangleItem(width=80, height=40)
+        rect.setPos(QPointF(150, -80))
+        scene.addItem(rect)
+        before = scene_snapshot(scene)
+        for item in (comp_a, comp_b, annot, rect):
+            item.setSelected(True)
+        host = _make_transform_host(scene, library)
+        host._rotate_selected(90)
+        host._rotate_selected(-90)
+        assert_snapshots_equal(before, scene_snapshot(scene),
+                               msg="Group rotate +90 then -90 must restore exact geometry")
+
+    def test_group_rotate_preserves_internal_wire_shape(self, scene, library):
+        """Two components connected by an L-shaped wire, rotated as a
+        group, must keep the relative wire shape — this used to require
+        the pre-capture / ROUTE_DIRECT hack and now falls out from
+        Phase B's port-local waypoints."""
+        cdef = _two_port_def(library)
+        comp_a = _place_component(scene, cdef, QPointF(0, 0))
+        comp_b = _place_component(scene, cdef, QPointF(300, 100))  # offset so we get a real L
+        src_port = comp_a.ports[-1]
+        tgt_port = comp_b.ports[0]
+        wp = QPointF(src_port.scene_center().x() + 50,
+                     src_port.scene_center().y())
+        conn = _connect(scene, comp_a, src_port.port_name,
+                        comp_b, tgt_port.port_name, waypoints=[wp])
+        # Capture the offset of the waypoint from its anchor port in
+        # port-local coords — invariant under any rigid-body transform.
+        anchor_local = (conn._anchors[0].dx, conn._anchors[0].dy)
+
+        for item in (comp_a, comp_b, conn):
+            item.setSelected(True)
+        host = _make_transform_host(scene, library)
+        host._rotate_selected(90)
+
+        # Waypoint anchor unchanged, anchor offset (port-local)
+        # unchanged → wire shape rotated with the components.
+        assert conn._anchors[0].anchor in (conn.source_port, conn.target_port)
+        assert conn._anchors[0].dx == pytest.approx(anchor_local[0])
+        assert conn._anchors[0].dy == pytest.approx(anchor_local[1])
+        # Phase D contract: with port-local waypoints, the routing mode
+        # does NOT need to switch to ROUTE_DIRECT for 90° rotations.
+        from diagrammer.items.connection_item import ROUTE_DIRECT
+        assert conn.routing_mode != ROUTE_DIRECT
+
+    def test_group_rotate_identity_round_trip_with_undo(self, scene, library):
+        """Undo of a group rotation must restore exact geometry — every
+        mutation in the macro lives in a QUndoCommand."""
+        cdef = _two_port_def(library)
+        comp_a = _place_component(scene, cdef, QPointF(0, 0))
+        comp_b = _place_component(scene, cdef, QPointF(300, 0))
+        _connect(scene, comp_a, comp_a.ports[-1].port_name,
+                 comp_b, comp_b.ports[0].port_name)
+        before = scene_snapshot(scene)
+        for item in (comp_a, comp_b):
+            item.setSelected(True)
+        host = _make_transform_host(scene, library)
+        host._rotate_selected(90)
+        scene.undo_stack.undo()
+        assert_snapshots_equal(before, scene_snapshot(scene))
 
 
 class TestClipboardRoundtrip:
