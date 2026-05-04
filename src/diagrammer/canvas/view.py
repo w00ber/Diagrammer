@@ -3,6 +3,56 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPointF, QRectF, Qt
+
+
+def _terminal_junctions_to_auto_include(scene_items, selected_items) -> list:
+    """Return junctions that should be dragged along with *selected_items*.
+
+    A junction qualifies when:
+
+    * Every wire that touches it has its OTHER endpoint in
+      ``selected_items`` (so we never tear off an unselected branch).
+    * At least one of those wires is on the OTHER end of a selected
+      item (otherwise the junction is unrelated).
+
+    This handles the "free terminal" case (single wire from a selected
+    component to a junction that has no other connections) and the
+    fully-internal case (junction whose every wire connects to selected
+    items). Hub junctions with at least one wire to an unselected item
+    are intentionally skipped — pulling them would corrupt the
+    unselected branch.
+    """
+    from diagrammer.items.connection_item import ConnectionItem
+    from diagrammer.items.junction_item import JunctionItem
+
+    selected_ids = set(id(i) for i in selected_items)
+    # junction_id -> list of (junction, other_endpoint_component)
+    junction_edges: dict[int, list] = {}
+    for it in scene_items:
+        if not isinstance(it, ConnectionItem):
+            continue
+        src_comp = it.source_port.component
+        tgt_comp = it.target_port.component
+        for jct, other in (
+            (tgt_comp, src_comp) if isinstance(tgt_comp, JunctionItem) else (None, None),
+            (src_comp, tgt_comp) if isinstance(src_comp, JunctionItem) else (None, None),
+        ):
+            if jct is None or id(jct) in selected_ids:
+                continue
+            junction_edges.setdefault(id(jct), []).append((jct, other))
+
+    out = []
+    for edges in junction_edges.values():
+        junction = edges[0][0]
+        # Skip hub junctions that touch at least one unselected item.
+        if not all(id(other) in selected_ids for _, other in edges):
+            continue
+        # And require at least one selected neighbour, otherwise the
+        # junction is unrelated to this drag.
+        if not any(id(other) in selected_ids for _, other in edges):
+            continue
+        out.append(junction)
+    return out
 from PySide6.QtGui import QBrush, QColor, QPainter, QPen
 from PySide6.QtWidgets import QGraphicsView, QWidget
 
@@ -969,23 +1019,12 @@ class DiagramView(QGraphicsView):
                         for s in selected:
                             if s is not anchor and hasattr(s, '_skip_snap'):
                                 s._skip_snap = True
-                        # ConnectionItem imported at module level
-                        selected_ids = set(id(c) for c in selected)
-                        self._drag_auto_junctions = []
-                        # Gather junctions
-                        for si in self._diagram_scene.items():
-                            if not isinstance(si, ConnectionItem):
-                                continue
-                            src_comp = si.source_port.component
-                            tgt_comp = si.target_port.component
-                            if id(src_comp) in selected_ids and isinstance(tgt_comp, JunctionItem) and id(tgt_comp) not in selected_ids:
-                                selected.append(tgt_comp)
-                                selected_ids.add(id(tgt_comp))
-                                self._drag_auto_junctions.append(tgt_comp)
-                            elif id(tgt_comp) in selected_ids and isinstance(src_comp, JunctionItem) and id(src_comp) not in selected_ids:
-                                selected.append(src_comp)
-                                selected_ids.add(id(src_comp))
-                                self._drag_auto_junctions.append(src_comp)
+                        # Same auto-include pass as the multi-select branch
+                        # below — see _terminal_junctions_to_auto_include.
+                        self._drag_auto_junctions = _terminal_junctions_to_auto_include(
+                            self._diagram_scene.items(), selected,
+                        )
+                        selected.extend(self._drag_auto_junctions)
                         self._dragging_components = selected
                         self._drag_anchor_item = anchor
                         self._drag_anchor_start_pos = QPointF(anchor.pos())
@@ -1079,25 +1118,20 @@ class DiagramView(QGraphicsView):
                         if s is not item and hasattr(s, '_skip_snap'):
                             s._skip_snap = True
 
-                    # Auto-include connected junctions not in the selection,
-                    # but only for single-item or group drags — not when the
-                    # user has built an explicit multi-selection.
-                    selected_ids = set(id(c) for c in selected)
-                    self._drag_auto_junctions = []
-                    if not _is_explicit_multiselect:
-                        for si in self._diagram_scene.items():
-                            if not isinstance(si, ConnectionItem):
-                                continue
-                            src_comp = si.source_port.component
-                            tgt_comp = si.target_port.component
-                            if id(src_comp) in selected_ids and isinstance(tgt_comp, JunctionItem) and id(tgt_comp) not in selected_ids:
-                                selected.append(tgt_comp)
-                                selected_ids.add(id(tgt_comp))
-                                self._drag_auto_junctions.append(tgt_comp)
-                            elif id(tgt_comp) in selected_ids and isinstance(src_comp, JunctionItem) and id(src_comp) not in selected_ids:
-                                selected.append(src_comp)
-                                selected_ids.add(id(src_comp))
-                                self._drag_auto_junctions.append(src_comp)
+                    # Auto-include connected junctions not in the selection.
+                    # Free-terminal and fully-internal junctions ride along
+                    # with their wired components — leaving them behind
+                    # detaches the wire and is never what the user wants.
+                    # Hub junctions with at least one wire to an unselected
+                    # item are skipped: see _terminal_junctions_to_auto_include.
+                    # The previous code short-circuited this for explicit
+                    # multi-select, which combined with the rubber-band
+                    # junction-deselect (below) stranded terminal junctions
+                    # after rubber-band-then-drag.
+                    self._drag_auto_junctions = _terminal_junctions_to_auto_include(
+                        self._diagram_scene.items(), selected,
+                    )
+                    selected.extend(self._drag_auto_junctions)
 
                     self._dragging_components = selected
                     self._drag_anchor_item = item
