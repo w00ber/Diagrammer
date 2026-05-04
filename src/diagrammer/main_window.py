@@ -814,13 +814,21 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
 
     # ------------------------------------------------------- Z-ordering
 
+    def _push_z_change(self, items_with_z, label: str) -> None:
+        """Push a ``ChangeZOrderCommand`` so the bulk z-value rewrite
+        from one z-order action is a single undoable unit."""
+        from diagrammer.commands.layer_command import ChangeZOrderCommand
+        if not items_with_z:
+            return
+        self._scene.undo_stack.push(ChangeZOrderCommand(items_with_z, label))
+
     def _bring_forward(self) -> None:
         """Move selected items one step forward in the stacking order (Ctrl+])."""
         selected = self._scene.selectedItems()
         if not selected:
             return
         selected_ids = set(id(i) for i in selected)
-        # Find the next item above and swap z-values
+        states: list[tuple[object, float, float]] = []
         for item in selected:
             best_z = None
             for other in self._scene.items():
@@ -830,7 +838,8 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
                     if best_z is None or other.zValue() < best_z:
                         best_z = other.zValue()
             if best_z is not None:
-                item.setZValue(best_z + 0.001)
+                states.append((item, item.zValue(), best_z + 0.001))
+        self._push_z_change(states, "Bring forward")
 
     def _send_backward(self) -> None:
         """Move selected items one step backward in the stacking order (Ctrl+[)."""
@@ -838,6 +847,7 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         if not selected:
             return
         selected_ids = set(id(i) for i in selected)
+        states: list[tuple[object, float, float]] = []
         for item in selected:
             best_z = None
             for other in self._scene.items():
@@ -847,7 +857,8 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
                     if best_z is None or other.zValue() > best_z:
                         best_z = other.zValue()
             if best_z is not None:
-                item.setZValue(best_z - 0.001)
+                states.append((item, item.zValue(), best_z - 0.001))
+        self._push_z_change(states, "Send backward")
 
     def _bring_to_front(self) -> None:
         """Move selected items to the top of the stacking order (Ctrl+Shift+])."""
@@ -855,9 +866,11 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         if not selected:
             return
         max_z = max(item.zValue() for item in self._scene.items()) if self._scene.items() else 0
+        states: list[tuple[object, float, float]] = []
         for item in selected:
             max_z += 0.01
-            item.setZValue(max_z)
+            states.append((item, item.zValue(), max_z))
+        self._push_z_change(states, "Bring to front")
 
     def _send_to_back(self) -> None:
         """Move selected items to the bottom of the stacking order (Ctrl+Shift+[)."""
@@ -865,9 +878,11 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         if not selected:
             return
         min_z = min(item.zValue() for item in self._scene.items()) if self._scene.items() else 0
+        states: list[tuple[object, float, float]] = []
         for item in selected:
             min_z -= 0.01
-            item.setZValue(min_z)
+            states.append((item, item.zValue(), min_z))
+        self._push_z_change(states, "Send to back")
 
     # ------------------------------------------------- Copy Selection as Image
 

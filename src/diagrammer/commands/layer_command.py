@@ -46,3 +46,33 @@ class MoveToLayerCommand(QUndoCommand):
         for it, (old_layer, old_z) in zip(self._items, self._old_state):
             it._layer_index = old_layer
             it.setZValue(old_z)
+
+
+class ChangeZOrderCommand(QUndoCommand):
+    """Reassign z-values on a set of items (undoable).
+
+    Used by the Bring-Forward / Send-Backward / Bring-To-Front /
+    Send-To-Back actions on MainWindow. One command captures the
+    entire selection's old/new z values for one gesture so undo
+    restores the exact stacking order.
+    """
+
+    def __init__(
+        self,
+        items_with_z: list[tuple[object, float, float]],
+        label: str,
+        parent: QUndoCommand | None = None,
+    ) -> None:
+        super().__init__(parent)
+        # Store (item, old_z, new_z) tuples; copy the list defensively
+        # so callers can't mutate it post-construction.
+        self._states = list(items_with_z)
+        self.setText(label)
+
+    def redo(self) -> None:
+        for item, _old_z, new_z in self._states:
+            item.setZValue(new_z)
+
+    def undo(self) -> None:
+        for item, old_z, _new_z in self._states:
+            item.setZValue(old_z)

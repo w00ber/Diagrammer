@@ -7,8 +7,11 @@ from PySide6.QtCore import QPointF
 
 from diagrammer.canvas.scene import DiagramScene
 from diagrammer.commands.add_command import AddComponentCommand, MoveComponentCommand
+from diagrammer.commands.annotation_command import EditAnnotationTextCommand
 from diagrammer.commands.delete_command import DeleteCommand
+from diagrammer.commands.layer_command import ChangeZOrderCommand
 from diagrammer.commands.shape_command import AddShapeCommand
+from diagrammer.items.annotation_item import AnnotationItem
 from diagrammer.items.junction_item import JunctionItem
 from diagrammer.items.shape_item import RectangleItem
 from diagrammer.models.library import ComponentLibrary
@@ -106,6 +109,88 @@ class TestMoveUndo:
         scene.undo_stack.redo()
         assert rect.pos().x() == pytest.approx(200)
         assert rect.pos().y() == pytest.approx(300)
+
+
+class TestAnnotationEditUndo:
+    def test_text_edit_undo_restores_old_text(self, scene):
+        annot = AnnotationItem("hello")
+        scene.addItem(annot)
+        cmd = EditAnnotationTextCommand(annot, "hello", "world")
+        scene.undo_stack.push(cmd)
+        assert annot.source_text == "world"
+        scene.undo_stack.undo()
+        assert annot.source_text == "hello"
+
+    def test_text_edit_redo_restores_new_text(self, scene):
+        annot = AnnotationItem("hello")
+        scene.addItem(annot)
+        cmd = EditAnnotationTextCommand(annot, "hello", "world")
+        scene.undo_stack.push(cmd)
+        scene.undo_stack.undo()
+        scene.undo_stack.redo()
+        assert annot.source_text == "world"
+
+    def test_finish_editing_pushes_undo_command(self, scene):
+        """The end-to-end edit path pushes EditAnnotationTextCommand
+        when text changes — Ctrl+Z reverts the edit."""
+        annot = AnnotationItem("hello")
+        scene.addItem(annot)
+        # Simulate the user entering edit mode and typing.
+        annot.start_editing()
+        annot.setPlainText("world")
+        annot.finish_editing()
+        assert annot.source_text == "world"
+        # Undo should restore the prior text.
+        scene.undo_stack.undo()
+        assert annot.source_text == "hello"
+
+    def test_finish_editing_with_no_change_does_not_push(self, scene):
+        """Opening and closing the editor without changing text must
+        NOT clutter the undo stack."""
+        annot = AnnotationItem("hello")
+        scene.addItem(annot)
+        before_count = scene.undo_stack.count()
+        annot.start_editing()
+        # No text change.
+        annot.finish_editing()
+        assert scene.undo_stack.count() == before_count
+        assert annot.source_text == "hello"
+
+
+class TestZOrderUndo:
+    def test_change_z_order_undo_restores_old_values(self, scene):
+        rects = []
+        for i in range(3):
+            r = RectangleItem(width=50, height=30)
+            r.setPos(QPointF(i * 100, 0))
+            r.setZValue(float(i + 1))
+            scene.addItem(r)
+            rects.append(r)
+        # Move middle to front: z=2 -> z=4
+        cmd = ChangeZOrderCommand([(rects[1], 2.0, 4.0)], "Bring to front")
+        scene.undo_stack.push(cmd)
+        assert rects[1].zValue() == pytest.approx(4.0)
+        scene.undo_stack.undo()
+        assert rects[1].zValue() == pytest.approx(2.0)
+
+    def test_bulk_z_change_undo_restores_all(self, scene):
+        rects = []
+        for i in range(3):
+            r = RectangleItem(width=50, height=30)
+            r.setZValue(float(i + 1))
+            scene.addItem(r)
+            rects.append(r)
+        # Reorder all three at once
+        states = [
+            (rects[0], 1.0, 5.0),
+            (rects[1], 2.0, 6.0),
+            (rects[2], 3.0, 7.0),
+        ]
+        cmd = ChangeZOrderCommand(states, "Bring to front")
+        scene.undo_stack.push(cmd)
+        assert [r.zValue() for r in rects] == [5.0, 6.0, 7.0]
+        scene.undo_stack.undo()
+        assert [r.zValue() for r in rects] == [1.0, 2.0, 3.0]
 
 
 class TestUndoStackIntegrity:

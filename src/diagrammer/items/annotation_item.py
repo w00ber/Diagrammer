@@ -1392,18 +1392,27 @@ class AnnotationItem(QGraphicsTextItem):
         self._editing = False
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
 
-        # Capture the edited text as new source
-        self._source_text = self.toPlainText()
-
-        # Clear selection
+        # Clear selection (UI cleanup, no data change)
         cursor = self.textCursor()
         cursor.clearSelection()
         self.setTextCursor(cursor)
 
-        # Render math if present, then re-pin the intrinsic anchor to the
-        # new geometric center while holding the visible scene-position
-        # steady. This prevents the rotated annotation from jumping when
-        # the user finishes a text edit that changes the bounding rect.
+        # Compare the edit-mode buffer (toPlainText) against the prior
+        # source. If the text actually changed, route the change through
+        # an undoable EditAnnotationTextCommand so Ctrl+Z can revert it.
+        # Otherwise just re-render in case the editor was opened on a
+        # math source (which clears the document during render — see
+        # _try_render_math) and we need to restore the rendered view.
+        new_text = self.toPlainText()
+        old_text = self._source_text
+        scene = self.scene()
+        if new_text != old_text and scene is not None and hasattr(scene, "undo_stack"):
+            from diagrammer.commands.annotation_command import EditAnnotationTextCommand
+            scene.undo_stack.push(EditAnnotationTextCommand(self, old_text, new_text))
+            return
+
+        # No-op edit: just refresh the rendered view.
+        self._source_text = new_text
         self._try_render_math()
         self._recompute_intrinsic_anchor()
         self.prepareGeometryChange()
