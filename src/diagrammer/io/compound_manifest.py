@@ -344,10 +344,16 @@ def instantiate_compound(
             item.cap_style = sd["cap_style"]
         if hasattr(item, 'arrow_style') and "arrow_style" in sd:
             item.arrow_style = sd["arrow_style"]
-        if sd.get("rotation"):
-            item.setTransformOriginPoint(item.boundingRect().center())
-            item.setRotation(sd["rotation"])
+        # Phase C: persistent intrinsic transform fields. Layer/pos
+        # first, then flip/rotate so the recompute sees the final pos.
         _apply_layer_and_pos(item, sd)
+        if sd.get("flip_h"):
+            item.set_flip_h(True)
+        if sd.get("flip_v"):
+            item.set_flip_v(True)
+        angle = sd.get("rotation_angle", sd.get("rotation", 0)) or 0
+        if angle:
+            item.rotate_by(angle)
         scene.addItem(item)
         created.append(item)
 
@@ -368,10 +374,16 @@ def instantiate_compound(
             item.text_content = ad["source_text"]
         elif "html" in ad:
             item.setHtml(ad["html"])
-        if ad.get("rotation"):
-            item.setTransformOriginPoint(item.boundingRect().center())
-            item.setRotation(ad["rotation"])
+        # Phase C: persistent intrinsic transform fields. Layer/pos
+        # first, then flip/rotate so the recompute sees the final pos.
         _apply_layer_and_pos(item, ad)
+        if ad.get("flip_h"):
+            item.set_flip_h(True)
+        if ad.get("flip_v"):
+            item.set_flip_v(True)
+        angle = ad.get("rotation_angle", ad.get("rotation", 0)) or 0
+        if angle:
+            item.rotate_by(angle)
         scene.addItem(item)
         created.append(item)
 

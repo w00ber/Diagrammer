@@ -65,11 +65,14 @@ class RotateAroundPortCommand(QUndoCommand):
 
 
 class RotateItemCommand(QUndoCommand):
-    """Rotate any QGraphicsItem by a given angle about its center (undoable).
+    """Rotate any QGraphicsItem by a given angle about its intrinsic anchor.
 
-    Works with AnnotationItem, ShapeItem, LineItem, etc. — any item
-    that supports Qt's built-in setRotation(). Sets the transform origin
-    to the bounding rect center before rotating.
+    Items with the unified intrinsic-transform model (ComponentItem,
+    AnnotationItem, ShapeItem, LineItem) expose ``rotate_by`` and pivot
+    around their cached intrinsic anchor — the pivot doesn't drift
+    when the bounding rect changes. Items that haven't adopted the
+    model fall back to Qt's ``setRotation`` with a dynamic
+    boundingRect-center origin so any future item types keep working.
     """
 
     def __init__(self, item, degrees: float, parent: QUndoCommand | None = None) -> None:
@@ -78,24 +81,23 @@ class RotateItemCommand(QUndoCommand):
         self._degrees = degrees
         self.setText(f"Rotate {type(item).__name__} {degrees:.0f}\u00b0")
 
-    def _ensure_center_origin(self) -> None:
+    def _apply(self, degrees: float) -> None:
+        if hasattr(self._item, "rotate_by"):
+            self._item.rotate_by(degrees)
+            return
         br = self._item.boundingRect()
         self._item.setTransformOriginPoint(br.center())
+        self._item.setRotation(self._item.rotation() + degrees)
 
     def redo(self) -> None:
-        self._ensure_center_origin()
-        self._item.setRotation(self._item.rotation() + self._degrees)
+        self._apply(self._degrees)
 
     def undo(self) -> None:
-        self._ensure_center_origin()
-        self._item.setRotation(self._item.rotation() - self._degrees)
+        self._apply(-self._degrees)
 
 
 class FlipItemCommand(QUndoCommand):
-    """Flip any QGraphicsItem horizontally or vertically (undoable).
-
-    Uses QGraphicsItem.setTransform() to apply a scale(-1, 1) or (1, -1).
-    """
+    """Flip any QGraphicsItem horizontally or vertically (undoable)."""
 
     def __init__(self, item, horizontal: bool, parent: QUndoCommand | None = None) -> None:
         super().__init__(parent)
@@ -111,6 +113,15 @@ class FlipItemCommand(QUndoCommand):
         self._apply()  # flip is its own inverse
 
     def _apply(self) -> None:
+        # Items with the unified intrinsic-transform model toggle their
+        # persistent flip state; the transform rebuilds around the cached
+        # anchor with a single source of truth.
+        if self._horizontal and hasattr(self._item, "set_flip_h"):
+            self._item.set_flip_h(not self._item.flip_h)
+            return
+        if not self._horizontal and hasattr(self._item, "set_flip_v"):
+            self._item.set_flip_v(not self._item.flip_v)
+            return
         from PySide6.QtGui import QTransform
         t = self._item.transform()
         br = self._item.boundingRect()

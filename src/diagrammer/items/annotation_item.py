@@ -17,7 +17,7 @@ import re
 import uuid
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPicture, QTextCursor
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPicture, QTextCursor, QTransform
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QGraphicsItem,
@@ -1068,12 +1068,25 @@ class AnnotationItem(QGraphicsTextItem):
         self._math_image = None  # pre-rasterized QImage of the math SVG
         self._math_rect: QRectF = QRectF()  # natural size of the math SVG
 
+        # Persistent intrinsic transform state (matches ComponentItem's model).
+        # _intrinsic_anchor is the local-coords pivot; it is recomputed only at
+        # construction, after finish_editing(), and after _try_render_math()
+        # toggles math on/off — so the visible center stays put across normal
+        # text edits and is re-pinned when the bounding rect actually changes.
+        self._rotation_angle = 0.0
+        self._flip_h = False
+        self._flip_v = False
+        self._intrinsic_anchor: QPointF = QPointF(0, 0)
+
         # Default font
         font = QFont(DEFAULT_FONT_FAMILY, int(DEFAULT_FONT_SIZE))
         self.setFont(font)
         self.setDefaultTextColor(DEFAULT_TEXT_COLOR)
 
-        # Set initial text
+        # Set initial text. ``_try_render_math`` calls
+        # ``_recompute_intrinsic_anchor`` at the end, which sets the
+        # anchor from current geometry — no separate initialization
+        # needed.
         self.setPlainText(text)
         self._try_render_math()
 
@@ -1180,6 +1193,98 @@ class AnnotationItem(QGraphicsTextItem):
         return self._editing
 
     # =====================================================================
+    # Intrinsic transform (rotation + flip with stable anchor)
+    # =====================================================================
+
+    @property
+    def rotation_angle(self) -> float:
+        return self._rotation_angle
+
+    @property
+    def flip_h(self) -> bool:
+        return self._flip_h
+
+    @property
+    def flip_v(self) -> bool:
+        return self._flip_v
+
+    def intrinsic_anchor(self) -> QPointF:
+        """Local-coords pivot used for rotation and flip."""
+        return QPointF(self._intrinsic_anchor)
+
+    def rotate_by(self, degrees: float) -> None:
+        self._rotation_angle = (self._rotation_angle + degrees) % 360
+        self._apply_transform()
+
+    def set_flip_h(self, flipped: bool) -> None:
+        self._flip_h = bool(flipped)
+        self._apply_transform()
+
+    def set_flip_v(self, flipped: bool) -> None:
+        self._flip_v = bool(flipped)
+        self._apply_transform()
+
+    def _compute_intrinsic_anchor(self) -> QPointF:
+        """Derive the natural pivot from current geometry.
+
+        For math-rendered annotations this is the SVG glyph rect's center;
+        for plain text it is the QGraphicsTextItem's natural bounding rect
+        center (without the selection padding our boundingRect adds).
+        """
+        if self._math_renderer is not None and not self._math_rect.isNull():
+            return self._math_rect.center()
+        return super().boundingRect().center()
+
+    def _apply_transform(self) -> None:
+        """Rebuild the item transform from rotation + flip state.
+
+        Pivots around ``self._intrinsic_anchor`` (local coords) so the
+        anchor point stays fixed in scene space when the rotation /
+        flip changes. ``setRotation`` is left at 0 — the rotation is
+        baked into ``setTransform`` so we have one source of truth.
+        """
+        cx = self._intrinsic_anchor.x()
+        cy = self._intrinsic_anchor.y()
+        t = QTransform()
+        t.translate(cx, cy)
+        sx = -1.0 if self._flip_h else 1.0
+        sy = -1.0 if self._flip_v else 1.0
+        t.scale(sx, sy)
+        t.rotate(self._rotation_angle)
+        t.translate(-cx, -cy)
+        self.setTransform(t)
+
+    def _recompute_intrinsic_anchor(self) -> None:
+        """Move the intrinsic anchor to the new geometric center.
+
+        Called when the bounding rect changes between rotations (LaTeX
+        re-render, plain-text content change committed via
+        ``finish_editing``). Without this, the anchor would go stale and
+        subsequent rotations would tumble around the wrong point.
+
+        When a non-identity transform is currently in effect, the
+        previous anchor's scene position is held steady so the visible
+        annotation doesn't jump as the anchor moves. With identity
+        transform (the common case during construction or before the
+        user has rotated/flipped) we just update the anchor in place.
+        """
+        is_identity = (self._rotation_angle == 0.0
+                       and not self._flip_h
+                       and not self._flip_v)
+        if is_identity:
+            self._intrinsic_anchor = self._compute_intrinsic_anchor()
+            self._apply_transform()
+            return
+        # Non-identity: pin the previous anchor's scene position.
+        old_scene = self.mapToScene(self._intrinsic_anchor)
+        self._intrinsic_anchor = self._compute_intrinsic_anchor()
+        self._apply_transform()
+        new_scene = self.mapToScene(self._intrinsic_anchor)
+        delta = old_scene - new_scene
+        if delta.x() != 0 or delta.y() != 0:
+            self.setPos(self.pos() + delta)
+
+    # =====================================================================
     # Math rendering
     # =====================================================================
 
@@ -1196,54 +1301,62 @@ class AnnotationItem(QGraphicsTextItem):
         # will re-invoke us once the edit is committed.
         if self._editing:
             return
-        text = self._source_text
-        if not _has_any_math(text):
-            self._math_renderer = None
+        try:
+            text = self._source_text
+            if not _has_any_math(text):
+                self._math_renderer = None
+                self._math_image = None
+                self._math_rect = QRectF()
+                return
+
+            # If the user typed display math but no real renderer is
+            # around, let them know once per session what they need to
+            # install. The popup is suppressed if ziamath OR system
+            # LaTeX is available, so users with a working pipeline never
+            # see it.
+            if _has_display_math(text):
+                _maybe_warn_no_display_math_backend(parent_widget=None)
+
+            svg_bytes = _render_latex_svg(text, self.font_size, self.text_color,
+                                           font_family=self.font_family)
+            if svg_bytes is None:
+                self._math_renderer = None
+                self._math_image = None
+                self._math_rect = QRectF()
+                return
+
+            renderer = QSvgRenderer(svg_bytes)
+            if not renderer.isValid():
+                logger.warning("QSvgRenderer says SVG is invalid; first 200 bytes: %s",
+                              svg_bytes[:200])
+                self._math_renderer = None
+                self._math_image = None
+                self._math_rect = QRectF()
+                return
+
+            self._math_renderer = renderer
             self._math_image = None
-            self._math_rect = QRectF()
-            return
+            vs = renderer.viewBoxF()
+            ds = renderer.defaultSize()
+            logger.debug("renderer viewBox=(%s,%s,%s,%s), defaultSize=(%s,%s)",
+                         vs.x(), vs.y(), vs.width(), vs.height(), ds.width(), ds.height())
+            # _math_rect is the item-local rect where the SVG actually paints
+            # (anchored at 0,0 — see paint() for the painter translate trick),
+            # so the boundingRect / selection rect line up with the glyphs.
+            self._math_rect = QRectF(0, 0, vs.width(), vs.height())
+            logger.debug("math_rect set to %s", self._math_rect)
 
-        # If the user typed display math but no real renderer is around,
-        # let them know once per session what they need to install. The
-        # popup is suppressed if ziamath OR system LaTeX is available, so
-        # users with a working pipeline never see it.
-        if _has_display_math(text):
-            _maybe_warn_no_display_math_backend(parent_widget=None)
-
-        svg_bytes = _render_latex_svg(text, self.font_size, self.text_color,
-                                       font_family=self.font_family)
-        if svg_bytes is None:
-            self._math_renderer = None
-            self._math_image = None
-            self._math_rect = QRectF()
-            return
-
-        renderer = QSvgRenderer(svg_bytes)
-        if not renderer.isValid():
-            logger.warning("QSvgRenderer says SVG is invalid; first 200 bytes: %s",
-                          svg_bytes[:200])
-            self._math_renderer = None
-            self._math_image = None
-            self._math_rect = QRectF()
-            return
-
-        self._math_renderer = renderer
-        self._math_image = None
-        # Print the renderer's actual viewBox + default size so we can
-        # tell whether the normalize step landed (origin at 0,0) or not.
-        vs = renderer.viewBoxF()
-        ds = renderer.defaultSize()
-        logger.debug("renderer viewBox=(%s,%s,%s,%s), defaultSize=(%s,%s)",
-                     vs.x(), vs.y(), vs.width(), vs.height(), ds.width(), ds.height())
-        # _math_rect is the item-local rect where the SVG actually paints
-        # (anchored at 0,0 — see paint() for the painter translate trick),
-        # so the boundingRect / selection rect line up with the glyphs.
-        self._math_rect = QRectF(0, 0, vs.width(), vs.height())
-        logger.debug("math_rect set to %s", self._math_rect)
-
-        # Hide the text content (we'll paint the SVG instead)
-        self.document().clear()
-        self.prepareGeometryChange()
+            # Hide the text content (we'll paint the SVG instead)
+            self.document().clear()
+            self.prepareGeometryChange()
+        finally:
+            # Whichever path we took above touched ``_math_rect`` and so
+            # changed what ``_compute_intrinsic_anchor`` would return.
+            # Re-pin the anchor to the new geometric center, holding the
+            # visible scene-position steady when a transform is in
+            # effect — otherwise rotating-then-editing tumbles the
+            # annotation around a stale pivot.
+            self._recompute_intrinsic_anchor()
 
     # =====================================================================
     # Editing
@@ -1287,8 +1400,12 @@ class AnnotationItem(QGraphicsTextItem):
         cursor.clearSelection()
         self.setTextCursor(cursor)
 
-        # Render math if present
+        # Render math if present, then re-pin the intrinsic anchor to the
+        # new geometric center while holding the visible scene-position
+        # steady. This prevents the rotated annotation from jumping when
+        # the user finishes a text edit that changes the bounding rect.
         self._try_render_math()
+        self._recompute_intrinsic_anchor()
         self.prepareGeometryChange()
         self.update()
 

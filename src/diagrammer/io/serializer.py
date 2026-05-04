@@ -351,9 +351,17 @@ class DiagramSerializer:
                 item.fill_color = QColor(sd["fill_color"])
             if hasattr(item, 'corner_radius') and "corner_radius" in sd:
                 item.corner_radius = sd["corner_radius"]
-            if sd.get("rotation"):
-                item.setTransformOriginPoint(item.boundingRect().center())
-                item.setRotation(sd["rotation"])
+            # Phase C: prefer the persistent intrinsic transform fields
+            # when present (v2.x); fall back to the v1 ``rotation`` key
+            # via ``rotate_by`` so old files apply rotation through the
+            # new mechanism with the same visual result.
+            if sd.get("flip_h"):
+                item.set_flip_h(True)
+            if sd.get("flip_v"):
+                item.set_flip_v(True)
+            angle = sd.get("rotation_angle", sd.get("rotation", 0)) or 0
+            if angle:
+                item.rotate_by(angle)
             # Line-specific properties
             if hasattr(item, 'cap_style') and "cap_style" in sd:
                 item.cap_style = sd["cap_style"]
@@ -403,10 +411,19 @@ class DiagramSerializer:
                 item.setHtml(ad["html"])
             elif "text" in ad:
                 item.setPlainText(ad["text"])
-            if ad.get("rotation"):
-                item.setTransformOriginPoint(item.boundingRect().center())
-                item.setRotation(ad["rotation"])
+            # Phase C: persistent intrinsic transform fields. Set pos
+            # FIRST, then apply flip/rotation so the recompute logic in
+            # _try_render_math (triggered by text_content above) sees the
+            # final position. Otherwise it would correct against an old
+            # default position and shift the annotation.
             item.setPos(QPointF(ad["pos"][0], ad["pos"][1]))
+            if ad.get("flip_h"):
+                item.set_flip_h(True)
+            if ad.get("flip_v"):
+                item.set_flip_v(True)
+            angle = ad.get("rotation_angle", ad.get("rotation", 0)) or 0
+            if angle:
+                item.rotate_by(angle)
             item._layer_index = ad.get("layer", 0)
             scene.addItem(item)
             _restore_group(item, ad)
@@ -506,7 +523,13 @@ def _serialize_shape(item, shape_type: str) -> dict:
         d["fill_color"] = item.fill_color.name(QColor.NameFormat.HexArgb)
     if hasattr(item, 'corner_radius'):
         d["corner_radius"] = item.corner_radius
-    d["rotation"] = item.rotation()
+    # Phase C: persistent intrinsic transform fields. ``rotation`` stays
+    # in sync with ``rotation_angle`` so v2 files load on older builds
+    # via the legacy setRotation() path with the same visual result.
+    d["rotation"] = item.rotation_angle
+    d["rotation_angle"] = item.rotation_angle
+    d["flip_h"] = item.flip_h
+    d["flip_v"] = item.flip_v
     d["layer"] = getattr(item, '_layer_index', 0)
     d["z"] = item.zValue()
     d["group"] = getattr(item, '_group_ids', []) or []
@@ -528,6 +551,14 @@ def _serialize_line(item) -> dict:
         "arrow_type": item.arrow_type,
         "arrow_scale": item.arrow_scale,
         "arrow_extend": item.arrow_extend,
+        # Phase C: persistent intrinsic transform fields. Lines pivot
+        # around their midpoint via these — kept in sync with Qt's
+        # ``rotation`` for one-direction backward compat with older
+        # builds reading new files.
+        "rotation": item.rotation_angle,
+        "rotation_angle": item.rotation_angle,
+        "flip_h": item.flip_h,
+        "flip_v": item.flip_v,
         "layer": getattr(item, '_layer_index', 0),
         "z": item.zValue(),
         "group": getattr(item, '_group_ids', []) or [],
@@ -558,7 +589,16 @@ def _serialize_annotation(item) -> dict:
         "font_bold": item.font_bold,
         "font_italic": item.font_italic,
         "text_color": item.text_color.name(),
-        "rotation": item.rotation(),
+        # Phase C: persistent intrinsic transform fields. Annotations
+        # pivot around the cached intrinsic anchor; ``rotation`` is
+        # mirrored from ``rotation_angle`` so old builds reading new
+        # files still apply the rotation visually (with a slightly
+        # different anchor — the visible position will jump on first
+        # save in the old build, but undo recovers).
+        "rotation": item.rotation_angle,
+        "rotation_angle": item.rotation_angle,
+        "flip_h": item.flip_h,
+        "flip_v": item.flip_v,
         "layer": getattr(item, '_layer_index', 0),
         "z": item.zValue(),
         "group": getattr(item, '_group_ids', []) or [],

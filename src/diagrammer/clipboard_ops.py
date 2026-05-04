@@ -158,7 +158,13 @@ class ClipboardMixin:
                 "font_bold": annot.font_bold,
                 "font_italic": annot.font_italic,
                 "text_color": annot.text_color.name(),
-                "rotation": annot.rotation(),
+                # Phase C: persistent intrinsic transform fields. The
+                # legacy ``rotation`` key mirrors ``rotation_angle`` for
+                # any external consumers reading the clipboard dict.
+                "rotation": annot.rotation_angle,
+                "rotation_angle": annot.rotation_angle,
+                "flip_h": annot.flip_h,
+                "flip_v": annot.flip_v,
                 "group": list(annot._group_ids),
             })
         for shape in selected_shapes:
@@ -176,6 +182,10 @@ class ClipboardMixin:
                     "arrow_type": shape.arrow_type,
                     "arrow_scale": shape.arrow_scale,
                     "arrow_extend": shape.arrow_extend,
+                    "rotation": shape.rotation_angle,
+                    "rotation_angle": shape.rotation_angle,
+                    "flip_h": shape.flip_h,
+                    "flip_v": shape.flip_v,
                     "group": list(shape._group_ids),
                 })
             else:
@@ -189,6 +199,10 @@ class ClipboardMixin:
                     "fill_color": shape.fill_color.name(QColor.NameFormat.HexArgb),
                     "stroke_width": shape.stroke_width,
                     "dash_style": shape.dash_style,
+                    "rotation": shape.rotation_angle,
+                    "rotation_angle": shape.rotation_angle,
+                    "flip_h": shape.flip_h,
+                    "flip_v": shape.flip_v,
                     "group": list(shape._group_ids),
                 }
                 if isinstance(shape, RectangleItem):
@@ -386,10 +400,17 @@ class ClipboardMixin:
                     annot.font_italic = True
                 if "text_color" in entry:
                     annot.text_color = QColor(entry["text_color"])
-                if entry.get("rotation"):
-                    annot.setTransformOriginPoint(annot.boundingRect().center())
-                    annot.setRotation(entry["rotation"])
+                # Phase C: persistent intrinsic transform fields. Set
+                # pos before flip/rotate so the recompute logic sees
+                # the final position.
                 annot.setPos(pos)
+                if entry.get("flip_h"):
+                    annot.set_flip_h(True)
+                if entry.get("flip_v"):
+                    annot.set_flip_v(True)
+                angle = entry.get("rotation_angle", entry.get("rotation", 0)) or 0
+                if angle:
+                    annot.rotate_by(angle)
                 self._scene.addItem(annot)
                 _remap_group(annot, entry)
                 pasted_annotations.append(annot)
@@ -435,6 +456,14 @@ class ClipboardMixin:
                 shape._skip_snap = True
                 shape.setPos(pos)
                 shape._skip_snap = False
+                # Phase C: persistent intrinsic transform fields.
+                if entry.get("flip_h"):
+                    shape.set_flip_h(True)
+                if entry.get("flip_v"):
+                    shape.set_flip_v(True)
+                angle = entry.get("rotation_angle", entry.get("rotation", 0)) or 0
+                if angle:
+                    shape.rotate_by(angle)
                 self._scene.addItem(shape)
                 _remap_group(shape, entry)
                 pasted_annotations.append(shape)

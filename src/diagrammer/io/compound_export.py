@@ -468,7 +468,10 @@ def _render_annotation(parent: ET.Element, annot, ox: float, oy: float) -> None:
     sc = annot.mapToScene(QPointF(0, 0))
     x = sc.x() - ox
     y = sc.y() - oy
-    rotation = annot.rotation()
+    # Phase C: read the persistent intrinsic rotation field. Qt's
+    # ``rotation()`` is left at 0 by the new transform model, so the
+    # legacy ``annot.rotation()`` would always export as 0.
+    rotation = annot.rotation_angle
 
     if _has_any_math(annot.source_text):
         if _inline_math_annotation(parent, annot, x, y, rotation,
@@ -657,7 +660,9 @@ def _render_shape(parent: ET.Element, shape, ox: float, oy: float) -> None:
 
     style = ";".join(style_parts)
 
-    rotation = shape.rotation()
+    # Phase C: read the persistent intrinsic rotation field. Qt's
+    # ``rotation()`` is left at 0 by the new transform model.
+    rotation = shape.rotation_angle
 
     if isinstance(shape, RectangleItem):
         rect = ET.SubElement(parent, "rect")

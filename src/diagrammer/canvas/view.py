@@ -2048,9 +2048,13 @@ class DiagramView(QGraphicsView):
             clone.font_bold = item.font_bold
             clone.font_italic = item.font_italic
             clone.text_color = item.text_color
-            if item.rotation():
-                clone.setTransformOriginPoint(clone.boundingRect().center())
-                clone.setRotation(item.rotation())
+            # Phase C: persistent intrinsic transform fields.
+            if item.flip_h:
+                clone.set_flip_h(True)
+            if item.flip_v:
+                clone.set_flip_v(True)
+            if item.rotation_angle:
+                clone.rotate_by(item.rotation_angle)
             clone.setZValue(item.zValue() + 0.01)
         elif isinstance(item, _SvgImageItem):
             clone = _SvgImageItem(
@@ -2098,6 +2102,16 @@ class DiagramView(QGraphicsView):
                 clone.arrow_scale = item.arrow_scale
                 clone.arrow_extend = item.arrow_extend
                 clone.setZValue(item.zValue() + 0.01)
+            # Phase C: copy persistent intrinsic transform fields onto
+            # the shape/line clone so alt-drag duplicates a rotated /
+            # flipped item correctly.
+            if clone is not None and hasattr(clone, "rotate_by"):
+                if item.flip_h:
+                    clone.set_flip_h(True)
+                if item.flip_v:
+                    clone.set_flip_v(True)
+                if item.rotation_angle:
+                    clone.rotate_by(item.rotation_angle)
 
         # Add all non-ComponentItem clones via undo command so the
         # entire duplicate macro undoes atomically

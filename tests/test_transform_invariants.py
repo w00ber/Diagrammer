@@ -235,32 +235,30 @@ class TestAnnotationRotation:
         assert_snapshots_equal(before, scene_snapshot(scene),
                                msg="Annotation +90/-90 should round-trip")
 
-    @pytest.mark.xfail(
-        reason="Phase C: each RotateItemCommand resets the transform origin "
-               "to the *current* boundingRect().center(); when the bounding "
-               "rect grows between two rotations, the second rotation pivots "
-               "around a different scene point and the visible center drifts.",
-        strict=True,
-    )
-    def test_visual_center_unchanged_across_text_reflow_then_rotate(self, scene):
-        """After Phase C: the cached intrinsic anchor pins the annotation's
-        visible center even when the bounding rect changes between rotations.
-        Today the second rotation re-anchors and the center drifts."""
+    def test_visual_center_unchanged_across_text_reflow(self, scene):
+        """After Phase C: when the bounding rect changes (text edit, math
+        re-render), the annotation's visible center stays put. The
+        intrinsic anchor is re-pinned with a one-time scene-position
+        correction, so subsequent rotations also pivot around the
+        right point."""
         annot = AnnotationItem("short")
         annot.setPos(QPointF(50, 50))
         scene.addItem(annot)
         scene.undo_stack.push(RotateItemCommand(annot, 30))
         before_center = annot.mapToScene(annot.boundingRect().center())
-        # Simulate a reflow that changes the bounding rect.
-        annot._source_text = "much longer text that reflows"
-        annot.setPlainText(annot._source_text)
-        # Rotate by 0 — should be a no-op for the visible center, but the
-        # command resets the transform origin to the new bounding-rect
-        # center, which lives at a different scene point.
-        scene.undo_stack.push(RotateItemCommand(annot, 0))
+        # Simulate a reflow via the public API — text_content's setter
+        # calls _try_render_math which recomputes the intrinsic anchor.
+        annot.text_content = "much longer text that reflows"
         after_center = annot.mapToScene(annot.boundingRect().center())
         assert after_center.x() == pytest.approx(before_center.x(), abs=0.5)
         assert after_center.y() == pytest.approx(before_center.y(), abs=0.5)
+        # Subsequent rotation back to identity must also leave the
+        # visible center at the same scene point — a drifting anchor
+        # would tumble the annotation.
+        scene.undo_stack.push(RotateItemCommand(annot, -30))
+        final_center = annot.mapToScene(annot.boundingRect().center())
+        assert final_center.x() == pytest.approx(before_center.x(), abs=0.5)
+        assert final_center.y() == pytest.approx(before_center.y(), abs=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +284,28 @@ class TestShapeRotation:
         scene.undo_stack.push(FlipItemCommand(rect, horizontal=True))
         scene.undo_stack.push(FlipItemCommand(rect, horizontal=True))
         assert_snapshots_equal(before, scene_snapshot(scene))
+
+    def test_line_rotate_plus_minus_90(self, scene):
+        line = LineItem(start=QPointF(0, 0), end=QPointF(80, 0))
+        line.setPos(QPointF(50, 50))
+        scene.addItem(line)
+        before = scene_snapshot(scene)
+        scene.undo_stack.push(RotateItemCommand(line, 90))
+        scene.undo_stack.push(RotateItemCommand(line, -90))
+        assert_snapshots_equal(before, scene_snapshot(scene))
+
+    def test_rotated_shape_pivots_around_geometric_center(self, scene):
+        """Phase C contract: a shape rotates around its own (width/2,
+        height/2), not around the bounding rect's selection-padded
+        center. Two opposite rotations cancel exactly."""
+        rect = RectangleItem(width=200, height=60)
+        rect.setPos(QPointF(100, 100))
+        scene.addItem(rect)
+        before_center = rect.mapToScene(QPointF(100, 30))  # geometric center
+        scene.undo_stack.push(RotateItemCommand(rect, 45))
+        after_center = rect.mapToScene(QPointF(100, 30))
+        assert before_center.x() == pytest.approx(after_center.x(), abs=0.5)
+        assert before_center.y() == pytest.approx(after_center.y(), abs=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -457,13 +477,10 @@ def _make_clipboard_host(scene, library):
 
 
 class TestClipboardRoundtrip:
-    @pytest.mark.xfail(
-        reason="Phase C: clipboard_ops._copy() does not include 'rotation' "
-               "(or flip_h/flip_v) for rectangle/ellipse, so a rotated shape "
-               "loses its rotation on copy -> paste.",
-        strict=True,
-    )
     def test_clipboard_preserves_rotated_rectangle(self, scene, library):
+        """A rotated shape copied and pasted must keep its rotation.
+        Pre-Phase-C the clipboard format omitted rotation/flip for
+        shapes — silent data loss."""
         host = _make_clipboard_host(scene, library)
         rect = RectangleItem(width=100, height=60)
         rect.setPos(QPointF(50, 50))
@@ -471,11 +488,12 @@ class TestClipboardRoundtrip:
         scene.undo_stack.push(RotateItemCommand(rect, 30))
         rect.setSelected(True)
         host._copy()
-        copied = [e for e in host._clipboard if e.get("type") == "rectangle"]
-        assert copied, "rectangle not copied"
-        assert "rotation" in copied[0] or "rotation_angle" in copied[0], (
-            "shape clipboard entry is missing rotation state"
-        )
+        host._paste()
+        from diagrammer.items.shape_item import RectangleItem as _Rect
+        rects = [i for i in scene.items() if isinstance(i, _Rect)]
+        assert len(rects) == 2
+        pasted = next(r for r in rects if r is not rect)
+        assert pasted.rotation_angle == pytest.approx(30, abs=0.5)
 
     def test_paste_preserves_wire_shape_relative_to_components(
         self, scene, library,

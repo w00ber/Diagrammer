@@ -13,7 +13,7 @@ import math
 import uuid
 
 from PySide6.QtCore import QLineF, QPointF, QRectF, Qt
-from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPolygonF, QTransform
 from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
 # Default style
@@ -71,6 +71,11 @@ class ShapeItem(QGraphicsItem):
         self._stroke_width = DEFAULT_STROKE_WIDTH
         self._dash_style = "solid"
         self._corner_radius = 0.0
+
+        # Persistent intrinsic transform (matches ComponentItem's model).
+        self._rotation_angle = 0.0
+        self._flip_h = False
+        self._flip_v = False
 
         # Resize handle dragging state
         self._resizing_handle: int | None = None
@@ -148,7 +153,59 @@ class ShapeItem(QGraphicsItem):
         self.prepareGeometryChange()
         self._width = max(10, width)
         self._height = max(10, height)
+        # Re-pin the rotation pivot to the new geometric center.
+        self._apply_transform()
         self.update()
+
+    # ------------------------------------------------- Intrinsic transform
+
+    @property
+    def rotation_angle(self) -> float:
+        return self._rotation_angle
+
+    @property
+    def flip_h(self) -> bool:
+        return self._flip_h
+
+    @property
+    def flip_v(self) -> bool:
+        return self._flip_v
+
+    def intrinsic_anchor(self) -> QPointF:
+        """Local-coords pivot used for rotation and flip."""
+        return QPointF(self._width / 2, self._height / 2)
+
+    def rotate_by(self, degrees: float) -> None:
+        self._rotation_angle = (self._rotation_angle + degrees) % 360
+        self._apply_transform()
+
+    def set_flip_h(self, flipped: bool) -> None:
+        self._flip_h = bool(flipped)
+        self._apply_transform()
+
+    def set_flip_v(self, flipped: bool) -> None:
+        self._flip_v = bool(flipped)
+        self._apply_transform()
+
+    def _apply_transform(self) -> None:
+        """Rebuild the item transform from rotation + flip state.
+
+        Pivots around the intrinsic anchor (shape's geometric center)
+        so the anchor point stays fixed in scene space when the
+        rotation / flip state changes. ``setRotation`` is left at 0 —
+        the rotation is baked into ``setTransform`` so we have one
+        source of truth.
+        """
+        cx = self._width / 2
+        cy = self._height / 2
+        t = QTransform()
+        t.translate(cx, cy)
+        sx = -1.0 if self._flip_h else 1.0
+        sy = -1.0 if self._flip_v else 1.0
+        t.scale(sx, sy)
+        t.rotate(self._rotation_angle)
+        t.translate(-cx, -cy)
+        self.setTransform(t)
 
     def _make_pen(self) -> QPen:
         """Create a QPen with current stroke settings (color, width, dash, cap)."""
@@ -321,6 +378,12 @@ class LineItem(QGraphicsItem):
         self._arrow_scale = 1.0    # size multiplier
         self._arrow_extend = 0.0   # how far past line end the tip extends (pt)
 
+        # Persistent intrinsic transform (matches ComponentItem's model).
+        # Anchor is the line's midpoint, recomputed by set_endpoints().
+        self._rotation_angle = 0.0
+        self._flip_h = False
+        self._flip_v = False
+
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
@@ -415,7 +478,53 @@ class LineItem(QGraphicsItem):
         self.prepareGeometryChange()
         self._start = QPointF(start)
         self._end = QPointF(end)
+        # The intrinsic anchor (line midpoint) just moved, so re-pin
+        # the transform around the new midpoint to keep rotation /
+        # flip pivoting around the visible center.
+        self._apply_transform()
         self.update()
+
+    # ------------------------------------------------- Intrinsic transform
+
+    @property
+    def rotation_angle(self) -> float:
+        return self._rotation_angle
+
+    @property
+    def flip_h(self) -> bool:
+        return self._flip_h
+
+    @property
+    def flip_v(self) -> bool:
+        return self._flip_v
+
+    def intrinsic_anchor(self) -> QPointF:
+        return QPointF((self._start.x() + self._end.x()) / 2,
+                       (self._start.y() + self._end.y()) / 2)
+
+    def rotate_by(self, degrees: float) -> None:
+        self._rotation_angle = (self._rotation_angle + degrees) % 360
+        self._apply_transform()
+
+    def set_flip_h(self, flipped: bool) -> None:
+        self._flip_h = bool(flipped)
+        self._apply_transform()
+
+    def set_flip_v(self, flipped: bool) -> None:
+        self._flip_v = bool(flipped)
+        self._apply_transform()
+
+    def _apply_transform(self) -> None:
+        anchor = self.intrinsic_anchor()
+        cx, cy = anchor.x(), anchor.y()
+        t = QTransform()
+        t.translate(cx, cy)
+        sx = -1.0 if self._flip_h else 1.0
+        sy = -1.0 if self._flip_v else 1.0
+        t.scale(sx, sy)
+        t.rotate(self._rotation_angle)
+        t.translate(-cx, -cy)
+        self.setTransform(t)
 
     def _make_pen(self) -> QPen:
         cap = (Qt.PenCapStyle.SquareCap if self._cap_style == "square"
