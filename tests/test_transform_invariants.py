@@ -496,6 +496,56 @@ def _make_clipboard_host(scene, library):
     return _Host()
 
 
+def _decorative_def(library):
+    """Return a port-less (decorative) component definition.
+
+    The bundled FLAIR/edges/* SVGs are pure-decoration: they have no
+    ``<g id="ports">`` so ``ComponentDef.ports`` is empty.
+    """
+    for d in library.all_defs():
+        if not d.ports:
+            return d
+    pytest.skip("No decorative (port-less) component in library")
+
+
+class TestPortlessComponentRotation:
+    """Regression tests for the ``i.ports`` filter that silently dropped
+    decorative components from fine-rotate (and from group fine-rotate).
+    Selected by users via the FLAIR/edges/* bug report."""
+
+    def test_fine_rotate_single_decorative_component(self, scene, library):
+        cdef = _decorative_def(library)
+        comp = ComponentItem(cdef)
+        comp.setPos(QPointF(100, 100))
+        scene.addItem(comp)
+        comp.setSelected(True)
+        host = _make_transform_host(scene, library)
+        host._fine_rotate_selected(15)
+        assert comp.rotation_angle == pytest.approx(15)
+
+    def test_fine_rotate_group_with_decorative_component(self, scene, library):
+        """Even when grouped with port-bearing components, a decorative
+        component must rotate AND orbit — not get silently dropped."""
+        deco_def = _decorative_def(library)
+        ported_def = _two_port_def(library)
+        deco = ComponentItem(deco_def)
+        deco.setPos(QPointF(0, 0))
+        scene.addItem(deco)
+        ported = ComponentItem(ported_def)
+        ported.setPos(QPointF(300, 0))
+        scene.addItem(ported)
+        deco.setSelected(True)
+        ported.setSelected(True)
+        host = _make_transform_host(scene, library)
+        host._fine_rotate_selected(30)
+        # Both components rotated internally.
+        assert deco.rotation_angle == pytest.approx(30)
+        assert ported.rotation_angle == pytest.approx(30)
+        # And the decorative component also orbited around the group
+        # center: its position is no longer (0, 0).
+        assert deco.pos() != QPointF(0, 0)
+
+
 class TestGroupTransform:
     """End-to-end tests through TransformMixin — these were the
     bug-prone paths the refactor was aimed at."""

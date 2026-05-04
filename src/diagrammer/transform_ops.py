@@ -199,7 +199,7 @@ class TransformMixin:
         from diagrammer.items.shape_item import ShapeItem
 
         comp_targets = [i for i in self._scene.selectedItems()
-                        if isinstance(i, ComponentItem) and i.ports]
+                        if isinstance(i, ComponentItem)]
         junc_targets = [i for i in self._scene.selectedItems()
                         if isinstance(i, JunctionItem)]
         annot_targets = [i for i in self._scene.selectedItems()
@@ -238,7 +238,11 @@ class TransformMixin:
         pivot = self._scene.rotation_pivot_port
         if pivot is not None:
             pivot_scene = pivot.scene_center()
-        elif len(movable) == 1 and len(comp_targets) == 1:
+        elif (len(movable) == 1 and len(comp_targets) == 1
+                and comp_targets[0].ports):
+            # Single component with at least one port: spin around
+            # its first port. Decorative (port-less) components fall
+            # through to the group-center branch below.
             pivot_scene = comp_targets[0].ports[0].scene_center()
         else:
             scene_centers = [_scene_center(item) for item in movable]
