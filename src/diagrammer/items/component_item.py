@@ -364,7 +364,16 @@ class ComponentItem(QGraphicsItem):
         return self._flip_v
 
     def rotate_by(self, degrees: float) -> None:
-        """Rotate the component by the given degrees (about component center)."""
+        """Rotate the component by the given degrees (about component center).
+
+        ``degrees`` is the *visible* rotation (CW positive). When exactly one
+        of flip_h/flip_v is set the underlying transform is a reflection, so
+        adding ``degrees`` to ``_rotation_angle`` would visually rotate the
+        opposite way. Negate in that case so the visible result matches the
+        caller's intent regardless of flip state.
+        """
+        if self._flip_h != self._flip_v:
+            degrees = -degrees
         self._rotation_angle = (self._rotation_angle + degrees) % 360
         self._apply_transform()
 
@@ -376,8 +385,10 @@ class ComponentItem(QGraphicsItem):
         # Record the port's scene position before rotation
         pivot = port.scene_center()
 
-        # Apply the rotation to the item's angle
-        self._rotation_angle = (self._rotation_angle + degrees) % 360
+        # Apply the rotation to the item's angle (see rotate_by for the
+        # flip-XOR adjustment).
+        delta = -degrees if self._flip_h != self._flip_v else degrees
+        self._rotation_angle = (self._rotation_angle + delta) % 360
         self._apply_transform()
 
         # After rotating the transform, the port has moved in scene space.

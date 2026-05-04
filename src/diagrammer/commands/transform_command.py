@@ -76,19 +76,31 @@ class RotateItemCommand(QUndoCommand):
         super().__init__(parent)
         self._item = item
         self._degrees = degrees
+        self._effective_degrees: float | None = None
         self.setText(f"Rotate {type(item).__name__} {degrees:.0f}\u00b0")
 
     def _ensure_center_origin(self) -> None:
         br = self._item.boundingRect()
         self._item.setTransformOriginPoint(br.center())
 
+    def _resolve_effective(self) -> float:
+        # If the item's existing transform contains a reflection (e.g. it
+        # was flipped via FlipItemCommand) Qt's setRotation rotates the
+        # opposite visual direction. Negate so the visible result matches
+        # the caller's intent. Captured once so redo/undo stay symmetric
+        # even if the flip state changes between them.
+        if self._effective_degrees is None:
+            det = self._item.transform().determinant()
+            self._effective_degrees = -self._degrees if det < 0 else self._degrees
+        return self._effective_degrees
+
     def redo(self) -> None:
         self._ensure_center_origin()
-        self._item.setRotation(self._item.rotation() + self._degrees)
+        self._item.setRotation(self._item.rotation() + self._resolve_effective())
 
     def undo(self) -> None:
         self._ensure_center_origin()
-        self._item.setRotation(self._item.rotation() - self._degrees)
+        self._item.setRotation(self._item.rotation() - self._resolve_effective())
 
 
 class FlipItemCommand(QUndoCommand):
