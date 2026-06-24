@@ -8,6 +8,8 @@ scene-space transforms that Diagrammer can't re-parse).
 from __future__ import annotations
 
 import logging
+
+from diagrammer.io.svg_parse import parse_svg
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -180,7 +182,7 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
         # Force a rebuild to get fresh bytes
         comp._get_stretched_renderer()
         # Re-parse the SVG with the same stretch logic
-        tree = ET2.parse(str(cdef.svg_path))
+        tree = parse_svg(cdef.svg_path)
         root = tree.getroot()
         # Apply the same viewBox update
         vb = root.get("viewBox", "")
@@ -259,7 +261,7 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
         if leads_bottom_l is not None and total_dy != 0:
             ComponentItem._prepend_transform(leads_bottom_l, f"translate(0,{total_dy})")
     else:
-        tree = ET2.parse(str(cdef.svg_path))
+        tree = parse_svg(cdef.svg_path)
         root = tree.getroot()
         # Hide non-rendered layers for non-stretched too
         for elem in root.iter():

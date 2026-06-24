@@ -775,11 +775,13 @@ class PropertiesPanel(QDockWidget):
         import re
         import xml.etree.ElementTree as ET2
 
+        from diagrammer.io.svg_parse import parse_svg
+
         def _strip_ns(tag):
             return tag.split("}", 1)[1] if "}" in tag else tag
 
         try:
-            tree = ET2.parse(str(item.component_def.svg_path))
+            tree = parse_svg(item.component_def.svg_path)
             root = tree.getroot()
         except (OSError, ET2.ParseError) as exc:
             logger.debug("Failed to parse SVG for style extraction: %s", exc)

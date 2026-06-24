@@ -14,6 +14,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QRectF
 
+from diagrammer.io.svg_parse import parse_svg
+
 # SVG namespace
 _SVG_NS = "http://www.w3.org/2000/svg"
 
@@ -44,7 +46,7 @@ def enumerate_svg_elements(svg_path: Path) -> list[SvgElementInfo]:
     The element_path is a stable identifier based on depth-first child
     indices within the layer group — e.g. ``artwork/0``, ``artwork/1/0``.
     """
-    tree = ET.parse(str(svg_path))
+    tree = parse_svg(svg_path)
     root = tree.getroot()
     results: list[SvgElementInfo] = []
 

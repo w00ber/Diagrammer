@@ -454,7 +454,8 @@ class ComponentItem(QGraphicsItem):
             style_overrides: ComponentStyleOverrides instance (or None).
         """
         import xml.etree.ElementTree as ET
-        tree = ET.parse(str(svg_path))
+        from diagrammer.io.svg_parse import parse_svg
+        tree = parse_svg(svg_path)
         root = tree.getroot()
 
         for elem in root.iter():
@@ -1032,8 +1033,10 @@ class ComponentItem(QGraphicsItem):
         import re
         import xml.etree.ElementTree as ET
 
+        from diagrammer.io.svg_parse import parse_svg
+
         cdef = self._def
-        tree = ET.parse(str(cdef.svg_path))
+        tree = parse_svg(cdef.svg_path)
         root = tree.getroot()
 
         # Update the viewBox to the stretched size

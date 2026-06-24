@@ -7,6 +7,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from diagrammer.io.svg_parse import parse_svg
+
 # SVG namespace
 SVG_NS = "http://www.w3.org/2000/svg"
 # Diagrammer custom namespace for metadata
@@ -110,7 +112,7 @@ class ComponentDef:
     @classmethod
     def from_svg(cls, path: Path, category: str = "") -> ComponentDef:
         """Parse a component definition from an SVG file."""
-        tree = ET.parse(path)
+        tree = parse_svg(path)
         root = tree.getroot()
 
         # Strip namespace prefix for easier attribute access

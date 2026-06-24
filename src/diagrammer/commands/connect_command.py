@@ -20,13 +20,15 @@ def _get_lead_stroke_width(port: PortItem) -> float | None:
     import re
     import xml.etree.ElementTree as ET
 
+    from diagrammer.io.svg_parse import parse_svg
+
     comp = port.component
     if not hasattr(comp, 'component_def'):
         return None
 
     cdef = comp.component_def
     try:
-        tree = ET.parse(str(cdef.svg_path))
+        tree = parse_svg(cdef.svg_path)
         root = tree.getroot()
     except (OSError, ET.ParseError):
         return None
