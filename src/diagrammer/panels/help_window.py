@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QTextDocument
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices, QTextDocument
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -95,8 +95,12 @@ class HelpWindow(QWidget):
         layout.addLayout(search_row)
 
         self._browser = QTextBrowser()
-        self._browser.setOpenExternalLinks(True)
+        # We handle navigation ourselves so .md links open in a HelpWindow
+        # (rendered) instead of being loaded as raw text by QTextBrowser.
+        self._browser.setOpenLinks(False)
+        self._browser.setOpenExternalLinks(False)
         self._browser.setReadOnly(True)
+        self._browser.anchorClicked.connect(self._on_anchor_clicked)
         layout.addWidget(self._browser)
 
         self._load_help()
@@ -143,12 +147,32 @@ class HelpWindow(QWidget):
                 self._browser.setTextCursor(cursor)
                 self._browser.find(text, QTextDocument.FindFlag.FindBackward)
 
+    def _on_anchor_clicked(self, url: QUrl) -> None:
+        """Route link clicks: render known .md docs in a HelpWindow,
+        send everything else to the system browser."""
+        if url.scheme() in ("http", "https", "mailto"):
+            QDesktopServices.openUrl(url)
+            return
+        target = url.toString()
+        if target.endswith("help.md"):
+            HelpWindow.show_help(self.parent())
+            return
+        if target.endswith("tutorial.md"):
+            HelpWindow.show_tutorial(self.parent())
+            return
+        # Unknown local link — hand off to the OS so users at least see something
+        QDesktopServices.openUrl(url)
+
     def _load_help(self) -> None:
         """Load and render the doc markdown file."""
         help_path = self._find_help_file()
         if help_path is None:
             self._browser.setPlainText(f"Document not found: {self._doc_filename}")
             return
+
+        # Let QTextBrowser resolve relative image paths (e.g. ![](image-1.png))
+        # against the doc's directory.
+        self._browser.setSearchPaths([str(help_path.parent)])
 
         md_text = help_path.read_text(encoding="utf-8")
 
@@ -158,6 +182,16 @@ class HelpWindow(QWidget):
             html = markdown.markdown(md_text, extensions=["tables", "fenced_code"])
         except ImportError:
             html = self._basic_md_to_html(md_text)
+
+        # Cap image width so high-res screenshots fit the window. Qt's text
+        # engine preserves aspect ratio when only width is set. We skip imgs
+        # that already specify a width.
+        import re
+        html = re.sub(
+            r'<img(?![^>]*\bwidth=)',
+            '<img width="560"',
+            html,
+        )
 
         # Add some basic styling. The help window is rendered as a
         # "paper" document with an explicit white background and black

@@ -159,6 +159,22 @@ def save_compound_manifest(
     # so they follow their endpoint ports through the manifest's positional
     # offset automatically — no per-waypoint shift needed.
 
+    # Rewrite each blob's "z" as a dense rank across the whole selection
+    # (ascending = bottom to top). The per-item helpers stamp raw zValues,
+    # which can be sparse or layer-band-shifted; ranks make the loader's
+    # restoration order independent of the source scene's z scale.
+    z_pairs = (
+        list(zip(components, comp_blobs))
+        + list(zip(junctions, junc_blobs))
+        + list(zip(connections, conn_blobs))
+        + list(zip(annotations, annot_blobs))
+        + list(zip(shapes, shape_blobs))
+        + list(zip(svg_images, svg_image_blobs))
+    )
+    z_pairs.sort(key=lambda pair: pair[0].zValue())
+    for i, (_, blob) in enumerate(z_pairs):
+        blob["z"] = float(i)
+
     data = {
         "version": MANIFEST_VERSION,
         "name": name,
@@ -216,6 +232,7 @@ def instantiate_compound(
     created: list = []
     id_map: dict[str, object] = {}
     group_id_map: dict[str, str] = {}
+    saved_z: dict[int, float] = {}
 
     def _remap_groups(blob: dict) -> list[str]:
         out: list[str] = []
@@ -261,6 +278,7 @@ def instantiate_compound(
         scene.addItem(item)
         id_map[cd["id"]] = item
         created.append(item)
+        saved_z[id(item)] = float(cd.get("z", 0.0))
 
     # -- Junctions --
     for jd in manifest.get("junctions", []):
@@ -269,6 +287,7 @@ def instantiate_compound(
         scene.addItem(item)
         id_map[jd["id"]] = item
         created.append(item)
+        saved_z[id(item)] = float(jd.get("z", 0.0))
 
     # -- Connections --
     for cd in manifest.get("connections", []):
@@ -315,6 +334,7 @@ def instantiate_compound(
         _apply_layer_and_pos(conn, cd, set_pos=False)
         scene.addItem(conn)
         created.append(conn)
+        saved_z[id(conn)] = float(cd.get("z", 0.0))
 
     # -- Shapes --
     for sd in manifest.get("shapes", []):
@@ -356,6 +376,7 @@ def instantiate_compound(
             item.rotate_by(angle)
         scene.addItem(item)
         created.append(item)
+        saved_z[id(item)] = float(sd.get("z", 0.0))
 
     # -- Annotations --
     for ad in manifest.get("annotations", []):
@@ -386,6 +407,7 @@ def instantiate_compound(
             item.rotate_by(angle)
         scene.addItem(item)
         created.append(item)
+        saved_z[id(item)] = float(ad.get("z", 0.0))
 
     # -- SVG Images --
     for sid in manifest.get("svg_images", []):
@@ -399,5 +421,22 @@ def instantiate_compound(
         _apply_layer_and_pos(item, sid)
         scene.addItem(item)
         created.append(item)
+        saved_z[id(item)] = float(sid.get("z", 0.0))
+
+    # Restore the compound's internal top-to-bottom stacking from the
+    # manifest's dense z-ranks. Stamping unique zValues above the current
+    # scene maximum places the compound above existing content while
+    # preserving the relative order the user composed. A later reflow_z()
+    # will keep this order because items in each (layer, type) band are
+    # re-sorted by current zValue.
+    if created:
+        new_ids = {id(it) for it in created}
+        existing_max = max(
+            (it.zValue() for it in scene.items() if id(it) not in new_ids),
+            default=0.0,
+        )
+        base = existing_max + 1.0
+        for i, item in enumerate(sorted(created, key=lambda it: saved_z.get(id(it), 0.0))):
+            item.setZValue(base + i * 0.001)
 
     return created

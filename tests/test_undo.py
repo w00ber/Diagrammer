@@ -10,10 +10,14 @@ from diagrammer.commands.add_command import AddComponentCommand, MoveComponentCo
 from diagrammer.commands.annotation_command import EditAnnotationTextCommand
 from diagrammer.commands.delete_command import DeleteCommand
 from diagrammer.commands.layer_command import ChangeZOrderCommand
-from diagrammer.commands.shape_command import AddShapeCommand
+from diagrammer.commands.shape_command import (
+    AddShapeCommand,
+    MoveLineEndpointCommand,
+    ResizeShapeCommand,
+)
 from diagrammer.items.annotation_item import AnnotationItem
 from diagrammer.items.junction_item import JunctionItem
-from diagrammer.items.shape_item import RectangleItem
+from diagrammer.items.shape_item import LineItem, RectangleItem
 from diagrammer.models.library import ComponentLibrary
 
 
@@ -75,6 +79,72 @@ class TestDeleteUndo:
         scene.undo_stack.undo()
         rects = [i for i in scene.items() if isinstance(i, RectangleItem)]
         assert len(rects) == 3
+
+
+class TestResizeShapeUndo:
+    def test_resize_undo_restores_size_and_pos(self, scene):
+        rect = RectangleItem(width=100, height=60)
+        rect.setPos(QPointF(50, 50))
+        scene.addItem(rect)
+
+        cmd = ResizeShapeCommand(
+            rect, 100, 60, QPointF(50, 50), 200, 120, QPointF(30, 20),
+        )
+        scene.undo_stack.push(cmd)  # push() runs redo()
+        assert rect.shape_width == pytest.approx(200)
+        assert rect.shape_height == pytest.approx(120)
+        assert rect.pos().x() == pytest.approx(30)
+
+        scene.undo_stack.undo()
+        assert rect.shape_width == pytest.approx(100)
+        assert rect.shape_height == pytest.approx(60)
+        assert rect.pos().x() == pytest.approx(50)
+        assert rect.pos().y() == pytest.approx(50)
+
+    def test_resize_redo(self, scene):
+        rect = RectangleItem(width=100, height=60)
+        rect.setPos(QPointF(50, 50))
+        scene.addItem(rect)
+
+        cmd = ResizeShapeCommand(
+            rect, 100, 60, QPointF(50, 50), 200, 120, QPointF(30, 20),
+        )
+        scene.undo_stack.push(cmd)
+        scene.undo_stack.undo()
+        scene.undo_stack.redo()
+        assert rect.shape_width == pytest.approx(200)
+        assert rect.shape_height == pytest.approx(120)
+        assert rect.pos().x() == pytest.approx(30)
+
+
+class TestMoveLineEndpointUndo:
+    def test_endpoint_undo_restores_points(self, scene):
+        line = LineItem(QPointF(0, 0), QPointF(100, 0))
+        scene.addItem(line)
+
+        cmd = MoveLineEndpointCommand(
+            line, QPointF(0, 0), QPointF(100, 0), QPointF(0, 0), QPointF(150, 80),
+        )
+        scene.undo_stack.push(cmd)
+        assert line._end.x() == pytest.approx(150)
+        assert line._end.y() == pytest.approx(80)
+
+        scene.undo_stack.undo()
+        assert line._end.x() == pytest.approx(100)
+        assert line._end.y() == pytest.approx(0)
+
+    def test_endpoint_redo(self, scene):
+        line = LineItem(QPointF(0, 0), QPointF(100, 0))
+        scene.addItem(line)
+
+        cmd = MoveLineEndpointCommand(
+            line, QPointF(0, 0), QPointF(100, 0), QPointF(0, 0), QPointF(150, 80),
+        )
+        scene.undo_stack.push(cmd)
+        scene.undo_stack.undo()
+        scene.undo_stack.redo()
+        assert line._end.x() == pytest.approx(150)
+        assert line._end.y() == pytest.approx(80)
 
 
 class TestMoveUndo:

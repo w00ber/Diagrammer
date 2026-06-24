@@ -305,9 +305,29 @@ class ShapeItem(QGraphicsItem):
 
     def mouseReleaseEvent(self, event) -> None:
         if self._resizing_handle is not None:
+            old_rect = self._resize_start_rect
+            old_pos = self._resize_start_pos
             self._resizing_handle = None
             self._resize_start_rect = None
             self._resize_start_mouse = None
+            new_pos = QPointF(self.pos())
+            changed = (
+                old_rect is not None
+                and (old_rect.width() != self._width
+                     or old_rect.height() != self._height
+                     or old_pos != new_pos)
+            )
+            scene = self.scene()
+            if changed and scene is not None and hasattr(scene, 'undo_stack'):
+                from diagrammer.commands.shape_command import ResizeShapeCommand
+                cmd = ResizeShapeCommand(
+                    self,
+                    old_rect.width(), old_rect.height(), old_pos,
+                    self._width, self._height, new_pos,
+                )
+                # push() re-runs redo(), but it re-applies the same new
+                # geometry the drag already set, so it's a no-op visually.
+                scene.undo_stack.push(cmd)
             event.accept()
             return
         super().mouseReleaseEvent(event)
@@ -623,9 +643,24 @@ class LineItem(QGraphicsItem):
 
     def mouseReleaseEvent(self, event) -> None:
         if self._dragging_endpoint is not None:
+            ep = self._dragging_endpoint
+            old_pt = self._endpoint_drag_start_pt
             self._dragging_endpoint = None
             self._endpoint_drag_start_mouse = None
             self._endpoint_drag_start_pt = None
+            new_pt = self._start if ep == 0 else self._end
+            scene = self.scene()
+            if (old_pt is not None and old_pt != new_pt
+                    and scene is not None and hasattr(scene, 'undo_stack')):
+                from diagrammer.commands.shape_command import MoveLineEndpointCommand
+                if ep == 0:
+                    old_start, old_end = old_pt, self._end
+                else:
+                    old_start, old_end = self._start, old_pt
+                cmd = MoveLineEndpointCommand(
+                    self, old_start, old_end, self._start, self._end,
+                )
+                scene.undo_stack.push(cmd)
             event.accept()
             return
         super().mouseReleaseEvent(event)
