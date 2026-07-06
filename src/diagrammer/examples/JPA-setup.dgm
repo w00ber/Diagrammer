@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "2.1",
   "layers": [
     {
       "name": "Default",
@@ -22,8 +22,13 @@
       "stretch_dx": 0.0,
       "stretch_dy": 0.0,
       "layer": 0,
-      "z": 28.0,
-      "group": []
+      "z": 27.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA0NSA1MCI+CiAgPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDMwLjIuMSwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDIuMS4xIEJ1aWxkIDEpICAtLT4KICA8ZGVmcz4KICAgIDxzdHlsZT4KICAgICAgLnN0MCB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgICAgc3Ryb2tlLWxpbmVjYXA6IHJvdW5kOwogICAgICAgIHN0cm9rZS1saW5lam9pbjogcm91bmQ7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAzcHg7CiAgICAgIH0KCiAgICAgIC5zdDEgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJsZWFkcyI+CiAgICA8bGluZSBjbGFzcz0ic3QwIiB4MT0iMjMiIHgyPSIyMyIgeTI9IjIxLjIiLz4KICA8L2c+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxnIGlkPSJwb3J0czEiPgogICAgICA8Y2lyY2xlIGlkPSJwb3J0OmxlZnQiIGNsYXNzPSJzdDEiIGN4PSIyMyIgcj0iMyIvPgogICAgPC9nPgogIDwvZz4KICA8ZyBpZD0iYXJ0d29yayI+CiAgICA8cG9seWxpbmUgY2xhc3M9InN0MCIgcG9pbnRzPSIxMC4yIDMxLjQgMTQuMyAyMC44IDIzLjQgMjAuOCAzMi4yIDIwLjggMjggMzEuNSIvPgogICAgPGxpbmUgY2xhc3M9InN0MCIgeDE9IjE5LjEiIHkxPSIzMS40IiB4Mj0iMjMuMiIgeTI9IjIxLjEiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "GND2",
+        "category": "SLIDES_3pt/circuits/gnds"
+      }
     },
     {
       "id": "c353d3da46f1",
@@ -38,8 +43,13 @@
       "stretch_dx": 0.0,
       "stretch_dy": 0.0,
       "layer": 0,
-      "z": 24.0,
-      "group": []
+      "z": 23.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCAxNjAgMTQwIj4KICA8IS0tIEdlbmVyYXRvcjogQWRvYmUgSWxsdXN0cmF0b3IgMzAuMi4xLCBTVkcgRXhwb3J0IFBsdWctSW4gLiBTVkcgVmVyc2lvbjogMi4xLjEgQnVpbGQgMSkgIC0tPgogIDxkZWZzPgogICAgPHN0eWxlPgogICAgICAuc3QwIHsKICAgICAgICBzdHJva2Utd2lkdGg6IDIuNHB4OwogICAgICB9CgogICAgICAuc3QwLCAuc3QxLCAuc3QyLCAuc3QzLCAuc3Q0LCAuc3Q1LCAuc3Q2IHsKICAgICAgICBmaWxsOiBub25lOwogICAgICB9CgogICAgICAuc3QwLCAuc3QxLCAuc3QyLCAuc3QzLCAuc3Q0LCAuc3Q2IHsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgIH0KCiAgICAgIC5zdDAsIC5zdDEsIC5zdDIsIC5zdDMsIC5zdDYgewogICAgICAgIHN0cm9rZS1saW5lY2FwOiByb3VuZDsKICAgICAgICBzdHJva2UtbGluZWpvaW46IHJvdW5kOwogICAgICB9CgogICAgICAuc3QxIHsKICAgICAgICBzdHJva2Utd2lkdGg6IDIuNXB4OwogICAgICB9CgogICAgICAuc3QyLCAuc3Q0LCAuc3Q2IHsKICAgICAgICBzdHJva2Utd2lkdGg6IDNweDsKICAgICAgfQoKICAgICAgLnN0NyB7CiAgICAgICAgZmlsbDogI2M2NjsKICAgICAgfQoKICAgICAgLnN0MyB7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAyLjFweDsKICAgICAgfQoKICAgICAgLnN0NCB7CiAgICAgICAgc3Ryb2tlLWxpbmVqb2luOiBiZXZlbDsKICAgICAgfQoKICAgICAgLnN0NSB7CiAgICAgICAgc3Ryb2tlOiAjOTk5OwogICAgICAgIHN0cm9rZS1taXRlcmxpbWl0OiAxMDsKICAgICAgICBzdHJva2Utd2lkdGg6IC4ycHg7CiAgICAgIH0KCiAgICAgIC5zdDYsIC5zdDggewogICAgICAgIGRpc3BsYXk6IG5vbmU7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJMYXllcl8xMSI+CiAgICA8ZyBpZD0iZ3VpZGVzIiBjbGFzcz0ic3Q4Ij4KICAgICAgPHJlY3QgY2xhc3M9InN0NSIgeD0iMTAwLjMiIHk9IjcwLjEiIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIvPgogICAgPC9nPgogICAgPGcgaWQ9InBvcnRzIj4KICAgICAgPGNpcmNsZSBpZD0icG9ydDoyIiBjbGFzcz0ic3Q3IiBjeD0iMTYwIiBjeT0iMjkuNyIgcj0iMyIvPgogICAgICA8Y2lyY2xlIGlkPSJwb3J0OjEiIGNsYXNzPSJzdDciIGN5PSIyOS43IiByPSIzIi8+CiAgICAgIDxjaXJjbGUgaWQ9InBvcnQ6MyIgY2xhc3M9InN0NyIgY3g9IjgwIiBjeT0iMTQwIiByPSIzIi8+CiAgICA8L2c+CiAgICA8ZyBpZD0iYXJ0d29yayI+CiAgICAgIDxnPgogICAgICAgIDxnPgogICAgICAgICAgPGNpcmNsZSBjbGFzcz0ic3Q2IiBjeD0iODAiIGN5PSI2NS4yIiByPSI0My4yIi8+CiAgICAgICAgICA8Zz4KICAgICAgICAgICAgPHBvbHlnb24gcG9pbnRzPSI5OCA1Mi44IDEwOC40IDU4LjcgMTA4LjQgNDYuOCA5OCA1Mi44Ii8+CiAgICAgICAgICAgIDxwb2x5Z29uIHBvaW50cz0iNjAuMiA1NS44IDYwLjIgNDMuOCA0OS45IDQ5LjggNjAuMiA1NS44Ii8+CiAgICAgICAgICAgIDxnPgogICAgICAgICAgICAgIDxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik04MCw5MyIvPgogICAgICAgICAgICAgIDxwb2x5Z29uIHBvaW50cz0iODEuOCA4NyA3MS40IDkzIDgxLjggOTkgODEuOCA4NyIvPgogICAgICAgICAgICA8L2c+CiAgICAgICAgICA8L2c+CiAgICAgICAgPC9nPgogICAgICAgIDxwb2x5bGluZSBjbGFzcz0ic3QzIiBwb2ludHM9Ijg2LjYgMTA4LjQgODYuNiAxMTggNzMuNCAxMTggNzMuNCAxMDguNCIvPgogICAgICAgIDxwb2x5bGluZSBjbGFzcz0ic3QzIiBwb2ludHM9IjExNC4xIDM3LjkgMTIyLjUgMzMuMSAxMjkuMSA0NC41IDEyMC43IDQ5LjMiLz4KICAgICAgICA8cG9seWxpbmUgY2xhc3M9InN0MyIgcG9pbnRzPSIzOS4zIDQ5LjMgMzAuOSA0NC41IDM3LjUgMzMuMSA0NS45IDM3LjkiLz4KICAgICAgICA8Y2lyY2xlIGNsYXNzPSJzdDEiIGN4PSI4MC4zIiBjeT0iNjQuOSIgcj0iMjguMSIvPgogICAgICA8L2c+CiAgICAgIDxwb2x5Z29uIGNsYXNzPSJzdDIiIHBvaW50cz0iMTA1LjMgMjEuNiA1NS4zIDIxLjYgMzAuMyA2NC45IDU1LjMgMTA4LjIgMTA1LjMgMTA4LjIgMTMwLjMgNjQuOSAxMDUuMyAyMS42Ii8+CiAgICA8L2c+CiAgICA8ZyBpZD0ibGVhZHMiPgogICAgICA8cGF0aCBjbGFzcz0ic3Q0IiBkPSJNMTYwLDI5LjdoLTE4LjdsLTE1LjYsOSIvPgogICAgICA8ZyBpZD0ibGVhZHMxIj4KICAgICAgICA8ZyBpZD0ibGVhZHMyIj4KICAgICAgICAgIDxwYXRoIGNsYXNzPSJzdDQiIGQ9Ik0zMy40LDM4LjJsLTE0LjYtOC40SDAiLz4KICAgICAgICA8L2c+CiAgICAgIDwvZz4KICAgICAgPGxpbmUgY2xhc3M9InN0NCIgeDE9IjgwIiB5MT0iMTE4IiB4Mj0iODAiIHkyPSIxNDAiLz4KICAgIDwvZz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "CIRC2",
+        "category": "SLIDES_3pt/circuits/\u00b5wave/PASSIVE"
+      }
     },
     {
       "id": "95e36d5eb1cf",
@@ -54,8 +64,13 @@
       "stretch_dx": 0.0,
       "stretch_dy": 0.0,
       "layer": 0,
-      "z": 22.0,
-      "group": []
+      "z": 21.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA0NSA1MCI+CiAgPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDMwLjIuMSwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDIuMS4xIEJ1aWxkIDEpICAtLT4KICA8ZGVmcz4KICAgIDxzdHlsZT4KICAgICAgLnN0MCB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgICAgc3Ryb2tlLWxpbmVjYXA6IHJvdW5kOwogICAgICAgIHN0cm9rZS1saW5lam9pbjogcm91bmQ7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAzcHg7CiAgICAgIH0KCiAgICAgIC5zdDEgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJsZWFkcyI+CiAgICA8bGluZSBjbGFzcz0ic3QwIiB4MT0iMjMiIHgyPSIyMyIgeTI9IjIxLjIiLz4KICA8L2c+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxnIGlkPSJwb3J0czEiPgogICAgICA8Y2lyY2xlIGlkPSJwb3J0OmxlZnQiIGNsYXNzPSJzdDEiIGN4PSIyMyIgcj0iMyIvPgogICAgPC9nPgogIDwvZz4KICA8ZyBpZD0iYXJ0d29yayI+CiAgICA8cG9seWxpbmUgY2xhc3M9InN0MCIgcG9pbnRzPSIxMC4yIDMxLjQgMTQuMyAyMC44IDIzLjQgMjAuOCAzMi4yIDIwLjggMjggMzEuNSIvPgogICAgPGxpbmUgY2xhc3M9InN0MCIgeDE9IjE5LjEiIHkxPSIzMS40IiB4Mj0iMjMuMiIgeTI9IjIxLjEiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "GND2",
+        "category": "SLIDES_3pt/circuits/gnds"
+      }
     },
     {
       "id": "d837c5236d95",
@@ -70,8 +85,13 @@
       "stretch_dx": 0.0,
       "stretch_dy": 0.0,
       "layer": 0,
-      "z": 19.0,
-      "group": []
+      "z": 18.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA0MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIHN0cm9rZS13aWR0aDogMi40cHg7CiAgICAgIH0KCiAgICAgIC5zdDAsIC5zdDEgewogICAgICAgIHN0cm9rZS1saW5lam9pbjogYmV2ZWw7CiAgICAgIH0KCiAgICAgIC5zdDAsIC5zdDEsIC5zdDIgewogICAgICAgIHN0cm9rZS1saW5lY2FwOiByb3VuZDsKICAgICAgfQoKICAgICAgLnN0MCwgLnN0MSwgLnN0MiwgLnN0MyB7CiAgICAgICAgc3Ryb2tlOiAjMDAwOwogICAgICB9CgogICAgICAuc3QwLCAuc3QxLCAuc3QzIHsKICAgICAgICBmaWxsOiBub25lOwogICAgICB9CgogICAgICAuc3QxLCAuc3QyIHsKICAgICAgICBzdHJva2Utd2lkdGg6IDNweDsKICAgICAgfQoKICAgICAgLnN0NCB7CiAgICAgICAgZmlsbDogI2M2NjsKICAgICAgfQoKICAgICAgLnN0MiB7CiAgICAgICAgZmlsbDogI2ZmZjsKICAgICAgICBzdHJva2UtbGluZWpvaW46IHJvdW5kOwogICAgICB9CgogICAgICAuc3QzIHsKICAgICAgICBzdHJva2UtbWl0ZXJsaW1pdDogMTA7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAuMnB4OwogICAgICB9CgogICAgICAuc3Q1IHsKICAgICAgICBkaXNwbGF5OiBub25lOwogICAgICB9CiAgICA8L3N0eWxlPgogIDwvZGVmcz4KICA8ZyBpZD0icG9ydHMiPgogICAgPGNpcmNsZSBpZD0icG9ydDpsZWZ0IiBjbGFzcz0ic3Q0IiBjeD0iMjAuMSIgY3k9IjAiIHI9IjMiLz4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6cmlnaHQiIGNsYXNzPSJzdDQiIGN4PSIyMC4xIiBjeT0iMTAwLjEiIHI9IjMiLz4KICA8L2c+CiAgPGcgaWQ9ImFydHdvcmsiPgogICAgPGc+CiAgICAgIDxjaXJjbGUgY2xhc3M9InN0MSIgY3g9IjIwIiBjeT0iNTAiIHI9IjI0LjYiLz4KICAgICAgPHBhdGggY2xhc3M9InN0MCIgZD0iTTMyLjMsNTBjLTEyLjMsMzYuOS0xMi4zLTM2LjktMjQuNiwwIi8+CiAgICA8L2c+CiAgPC9nPgogIDxnIGlkPSJsZWFkcyI+CiAgICA8cGF0aCBjbGFzcz0ic3QyIiBkPSJNMjAuMSwwdjI1LjMiLz4KICAgIDxwYXRoIGNsYXNzPSJzdDIiIGQ9Ik0yMC4xLDEwMC4xdi0yNS40Ii8+CiAgPC9nPgogIDxnIGlkPSJndWlkZXMiIGNsYXNzPSJzdDUiPgogICAgPHJlY3QgY2xhc3M9InN0MyIgeD0iMCIgeT0iNTAiIHdpZHRoPSIyMC4xIiBoZWlnaHQ9IjUwIi8+CiAgICA8cmVjdCBjbGFzcz0ic3QzIiB4PSIyMCIgeT0iNTAiIHdpZHRoPSIyMC4xIiBoZWlnaHQ9IjUwIi8+CiAgPC9nPgo8L3N2Zz4=",
+      "embedded_meta": {
+        "name": "VAC_bias1",
+        "category": "SLIDES_3pt/circuits/sources"
+      }
     },
     {
       "id": "264d04c46931",
@@ -86,24 +106,13 @@
       "stretch_dx": 0.0,
       "stretch_dy": 0.0,
       "layer": 0,
-      "z": 16.0,
-      "group": []
-    },
-    {
-      "id": "b67fd8a6fc77",
-      "def_key": "FLAIR/edges/BLOCKSTRIP_WHITE1",
-      "pos": [
-        400.0,
-        298.0
-      ],
-      "rotation": 0.0,
-      "flip_h": false,
-      "flip_v": false,
-      "stretch_dx": -80.0,
-      "stretch_dy": -80.0,
-      "layer": 0,
       "z": 15.0,
-      "group": []
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA0MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAsIC5zdDEgewogICAgICAgIHN0cm9rZTogIzAwMDsKICAgICAgICBzdHJva2UtbGluZWNhcDogcm91bmQ7CiAgICAgICAgc3Ryb2tlLWxpbmVqb2luOiByb3VuZDsKICAgICAgICBzdHJva2Utd2lkdGg6IDNweDsKICAgICAgfQoKICAgICAgLnN0MCwgLnN0MiB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgfQoKICAgICAgLnN0MyB7CiAgICAgICAgZmlsbDogI2M2NjsKICAgICAgfQoKICAgICAgLnN0MSB7CiAgICAgICAgZmlsbDogI2ZmZjsKICAgICAgfQoKICAgICAgLnN0NCB7CiAgICAgICAgZGlzcGxheTogbm9uZTsKICAgICAgfQoKICAgICAgLnN0MiB7CiAgICAgICAgc3Ryb2tlOiAjOTk5OwogICAgICAgIHN0cm9rZS1taXRlcmxpbWl0OiAxMDsKICAgICAgICBzdHJva2Utd2lkdGg6IC41cHg7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJndWlkZXMiIGNsYXNzPSJzdDQiPgogICAgPHJlY3QgY2xhc3M9InN0MiIgeD0iLTMwIiB5PSI1MCIgd2lkdGg9IjUwIiBoZWlnaHQ9IjIwIi8+CiAgPC9nPgogIDxnIGlkPSJwb3J0cyI+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OmxlZnQiIGNsYXNzPSJzdDMiIGN4PSIyMC4xIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnJpZ2h0IiBjbGFzcz0ic3QzIiBjeD0iMjAuMSIgY3k9IjEwMC4xIiByPSIzIi8+CiAgPC9nPgogIDxnIGlkPSJhcnR3b3JrIj4KICAgIDxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik0yMC4xLDc4LjEiLz4KICAgIDxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik0yMC4xLDc4LjFsMTAuOS00LjctMjEuOS05LjQsMjEuOS05LjQtMjEuOS05LjQsMjEuOS05LjQtMjEuOS05LjQsMTAuOS00LjciLz4KICA8L2c+CiAgPGcgaWQ9ImxlYWRzIj4KICAgIDxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik0yMC4xLDB2MjEuNyIvPgogICAgPHBhdGggY2xhc3M9InN0MSIgZD0iTTIwLjEsMTAwLjF2LTIxLjkiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "RES1",
+        "category": "SLIDES_3pt/circuits/LCR"
+      }
     },
     {
       "id": "f34cbb65e569",
@@ -119,7 +128,12 @@
       "stretch_dy": 0.0,
       "layer": 0,
       "z": 12.0,
-      "group": []
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA0MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIGZpbGw6IG5vbmU7CiAgICAgICAgc3Ryb2tlOiAjMDAwOwogICAgICAgIHN0cm9rZS1saW5lY2FwOiByb3VuZDsKICAgICAgICBzdHJva2UtbGluZWpvaW46IHJvdW5kOwogICAgICAgIHN0cm9rZS13aWR0aDogM3B4OwogICAgICB9CgogICAgICAuc3QxIHsKICAgICAgICBmaWxsOiAjYzY2OwogICAgICB9CgogICAgICAuc3QyIHsKICAgICAgICBmaWxsOiAjZmZmOwogICAgICAgIHN0cm9rZTogIzk5OTsKICAgICAgICBzdHJva2UtbWl0ZXJsaW1pdDogMTA7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAuNXB4OwogICAgICB9CgogICAgICAuc3QzIHsKICAgICAgICBkaXNwbGF5OiBub25lOwogICAgICB9CiAgICA8L3N0eWxlPgogIDwvZGVmcz4KICA8ZyBpZD0iZ3VpZGVzIiBjbGFzcz0ic3QzIj4KICAgIDxyZWN0IGNsYXNzPSJzdDIiIHg9Ii0zMCIgeT0iNTAiIHdpZHRoPSI1MCIgaGVpZ2h0PSIyMCIvPgogIDwvZz4KICA8ZyBpZD0iYXJ0d29yayI+CiAgICA8cGF0aCBjbGFzcz0ic3QwIiBkPSJNMjAsMjNjMTMuMSwyLjYsMTMuMSwxMi45LDAsMTUuNC0xMy4xLDIuNS0xMy4xLTUuMSwwLTIuNSwxMy4xLDIuNiwxMy4xLDEyLjksMCwxNS40LTEzLjEsMi41LTEzLjEtNS4yLDAtMi42LDEzLjEsMi42LDEzLjEsMTIuOSwwLDE1LjQtMTMuMSwyLjUtMTMuMS01LjEsMC0yLjUsMTMuMSwyLjYsMTMuMSwxMi45LDAsMTUuNE0yMCw3N2gwTTIwLDIzaDAiLz4KICA8L2c+CiAgPGcgaWQ9ImxlYWRzIj4KICAgIDxsaW5lIGNsYXNzPSJzdDAiIHgxPSIyMCIgeTE9IjIzIiB4Mj0iMjAiLz4KICAgIDxsaW5lIGNsYXNzPSJzdDAiIHgxPSIyMCIgeTE9IjEwMCIgeDI9IjIwIiB5Mj0iNzciLz4KICA8L2c+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MSIgY3g9IjIwIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnJpZ2h0IiBjbGFzcz0ic3QxIiBjeD0iMjAiIGN5PSIxMDAiIHI9IjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "IND1",
+        "category": "SLIDES_3pt/circuits/LCR"
+      }
     },
     {
       "id": "006abe0ce56e",
@@ -135,7 +149,12 @@
       "stretch_dy": 0.0,
       "layer": 0,
       "z": 9.0,
-      "group": []
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA2MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIGZpbGw6IG5vbmU7CiAgICAgICAgc3Ryb2tlOiAjMDAwOwogICAgICAgIHN0cm9rZS1saW5lY2FwOiByb3VuZDsKICAgICAgICBzdHJva2UtbGluZWpvaW46IGJldmVsOwogICAgICAgIHN0cm9rZS13aWR0aDogM3B4OwogICAgICB9CgogICAgICAuc3QxIHsKICAgICAgICBmaWxsOiAjYzY2OwogICAgICB9CiAgICA8L3N0eWxlPgogIDwvZGVmcz4KICA8ZyBpZD0iYXJ0d29yayI+CiAgICA8Zz4KICAgICAgPHBhdGggY2xhc3M9InN0MCIgZD0iTTU0LjYsNTQuNkg1LjQiLz4KICAgICAgPHBhdGggY2xhc3M9InN0MCIgZD0iTTU0LjYsNDUuNEg1LjQiLz4KICAgIDwvZz4KICA8L2c+CiAgPGcgaWQ9ImxlYWRzIj4KICAgIDxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik0zMCwwdjQ1LjQiLz4KICAgIDxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik0zMCwxMDB2LTQ0LjkiLz4KICA8L2c+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MSIgY3g9IjMwIiBjeT0iMCIgcj0iMyIvPgogICAgPGNpcmNsZSBpZD0icG9ydDpyaWdodCIgY2xhc3M9InN0MSIgY3g9IjMwIiBjeT0iMTAwIiByPSIzIi8+CiAgPC9nPgo8L3N2Zz4=",
+      "embedded_meta": {
+        "name": "CAP1",
+        "category": "SLIDES_3pt/circuits/LCR"
+      }
     },
     {
       "id": "b12ca176058e",
@@ -151,7 +170,12 @@
       "stretch_dy": 0.0,
       "layer": 0,
       "z": 6.0,
-      "group": []
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA2MCA0MCI+CiAgPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDMwLjIuMSwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDIuMS4xIEJ1aWxkIDEpICAtLT4KICA8ZGVmcz4KICAgIDxzdHlsZT4KICAgICAgLnN0MCB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgICAgc3Ryb2tlLWxpbmVjYXA6IHJvdW5kOwogICAgICAgIHN0cm9rZS1saW5lam9pbjogYmV2ZWw7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAzcHg7CiAgICAgIH0KCiAgICAgIC5zdDEgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJhcnR3b3JrIj4KICAgIDxnPgogICAgICA8cGF0aCBjbGFzcz0ic3QwIiBkPSJNNDguNiwyNS42SDExLjQiLz4KICAgICAgPHBhdGggY2xhc3M9InN0MCIgZD0iTTQ4LjYsMTQuNEgxMS40Ii8+CiAgICA8L2c+CiAgPC9nPgogIDxnIGlkPSJwb3J0cyI+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OmxlZnQiIGNsYXNzPSJzdDEiIGN4PSIzMCIgY3k9IjAiIHI9IjMiLz4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6cmlnaHQiIGNsYXNzPSJzdDEiIGN4PSIzMCIgY3k9IjQwIiByPSIzIi8+CiAgPC9nPgogIDxnIGlkPSJsZWFkcyI+CiAgICA8cGF0aCBjbGFzcz0ic3QwIiBkPSJNMzAsMHYxNC40Ii8+CiAgICA8cGF0aCBjbGFzcz0ic3QwIiBkPSJNMzAsNDB2LTE0LjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "CAP2_SHORT",
+        "category": "SLIDES_3pt/circuits/LCR"
+      }
     },
     {
       "id": "910eb88549ba",
@@ -167,7 +191,12 @@
       "stretch_dy": 0.0,
       "layer": 0,
       "z": 3.0,
-      "group": []
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA0MCA0MCI+CiAgPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDMwLjMuMCwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDIuMS4zIEJ1aWxkIDE4MikgIC0tPgogIDxkZWZzPgogICAgPHN0eWxlPgogICAgICAuc3QwIHsKICAgICAgICBzdHJva2Utd2lkdGg6IDEuOXB4OwogICAgICB9CgogICAgICAuc3QwLCAuc3QxLCAuc3QyLCAuc3QzIHsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgICAgc3Ryb2tlLWxpbmVqb2luOiByb3VuZDsKICAgICAgfQoKICAgICAgLnN0MCwgLnN0MyB7CiAgICAgICAgZmlsbDogI2NjY2JjYjsKICAgICAgfQoKICAgICAgLnN0MSB7CiAgICAgICAgc3Ryb2tlLWxpbmVjYXA6IHJvdW5kOwogICAgICAgIHN0cm9rZS13aWR0aDogM3B4OwogICAgICB9CgogICAgICAuc3QxLCAuc3Q0LCAuc3QyIHsKICAgICAgICBmaWxsOiBub25lOwogICAgICB9CgogICAgICAuc3Q1IHsKICAgICAgICBmaWxsOiAjYzY2OwogICAgICB9CgogICAgICAuc3Q0IHsKICAgICAgICBzdHJva2U6ICNjMDM7CiAgICAgICAgc3Ryb2tlLW1pdGVybGltaXQ6IDEwOwogICAgICAgIHN0cm9rZS13aWR0aDogLjlweDsKICAgICAgfQoKICAgICAgLnN0MiwgLnN0MyB7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAxLjZweDsKICAgICAgfQogICAgPC9zdHlsZT4KICA8L2RlZnM+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0NSIgY3k9IjIwIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnJpZ2h0IiBjbGFzcz0ic3Q1IiBjeD0iNDAiIGN5PSIyMCIgcj0iMyIvPgogIDwvZz4KICA8ZyBpZD0ic3RyZXRjaCI+CiAgICA8bGluZSBpZD0ic3RyZXRjaDp2IiBjbGFzcz0ic3Q0IiB4MT0iMjAiIHkxPSIwIiB4Mj0iMjAiIHkyPSI0MCIvPgogIDwvZz4KICA8ZyBpZD0iYXJ0d29yayI+CiAgICA8Zz4KICAgICAgPHBhdGggY2xhc3M9InN0MyIgZD0iTTMzLjUsMzMuNmMtMy44LDAtNy02LjEtNy0xMy42czMuMS0xMy42LDctMTMuNkg4LjVjLTMuOCwwLTcsNi4xLTcsMTMuNnMzLjEsMTMuNiw3LDEzLjZoMjVaIi8+CiAgICAgIDxnPgogICAgICAgIDxwYXRoIGNsYXNzPSJzdDIiIGQ9Ik00MC4xLDI0LjFjLS45LDUuNS0zLjUsOS41LTYuNiw5LjVzLTctNi4xLTctMTMuNiwzLjEtMTMuNiw3LTEzLjYsNS44LDQsNi42LDkuNSIvPgogICAgICAgIDxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik00MC4xLDI0LjEiLz4KICAgICAgPC9nPgogICAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMzQuMywyMCIvPgogICAgPC9nPgogIDwvZz4KICA8ZyBpZD0ibGVhZHMiPgogICAgPGxpbmUgY2xhc3M9InN0MSIgeDE9Ii41IiB5MT0iMjAiIHkyPSIyMCIvPgogICAgPGxpbmUgY2xhc3M9InN0MSIgeDE9IjQwIiB5MT0iMjAiIHgyPSIzMy4yIiB5Mj0iMjAiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "COAX1_MED",
+        "category": "SLIDES_3pt/circuits/\u00b5wave/coax and twp"
+      }
     },
     {
       "id": "82ecf3b5fac0",
@@ -183,7 +212,12 @@
       "stretch_dy": 0.0,
       "layer": 0,
       "z": 0.0,
-      "group": []
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA4MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIHN0cm9rZS1saW5lam9pbjogYmV2ZWw7CiAgICAgIH0KCiAgICAgIC5zdDAsIC5zdDEsIC5zdDIsIC5zdDMgewogICAgICAgIHN0cm9rZTogIzAwMDsKICAgICAgICBzdHJva2UtbGluZWNhcDogcm91bmQ7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAzcHg7CiAgICAgIH0KCiAgICAgIC5zdDAsIC5zdDEsIC5zdDMgewogICAgICAgIGZpbGw6IG5vbmU7CiAgICAgIH0KCiAgICAgIC5zdDEsIC5zdDIsIC5zdDMgewogICAgICAgIHN0cm9rZS1saW5lam9pbjogcm91bmQ7CiAgICAgIH0KCiAgICAgIC5zdDQgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KCiAgICAgIC5zdDMgewogICAgICAgIGRpc3BsYXk6IG5vbmU7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJhcnR3b3JrIj4KICAgIDxnIGlkPSJhcnR3b3JrMSI+CiAgICAgIDxjaXJjbGUgY2xhc3M9InN0MCIgY3g9IjQwIiBjeT0iNTAiIHI9IjI2LjUiLz4KICAgICAgPGxpbmUgY2xhc3M9InN0MSIgeDE9Ijc1LjQiIHkxPSI1NC45IiB4Mj0iNTcuNyIgeTI9IjQ0LjUiLz4KICAgICAgPGxpbmUgY2xhc3M9InN0MSIgeDE9IjU3LjciIHkxPSI1NC45IiB4Mj0iNzUuNCIgeTI9IjQ0LjUiLz4KICAgICAgPGxpbmUgY2xhc3M9InN0MSIgeDE9IjIyLjMiIHkxPSI1NC45IiB4Mj0iNC42IiB5Mj0iNDQuNSIvPgogICAgICA8bGluZSBjbGFzcz0ic3QxIiB4MT0iNC42IiB5MT0iNTQuOSIgeDI9IjIyLjMiIHkyPSI0NC41Ii8+CiAgICAgIDxyZWN0IGNsYXNzPSJzdDMiIHg9IjEzLjUiIHk9IjIzLjUiIHdpZHRoPSI1MyIgaGVpZ2h0PSI1MyIvPgogICAgPC9nPgogIDwvZz4KICA8ZyBpZD0ibGVhZHMiPgogICAgPHBhdGggY2xhc3M9InN0MiIgZD0iTTQwLDIzLjVWMCIvPgogICAgPHBhdGggY2xhc3M9InN0MiIgZD0iTTQwLDEwMHYtMjMuMyIvPgogIDwvZz4KICA8ZyBpZD0icG9ydHMiPgogICAgPGNpcmNsZSBpZD0icG9ydDpib3QiIGNsYXNzPSJzdDQiIGN4PSI0MC4xIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnRvcCIgY2xhc3M9InN0NCIgY3g9IjQwLjEiIGN5PSIxMDAiIHI9IjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "dcSQUID1",
+        "category": "SLIDES_3pt/circuits/quantum/SQUIDs"
+      }
     }
   ],
   "connections": [
@@ -198,14 +232,16 @@
         "port_name": "center"
       },
       "waypoints": [
-        [
-          100.0,
-          340.0
-        ],
-        [
-          100.0,
-          340.0
-        ]
+        {
+          "a": "tgt",
+          "dx": 0.0,
+          "dy": 0.0
+        },
+        {
+          "a": "tgt",
+          "dx": 0.0,
+          "dy": 0.0
+        }
       ],
       "line_width": 3.0,
       "line_color": "#000000",
@@ -213,7 +249,7 @@
       "routing_mode": "ortho_45",
       "closed": false,
       "layer": 0,
-      "z": 44.0,
+      "z": 37.0,
       "group": []
     },
     {
@@ -227,14 +263,16 @@
         "port_name": "center"
       },
       "waypoints": [
-        [
-          200.0,
-          500.0
-        ],
-        [
-          100.0,
-          600.0
-        ]
+        {
+          "a": "src",
+          "dx": 0.0,
+          "dy": 49.69999999999999
+        },
+        {
+          "a": "tgt",
+          "dx": 0.0,
+          "dy": 0.0
+        }
       ],
       "line_width": 3.0,
       "line_color": "#000000",
@@ -242,7 +280,7 @@
       "routing_mode": "ortho_45",
       "closed": false,
       "layer": 0,
-      "z": 41.0,
+      "z": 36.0,
       "group": []
     },
     {
@@ -262,7 +300,7 @@
       "routing_mode": "ortho_45",
       "closed": false,
       "layer": 0,
-      "z": 38.0,
+      "z": 35.0,
       "group": []
     },
     {
@@ -282,7 +320,7 @@
       "routing_mode": "ortho_45",
       "closed": false,
       "layer": 0,
-      "z": 37.0,
+      "z": 34.0,
       "group": []
     },
     {
@@ -296,22 +334,26 @@
         "port_name": "right"
       },
       "waypoints": [
-        [
-          880.0,
-          440.0
-        ],
-        [
-          924.95,
-          440.0
-        ],
-        [
-          925.0500000000001,
-          440.1
-        ],
-        [
-          1044.0,
-          440.1
-        ]
+        {
+          "a": "src",
+          "dx": -20.0,
+          "dy": 0.0
+        },
+        {
+          "a": "src",
+          "dx": -64.95000000000005,
+          "dy": 0.0
+        },
+        {
+          "a": "src",
+          "dx": -65.05000000000007,
+          "dy": -0.10000000000002274
+        },
+        {
+          "a": "tgt",
+          "dx": 0.0,
+          "dy": 0.0
+        }
       ],
       "line_width": 3.0,
       "line_color": "#000000",
@@ -319,7 +361,7 @@
       "routing_mode": "ortho_45",
       "closed": false,
       "layer": 0,
-      "z": 34.0,
+      "z": 33.0,
       "group": []
     },
     {
@@ -339,7 +381,7 @@
       "routing_mode": "ortho_45",
       "closed": false,
       "layer": 0,
-      "z": 33.0,
+      "z": 32.0,
       "group": []
     },
     {
@@ -359,7 +401,7 @@
       "routing_mode": "ortho_45",
       "closed": false,
       "layer": 0,
-      "z": 32.0,
+      "z": 31.0,
       "group": []
     },
     {
@@ -379,7 +421,7 @@
       "routing_mode": "ortho_45",
       "closed": false,
       "layer": 0,
-      "z": 31.0,
+      "z": 30.0,
       "group": []
     },
     {
@@ -399,7 +441,7 @@
       "routing_mode": "ortho_45",
       "closed": false,
       "layer": 0,
-      "z": 30.0,
+      "z": 29.0,
       "group": []
     }
   ],
@@ -421,7 +463,7 @@
         600.0
       ],
       "layer": 0,
-      "z": 39.0,
+      "z": 40.0,
       "group": []
     },
     {
@@ -431,10 +473,11 @@
         520.0
       ],
       "layer": 0,
-      "z": 35.0,
+      "z": 38.0,
       "group": []
     }
   ],
   "shapes": [],
-  "annotations": []
+  "annotations": [],
+  "svg_images": []
 }
