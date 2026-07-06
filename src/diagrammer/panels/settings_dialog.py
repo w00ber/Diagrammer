@@ -105,6 +105,7 @@ class AppSettings:
         self.default_corner_radius = _d("wiring", "corner_radius", 8.0)
         self.default_routing_mode = _d("wiring", "routing_mode", "ortho")
         self.default_crossover_style = _d("wiring", "crossover_style", "plain")
+        self.show_junction_dots = _d("wiring", "junction_dots", True)
 
         # Snap behavior
         self.snap_to_port = _d("snap", "snap_to_port", True)
@@ -249,6 +250,7 @@ class AppSettings:
                 "default_corner_radius": self.default_corner_radius,
                 "default_routing_mode": self.default_routing_mode,
                 "default_crossover_style": self.default_crossover_style,
+                "show_junction_dots": self.show_junction_dots,
                 "snap_to_port": self.snap_to_port,
                 "snap_to_angle": self.snap_to_angle,
                 "snap_to_grid": self.snap_to_grid,
@@ -318,6 +320,7 @@ class AppSettings:
                 self.default_corner_radius = data.get("default_corner_radius", self.default_corner_radius)
                 self.default_routing_mode = data.get("default_routing_mode", self.default_routing_mode)
                 self.default_crossover_style = data.get("default_crossover_style", self.default_crossover_style)
+                self.show_junction_dots = data.get("show_junction_dots", self.show_junction_dots)
                 self.snap_to_port = data.get("snap_to_port", self.snap_to_port)
                 self.snap_to_angle = data.get("snap_to_angle", self.snap_to_angle)
                 self.snap_to_grid = data.get("snap_to_grid", self.snap_to_grid)
@@ -535,6 +538,13 @@ class SettingsDialog(QDialog):
             "crossing, or a semicircle hop on the top wire. Right-click "
             "any crossing on the canvas to override it individually.")
         line_form.addRow("Wire crossings:", self._crossover_combo)
+
+        self._junction_dots_cb = QCheckBox("Show junction dots")
+        self._junction_dots_cb.setChecked(settings.show_junction_dots)
+        self._junction_dots_cb.setToolTip(
+            "Draw a filled dot where two or more wires meet at a junction. "
+            "Visual only — the wires stay electrically connected either way.")
+        line_form.addRow("", self._junction_dots_cb)
 
         line_group.setLayout(line_form)
         line_layout.addWidget(line_group)
@@ -1081,6 +1091,7 @@ class SettingsDialog(QDialog):
         from diagrammer.items.connection_item import ROUTE_ORTHO
         self._routing_mode_combo.setCurrentText(ROUTE_ORTHO)
         self._crossover_combo.setCurrentText("plain")
+        self._junction_dots_cb.setChecked(True)
 
     def _reset_snap_defaults(self) -> None:
         self._snap_to_port_cb.setChecked(True)
@@ -1463,6 +1474,7 @@ class SettingsDialog(QDialog):
         self._settings.default_corner_radius = self._corner_radius_spin.value()
         self._settings.default_routing_mode = self._routing_mode_combo.currentText()
         self._settings.default_crossover_style = self._crossover_combo.currentText()
+        self._settings.show_junction_dots = self._junction_dots_cb.isChecked()
         self._settings.snap_to_port = self._snap_to_port_cb.isChecked()
         self._settings.snap_to_angle = self._snap_to_angle_cb.isChecked()
         self._settings.angle_snap_increment = self._angle_increment_spin.value()

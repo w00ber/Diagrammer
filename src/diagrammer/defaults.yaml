@@ -14,6 +14,7 @@ wiring:
   line_color: "#000000"      # dark gray
   corner_radius: 3.0         # pt
   crossover_style: "plain"   # "plain" | "hop" — unconnected wire crossings
+  junction_dots: true        # draw a filled dot where >= 2 wires meet
 
 # --- Snap behavior ---
 snap:

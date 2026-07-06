@@ -342,3 +342,33 @@ class TestCrossoverSerialization:
         path = tmp_path / "x.dgm"
         DiagramSerializer.save(scene, path)
         assert json.loads(path.read_text())["version"] == "2.1"
+
+
+class TestJunctionDotSetting:
+    @pytest.fixture
+    def dots_off(self):
+        from diagrammer.panels.settings_dialog import app_settings
+
+        old = getattr(app_settings, "show_junction_dots", True)
+        app_settings.show_junction_dots = False
+        yield
+        app_settings.show_junction_dots = old
+
+    def _t_junction(self, scene):
+        hub = _add_junction(scene, 100, 50)
+        _connect(scene, _add_junction(scene, 0, 50).port, hub.port)
+        _connect(scene, hub.port, _add_junction(scene, 100, 130).port)
+        return hub
+
+    def test_dot_drawn_by_default(self, scene):
+        hub = self._t_junction(scene)
+        assert hub._should_draw_dot()
+
+    def test_dot_suppressed_by_setting(self, scene, dots_off):
+        hub = self._t_junction(scene)
+        assert not hub._should_draw_dot()
+
+    def test_single_wire_junction_never_dots(self, scene):
+        hub = _add_junction(scene, 100, 50)
+        _connect(scene, _add_junction(scene, 0, 50).port, hub.port)
+        assert not hub._should_draw_dot()

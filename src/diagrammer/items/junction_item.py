@@ -68,17 +68,34 @@ class JunctionItem(QGraphicsItem):
         r = JUNCTION_DOT_RADIUS * 2 + 1.0
         return QRectF(-r, -r, r * 2, r * 2)
 
+    def _dot_connections(self) -> list:
+        """Connections that justify drawing the junction dot.
+
+        Empty when the "Show junction dots" setting is off (the dot is a
+        purely visual convention — connectivity is unaffected) or when
+        fewer than two wires meet at this port.
+        """
+        from diagrammer.panels.settings_dialog import app_settings
+        if not getattr(app_settings, "show_junction_dots", True):
+            return []
+        scene = self.scene()
+        if scene is None or not hasattr(scene, 'connections_on_port'):
+            return []
+        conns = scene.connections_on_port(self._port)
+        return conns if len(conns) >= 2 else []
+
+    def _should_draw_dot(self) -> bool:
+        return bool(self._dot_connections())
+
     def paint(self, painter, option, widget=None) -> None:
         """Paint the schematic junction dot when >= 2 wires meet here.
 
         Without the dot, a T-connection is indistinguishable from two
-        unconnected crossing wires.
+        unconnected crossing wires. Suppressed entirely by the
+        "Show junction dots" setting.
         """
-        scene = self.scene()
-        if scene is None or not hasattr(scene, 'connections_on_port'):
-            return
-        conns = scene.connections_on_port(self._port)
-        if len(conns) < 2:
+        conns = self._dot_connections()
+        if not conns:
             return
         color = QColor(50, 50, 50)
         width = 0.0
