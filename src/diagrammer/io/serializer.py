@@ -59,10 +59,12 @@ from PySide6.QtWidgets import QGraphicsScene
 #         {"a": "src"|"tgt", "dx": float, "dy": float}.
 #         The v1 absolute-coordinate form ([x, y]) is still accepted on
 #         load and rebound to the closest endpoint port automatically.
+#   2.1 - optional top-level "crossovers" list: per-pair wire crossover
+#         style overrides [{"a": id, "b": id, "style": ..., "owner": ...}].
 # ---------------------------------------------------------------------------
 
 FORMAT_MAJOR = 2
-FORMAT_MINOR = 0
+FORMAT_MINOR = 1
 FORMAT_VERSION = f"{FORMAT_MAJOR}.{FORMAT_MINOR}"
 
 
@@ -151,6 +153,23 @@ class DiagramSerializer:
         for item in scene.items():
             if isinstance(item, ConnectionItem):
                 data["connections"].append(_serialize_connection(item))
+
+        # Serialize crossover overrides (2.1+), pruning entries whose
+        # wires no longer exist
+        if isinstance(scene, DiagramScene) and getattr(scene, "_crossover_overrides", None):
+            conn_ids = {c["id"] for c in data["connections"]}
+            crossovers = []
+            for key, entry in scene._crossover_overrides.items():
+                ids = sorted(key)
+                if len(ids) == 2 and ids[0] in conn_ids and ids[1] in conn_ids:
+                    crossovers.append({
+                        "a": ids[0],
+                        "b": ids[1],
+                        "style": entry.get("style"),
+                        "owner": entry.get("owner"),
+                    })
+            if crossovers:
+                data["crossovers"] = crossovers
 
         # Serialize shapes
         for item in scene.items():
@@ -314,6 +333,24 @@ class DiagramSerializer:
             scene.register_connection(conn)
             _restore_group(conn, cd)
             id_map[conn.instance_id] = conn
+
+        # Load crossover overrides (2.1+) — tolerant of malformed entries
+        if isinstance(scene, DiagramScene):
+            for xd in data.get("crossovers", []):
+                if not isinstance(xd, dict):
+                    continue
+                a, b = xd.get("a"), xd.get("b")
+                if (a == b
+                        or not isinstance(id_map.get(a), ConnectionItem)
+                        or not isinstance(id_map.get(b), ConnectionItem)):
+                    continue
+                entry = {}
+                if xd.get("style") in ("plain", "hop"):
+                    entry["style"] = xd["style"]
+                if xd.get("owner") in (a, b):
+                    entry["owner"] = xd["owner"]
+                if entry:
+                    scene._crossover_overrides[frozenset((a, b))] = entry
 
         # Load shapes
         for sd in data.get("shapes", []):

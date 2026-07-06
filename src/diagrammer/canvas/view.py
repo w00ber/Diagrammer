@@ -192,13 +192,14 @@ class DiagramView(QGraphicsView):
         Returns (ConnectionItem, waypoint_index) or (None, None).
         """
         from diagrammer.utils.geometry import point_distance
+        tolerance = self.pick_tolerance(16.0)
         for conn_id, indices in self._selected_waypoint_set.items():
             conn = self._selected_waypoint_conns.get(conn_id)
             if conn is None:
                 continue
             for idx in indices:
                 if 0 <= idx < len(conn.vertices):
-                    if point_distance(scene_pos, conn.vertices[idx]) < 16.0:
+                    if point_distance(scene_pos, conn.vertices[idx]) < tolerance:
                         return conn, idx
         return None, None
 
@@ -320,6 +321,15 @@ class DiagramView(QGraphicsView):
     def current_scale(self) -> float:
         return self.transform().m11()
 
+    def pick_tolerance(self, pixels: float) -> float:
+        """Convert a screen-pixel pick/snap tolerance to scene units.
+
+        Hit targets and snap distances should be constant on screen: a
+        fixed scene-unit tolerance is untouchable zoomed out and grabby
+        zoomed in.
+        """
+        return pixels / max(self.current_scale(), 1e-6)
+
     def snap(self, scene_pos: QPointF) -> QPointF:
         return snap_to_grid(scene_pos, self._grid_spacing)
 
@@ -335,11 +345,11 @@ class DiagramView(QGraphicsView):
         or 'target', or (None, '', None) if nothing nearby.
         """
         from diagrammer.utils.geometry import point_distance
-        ENDPOINT_SNAP = 15.0
+        ENDPOINT_SNAP = 15.0  # screen px
         best_conn = None
         best_end = ""
         best_port = None
-        best_dist = ENDPOINT_SNAP
+        best_dist = self.pick_tolerance(ENDPOINT_SNAP)
         for item in self._diagram_scene.items():
             if not isinstance(item, ConnectionItem):
                 continue
@@ -853,6 +863,7 @@ class DiagramView(QGraphicsView):
                     junc.setPos(snapped)
                     junc.setVisible(False)
                     self._diagram_scene.addItem(junc)
+                    self._diagram_scene.adopt_pending_junction(junc)
                     if hasattr(self._diagram_scene, 'assign_active_layer'):
                         self._diagram_scene.assign_active_layer(junc)
                     self._trace_vertices.clear()
@@ -1100,18 +1111,7 @@ class DiagramView(QGraphicsView):
                         item.set_snap_anchor_closest_to(scene_pos)
 
                     # Expand selection to include group members
-                    from diagrammer.commands.group_command import get_top_group as _gtg_drag
                     selected = self._expand_group_selection(item)
-
-                    # Detect explicit multi-selection (user rubber-banded or
-                    # shift-clicked, as opposed to clicking a single unselected
-                    # item).  When multi-selecting, the user's selection is
-                    # authoritative — don't auto-include extra junctions.
-                    _is_explicit_multiselect = (
-                        not _gtg_drag(item)
-                        and len(selected) > 1
-                        and item in self._diagram_scene.selectedItems()
-                    )
 
                     # Only the clicked item should snap — disable snap on group siblings
                     for s in selected:
@@ -1471,6 +1471,33 @@ class DiagramView(QGraphicsView):
         scene_pos = self.mapToScene(event.position().toPoint())
         self._diagram_scene.cursor_scene_pos_changed.emit(scene_pos.x(), scene_pos.y())
 
+    def _drag_changed_anything(self) -> bool:
+        """True if the in-progress drag moved any item or edited any waypoints.
+
+        Used to decide whether mouseReleaseEvent may touch the undo stack:
+        opening a macro for a no-op click would wipe the redo history.
+        """
+        starts = self._diagram_scene._drag_start_positions
+        for comp in self._dragging_components:
+            start = starts.get(comp.instance_id)
+            if start is not None and start != comp.pos():
+                return True
+        if self._unified_drag_active:
+            for conn_id, orig_wps in self._unified_drag_waypoint_starts.items():
+                conn = self._selected_waypoint_conns.get(conn_id)
+                if conn is not None and orig_wps != list(conn.vertices):
+                    return True
+        for conn in self._drag_internal_conns:
+            if self._drag_conn_waypoints.get(conn.instance_id, []) != list(conn.vertices):
+                return True
+        if self._drag_ext_conn_orig_wps:
+            for item in self._diagram_scene.items():
+                if isinstance(item, ConnectionItem):
+                    orig = self._drag_ext_conn_orig_wps.get(item.instance_id)
+                    if orig is not None and orig != list(item.vertices):
+                        return True
+        return False
+
     def mouseReleaseEvent(self, event) -> None:
         # Zoom window — complete
         if self._zoom_window_mode and event.button() == Qt.MouseButton.LeftButton:
@@ -1533,8 +1560,21 @@ class DiagramView(QGraphicsView):
             # Record move end for undo for all dragged items
             if self._dragging_components:
                 from diagrammer.commands.connect_command import EditWaypointsCommand
-                self._diagram_scene.undo_stack.beginMacro("Move group")
+                # Only open an undo macro when something actually changed.
+                # Qt keeps empty macros on the stack, and beginMacro()
+                # unconditionally deletes all redoable commands — so a
+                # plain selection click (which also lands here) must not
+                # touch the undo stack at all.
+                changed = self._drag_changed_anything()
+                if changed:
+                    self._diagram_scene.undo_stack.beginMacro("Move group")
                 try:
+                    moved_components = [
+                        comp for comp in self._dragging_components
+                        if isinstance(comp, ComponentItem)
+                        and self._diagram_scene._drag_start_positions.get(comp.instance_id)
+                        not in (None, comp.pos())
+                    ]
                     # Record each item's move WITHOUT triggering per-item updates
                     for comp in self._dragging_components:
                         if hasattr(comp, '_alt_drag_clone'):
@@ -1544,6 +1584,11 @@ class DiagramView(QGraphicsView):
                         self._diagram_scene.record_move_end(comp, update=False)
                         if hasattr(comp, 'clear_snap_anchor'):
                             comp.clear_snap_anchor()
+                    # Auto-join ports that were dropped onto other ports —
+                    # inside the macro so the created wire undoes together
+                    # with the move.
+                    for comp in moved_components:
+                        self._diagram_scene.auto_join_overlapping_ports(comp)
                     # Record waypoint changes for unified-selected connections
                     if self._unified_drag_active:
                         for conn_id, orig_wps in self._unified_drag_waypoint_starts.items():
@@ -1573,7 +1618,8 @@ class DiagramView(QGraphicsView):
                                         self._diagram_scene.undo_stack.push(cmd)
                                     break
                 finally:
-                    self._diagram_scene.undo_stack.endMacro()
+                    if changed:
+                        self._diagram_scene.undo_stack.endMacro()
                     # Clear drag state BEFORE update so approach segments aren't suppressed
                     self._dragging_components = []
                     self._drag_anchor_item = None
@@ -1650,12 +1696,20 @@ class DiagramView(QGraphicsView):
     def _finish_trace(self, cursor_pos: QPointF) -> None:
         """Finish a trace route — either extending an existing wire or creating a new one."""
         if self._extending_wire is not None:
-            # Extension mode: append new waypoints to the existing wire
+            # Extension mode: append new waypoints to the existing wire.
+            # If no port is highlighted, resolve a T-junction on a nearby
+            # wire; failing that, ignore the click (finishing with no
+            # target would otherwise crash in extend_wire).
+            target = self._diagram_scene._current_target_port
+            if target is None:
+                target = self._diagram_scene._try_junction_on_wire(cursor_pos)
+            if target is None:
+                return
             self._diagram_scene.extend_wire(
                 self._extending_wire,
                 self._extending_end,
                 self._trace_vertices,
-                new_target_port=self._diagram_scene._current_target_port,
+                new_target_port=target,
             )
             self._extending_wire = None
             self._extending_end = ""
@@ -2244,12 +2298,30 @@ class DiagramView(QGraphicsView):
             junction.setPos(snapped)
             junction.setVisible(False)  # endpoint, not a visual junction
             self._diagram_scene.addItem(junction)
+            self._diagram_scene.adopt_pending_junction(junction)
             if hasattr(self._diagram_scene, 'assign_active_layer'):
                 self._diagram_scene.assign_active_layer(junction)
             self._diagram_scene._current_target_port = junction.port
             self._finish_trace(snapped)
             event.accept()
             return
+
+        # Double-click on a hop crossing → swap which wire hops.
+        # (Takes precedence over ConnectionItem's double-click select-all
+        # only within pick tolerance of an actual crossing point.)
+        if (event.button() == Qt.MouseButton.LeftButton
+                and not self._trace_routing):
+            scene_pos = self.mapToScene(event.position().toPoint())
+            crossing = self._diagram_scene.find_crossing_at(
+                scene_pos, self.pick_tolerance(10.0))
+            if crossing is not None:
+                conn_a, conn_b, _pt = crossing
+                style, _owner = self._diagram_scene.resolve_crossover(conn_a, conn_b)
+                if style == "hop":
+                    self._swap_crossing_owner(conn_a, conn_b)
+                    event.accept()
+                    return
+
         super().mouseDoubleClickEvent(event)
 
     # -- Drag-and-drop from library panel --
@@ -2323,6 +2395,42 @@ class DiagramView(QGraphicsView):
             delete_wp_act = menu.addAction(f"Delete Waypoint {wp_idx + 1}")
             delete_wp_act.triggered.connect(lambda: _wc._delete_waypoint(_wi))
 
+        # Wire crossing near the click → crossover style submenu
+        crossing = self._diagram_scene.find_crossing_at(
+            scene_pos, self.pick_tolerance(12.0))
+        if crossing is not None:
+            from PySide6.QtGui import QActionGroup
+            owner_conn, other_conn, cross_pt = crossing
+            ov = self._diagram_scene.get_crossover_override(
+                owner_conn.instance_id, other_conn.instance_id)
+            cur = (ov or {}).get("style")  # None = follow global default
+            if menu.actions():
+                menu.addSeparator()
+            cross_menu = menu.addMenu("Wire Crossing")
+            grp = QActionGroup(cross_menu)
+            for label, style in (("Default", None),
+                                 ("Plain Crossing", "plain"),
+                                 ("Hop Over", "hop")):
+                act = cross_menu.addAction(label)
+                act.setCheckable(True)
+                act.setChecked(cur == style)
+                grp.addAction(act)
+                act.triggered.connect(
+                    lambda _c=False, s=style, a=owner_conn, b=other_conn:
+                    self._set_crossing_style(a, b, s))
+            cross_menu.addSeparator()
+            resolved_style, _owner = self._diagram_scene.resolve_crossover(
+                owner_conn, other_conn)
+            swap_act = cross_menu.addAction("Swap Hop Direction")
+            swap_act.setEnabled(resolved_style == "hop")
+            swap_act.triggered.connect(
+                lambda _c=False, a=owner_conn, b=other_conn:
+                self._swap_crossing_owner(a, b))
+            junc_act = cross_menu.addAction("Convert Crossing to Junction")
+            junc_act.triggered.connect(
+                lambda _c=False, a=owner_conn, b=other_conn, pt=cross_pt:
+                self._diagram_scene.convert_crossing_to_junction(a, b, pt))
+
         if isinstance(item, ConnectionItem):
             if menu.actions():
                 menu.addSeparator()
@@ -2388,6 +2496,37 @@ class DiagramView(QGraphicsView):
         if menu.actions():
             menu.exec(event.globalPos())
         event.accept()
+
+    def _set_crossing_style(self, conn_a, conn_b, style: str | None) -> None:
+        """Set (or clear, when style is None) the pair's crossover override."""
+        from diagrammer.commands.connect_command import SetCrossoverStyleCommand
+        scene = self._diagram_scene
+        old = scene.get_crossover_override(conn_a.instance_id, conn_b.instance_id)
+        if style is None:
+            # "Default": drop the style but keep an owner override if set
+            new = dict(old) if old else None
+            if new is not None:
+                new.pop("style", None)
+                if not new:
+                    new = None
+        else:
+            new = dict(old or {})
+            new["style"] = style
+        if new != old:
+            scene.undo_stack.push(
+                SetCrossoverStyleCommand(scene, conn_a, conn_b, old, new))
+
+    def _swap_crossing_owner(self, conn_a, conn_b) -> None:
+        """Flip which wire of the pair arcs over the other."""
+        from diagrammer.commands.connect_command import SetCrossoverStyleCommand
+        scene = self._diagram_scene
+        _style, owner_id = scene.resolve_crossover(conn_a, conn_b)
+        old = scene.get_crossover_override(conn_a.instance_id, conn_b.instance_id)
+        new = dict(old or {})
+        new["owner"] = (conn_b.instance_id if owner_id == conn_a.instance_id
+                        else conn_a.instance_id)
+        scene.undo_stack.push(
+            SetCrossoverStyleCommand(scene, conn_a, conn_b, old, new))
 
     def _move_selection_to_layer(self, layer_index: int) -> None:
         """Move all currently-selected items to the given layer (undoable)."""

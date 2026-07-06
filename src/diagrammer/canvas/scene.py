@@ -22,7 +22,9 @@ class InteractionMode(Enum):
 # Rubber-band line style for in-progress connections
 _RUBBERBAND_PEN = QPen(QColor(100, 100, 255, 180), 2.0, Qt.PenStyle.DashLine)
 
-# Maximum distance (in scene units) to snap to a target port during connection
+# Maximum distance (in screen pixels) to snap to a target port during
+# connection. Converted to scene units at the current zoom via
+# DiagramScene._pick_tolerance so snapping feels the same at any zoom.
 PORT_SNAP_DISTANCE = 20.0
 
 # Layer-aware Z stacking.
@@ -82,6 +84,14 @@ class DiagramScene(QGraphicsScene):
         self._rubberband_path: QGraphicsPathItem | None = None
         self._rubberband_dots: list[QGraphicsEllipseItem] = []  # waypoint markers
         self._current_target_port = None   # PortItem currently highlighted as target
+        # Junctions created for the in-progress connection. They are added
+        # to the scene eagerly (the preview needs their port), then either
+        # pushed onto the undo stack with the finished connection or
+        # removed again when the connection is cancelled.
+        self._pending_new_junctions: list = []
+        # (host ConnectionItem, JunctionItem) recorded when a T-junction
+        # is dropped onto a wire; consumed by _split_pending_host_wire.
+        self._pending_wire_split: tuple | None = None
 
         # Rotation pivot port — set via Shift+click on a port
         self._rotation_pivot_port = None  # PortItem or None
@@ -101,6 +111,14 @@ class DiagramScene(QGraphicsScene):
         # Maps id(port) → list[ConnectionItem]
         self._port_connections: dict[int, list] = {}
 
+        # Pair-level crossover overrides. Key: frozenset({id_a, id_b}) of
+        # two wires' instance_ids; value: {"style": "plain"|"hop",
+        # "owner": instance_id|None} (either key optional). Pair-level
+        # means ALL crossings between the same two wires share one
+        # style/owner — a deliberate simplification. Entries referencing
+        # missing wires are ignored at render time and pruned on save.
+        self._crossover_overrides: dict[frozenset, dict] = {}
+
         # Scene bounds — large default workspace
         self.setSceneRect(-5000, -5000, 10000, 10000)
 
@@ -108,15 +126,24 @@ class DiagramScene(QGraphicsScene):
 
     def register_connection(self, conn) -> None:
         """Add *conn* to the port-connections index."""
+        from diagrammer.items.junction_item import JunctionItem
         for port in (conn.source_port, conn.target_port):
             if port is not None:
                 key = id(port)
                 bucket = self._port_connections.setdefault(key, [])
                 if conn not in bucket:
                     bucket.append(conn)
+                comp = port.component
+                if isinstance(comp, JunctionItem):
+                    # A junction where wires actually meet paints a dot —
+                    # make sure hidden endpoint anchors become visible.
+                    if len(bucket) >= 2 and not comp.isVisible():
+                        comp.setVisible(True)
+                    comp.update()
 
     def unregister_connection(self, conn) -> None:
         """Remove *conn* from the port-connections index."""
+        from diagrammer.items.junction_item import JunctionItem
         for port in (conn.source_port, conn.target_port):
             if port is not None:
                 key = id(port)
@@ -128,6 +155,9 @@ class DiagramScene(QGraphicsScene):
                         pass
                     if not bucket:
                         del self._port_connections[key]
+                comp = port.component
+                if isinstance(comp, JunctionItem):
+                    comp.update()
 
     def connections_on_port(self, port) -> list:
         """Return all connections attached to *port* (O(1) lookup)."""
@@ -136,7 +166,124 @@ class DiagramScene(QGraphicsScene):
     def clear(self) -> None:
         """Clear scene and reset port-connections index."""
         self._port_connections.clear()
+        self._crossover_overrides.clear()
         super().clear()
+
+    # -- Crossover overrides --
+
+    @staticmethod
+    def crossover_key(id_a: str, id_b: str) -> frozenset:
+        return frozenset((id_a, id_b))
+
+    def get_crossover_override(self, id_a: str, id_b: str) -> dict | None:
+        return self._crossover_overrides.get(self.crossover_key(id_a, id_b))
+
+    def set_crossover_override(self, id_a: str, id_b: str, entry: dict | None) -> None:
+        """Raw dict mutation, no undo — used by SetCrossoverStyleCommand.
+
+        ``entry=None`` deletes the override (style/owner fall back to the
+        global default and the z-order rule).
+        """
+        key = self.crossover_key(id_a, id_b)
+        if entry:
+            self._crossover_overrides[key] = dict(entry)
+        else:
+            self._crossover_overrides.pop(key, None)
+
+    def default_crossover_style(self) -> str:
+        from diagrammer.panels.settings_dialog import app_settings
+        return getattr(app_settings, "default_crossover_style", "plain")
+
+    def crossover_scan_needed(self) -> bool:
+        """False when no wire could possibly need hop geometry.
+
+        Keeps the O(wires x segments^2) crossing scan entirely off for
+        documents that use plain crossings only.
+        """
+        return bool(self._crossover_overrides) or self.default_crossover_style() == "hop"
+
+    def find_crossing_at(self, scene_pos: QPointF, tolerance: float):
+        """Find a wire-crossing near *scene_pos*.
+
+        Returns ``(owner_conn, other_conn, point)`` for the geometric
+        crossing nearest the position within *tolerance*, or None. Works
+        regardless of the crossing's resolved style, so a plain crossing
+        can be right-clicked to restyle or convert it.
+        """
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.utils.geometry import (
+            closest_point_on_segment,
+            point_distance,
+            segment_intersection,
+        )
+
+        candidates = []
+        for item in self.items():
+            if not isinstance(item, ConnectionItem):
+                continue
+            rect = getattr(item, '_expanded_rect', None)
+            if rect is None:
+                continue
+            if rect.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(scene_pos):
+                candidates.append(item)
+
+        best = None
+        best_dist = tolerance
+        for ai in range(len(candidates)):
+            for bi in range(ai + 1, len(candidates)):
+                conn_a, conn_b = candidates[ai], candidates[bi]
+                a_pts, b_pts = conn_a._expanded, conn_b._expanded
+                na, nb = len(a_pts), len(b_pts)
+                a_segs = na if conn_a._closed else na - 1
+                b_segs = nb if conn_b._closed else nb - 1
+                for i in range(a_segs):
+                    p1, p2 = a_pts[i], a_pts[(i + 1) % na]
+                    _, d_a = closest_point_on_segment(scene_pos, p1, p2)
+                    if d_a > tolerance:
+                        continue
+                    for j in range(b_segs):
+                        q1, q2 = b_pts[j], b_pts[(j + 1) % nb]
+                        _, d_b = closest_point_on_segment(scene_pos, q1, q2)
+                        if d_b > tolerance:
+                            continue
+                        hit = segment_intersection(
+                            p1, p2, q1, q2, endpoint_exclusion=1.0,
+                        )
+                        if hit is None:
+                            continue
+                        d = point_distance(hit, scene_pos)
+                        if d <= best_dist:
+                            best_dist = d
+                            best = (conn_a, conn_b, hit)
+
+        if best is None:
+            return None
+        conn_a, conn_b, hit = best
+        _style, owner_id = self.resolve_crossover(conn_a, conn_b)
+        if owner_id == conn_b.instance_id:
+            conn_a, conn_b = conn_b, conn_a
+        return conn_a, conn_b, hit
+
+    def resolve_crossover(self, conn_a, conn_b) -> tuple[str, str]:
+        """Return ``(style, owner_instance_id)`` for a pair of wires.
+
+        Style: the pair's override, else the global default. Owner (the
+        wire that arcs over the other): the override's owner if it still
+        names one of the pair, else the wire with the higher zValue
+        (tie → larger instance_id).
+        """
+        ov = self._crossover_overrides.get(
+            self.crossover_key(conn_a.instance_id, conn_b.instance_id))
+        style = (ov or {}).get("style") or self.default_crossover_style()
+        owner = (ov or {}).get("owner")
+        if owner not in (conn_a.instance_id, conn_b.instance_id):
+            if conn_a.zValue() != conn_b.zValue():
+                owner = (conn_a.instance_id
+                         if conn_a.zValue() > conn_b.zValue()
+                         else conn_b.instance_id)
+            else:
+                owner = max(conn_a.instance_id, conn_b.instance_id)
+        return style, owner
 
     # -- Mode management --
 
@@ -364,6 +511,23 @@ class DiagramScene(QGraphicsScene):
         for comp in self._all_component_items():
             yield from comp.ports
 
+    def _pick_tolerance(self, pixels: float) -> float:
+        """Convert a screen-pixel tolerance to scene units at the current zoom."""
+        views = self.views()
+        if views and hasattr(views[0], 'pick_tolerance'):
+            return views[0].pick_tolerance(pixels)
+        return pixels
+
+    def adopt_pending_junction(self, junction) -> None:
+        """Track a junction created for the in-progress connection.
+
+        Adopted junctions are pushed onto the undo stack with the finished
+        connection, or removed from the scene if the connection is
+        cancelled — they must never outlive a wire that was never made.
+        """
+        if junction not in self._pending_new_junctions:
+            self._pending_new_junctions.append(junction)
+
     def begin_connection(self, port) -> None:
         """Start drawing a connection from the given port."""
         from diagrammer.items.port_item import PortItem
@@ -512,11 +676,11 @@ class DiagramScene(QGraphicsScene):
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.utils.geometry import closest_point_on_segment
 
-        WIRE_SNAP_DIST = 15.0
+        WIRE_SNAP_DIST = 15.0  # screen px
         source = self._connecting_from_port
 
         best_proj = None
-        best_dist = WIRE_SNAP_DIST
+        best_dist = self._pick_tolerance(WIRE_SNAP_DIST)
 
         for item in self.items():
             if not isinstance(item, ConnectionItem):
@@ -541,7 +705,7 @@ class DiagramScene(QGraphicsScene):
             return None
 
         best_port = None
-        best_dist = PORT_SNAP_DISTANCE
+        best_dist = self._pick_tolerance(PORT_SNAP_DISTANCE)
 
         # Check source port for polygon closure (source is on a JunctionItem
         # which isn't yielded by _all_port_items).  Require at least 2 trace
@@ -558,7 +722,17 @@ class DiagramScene(QGraphicsScene):
                 best_dist = d
                 best_port = source
 
-        for port in self._all_port_items():
+        from diagrammer.items.junction_item import JunctionItem
+
+        def _junction_ports():
+            # Existing junction ports are valid targets too, so a third
+            # branch reuses the junction instead of stacking a second,
+            # invisible one on top of it.
+            for item in self.items():
+                if isinstance(item, JunctionItem):
+                    yield item.port
+
+        for port in (*self._all_port_items(), *_junction_ports()):
             # Skip only the source port itself — ports on the same component
             # are valid targets (e.g. wiring a loop between an inductor's ends).
             if port is source:
@@ -615,8 +789,24 @@ class DiagramScene(QGraphicsScene):
             self._cancel_connection()
             return False
 
+        # Junctions created for this trace (free start, double-click end,
+        # T-junction) must undo together with the connection.
+        from diagrammer.commands.connect_command import (
+            AddJunctionCommand,
+            CreateConnectionCommand,
+        )
+        pending = [
+            j for j in self._pending_new_junctions
+            if j in (source.component, target.component)
+        ]
+        if pending:
+            self._undo_stack.beginMacro("Create connection")
+        for junction in pending:
+            self._undo_stack.push(AddJunctionCommand(self, junction))
+        # T-junction: split the host wire at the junction (real topology)
+        self._split_pending_host_wire()
+
         # Create the connection
-        from diagrammer.commands.connect_command import CreateConnectionCommand
         cmd = CreateConnectionCommand(self, source, target)
         self._undo_stack.push(cmd)
 
@@ -658,6 +848,9 @@ class DiagramScene(QGraphicsScene):
         if cmd.connection and vertices:
             self._try_merge_at_source(cmd.connection)
 
+        if pending:
+            self._undo_stack.endMacro()
+
         self._cleanup_connection_state()
         return True
 
@@ -675,12 +868,12 @@ class DiagramScene(QGraphicsScene):
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.utils.geometry import point_distance
 
-        ENDPOINT_SNAP = 15.0  # pixels
+        ENDPOINT_SNAP = 15.0  # screen px
 
         source = source_port
         best_conn = None
         best_end = None  # "source" or "target"
-        best_dist = ENDPOINT_SNAP
+        best_dist = self._pick_tolerance(ENDPOINT_SNAP)
 
         for item in self.items():
             if not isinstance(item, ConnectionItem):
@@ -747,12 +940,19 @@ class DiagramScene(QGraphicsScene):
 
         # Delete the other wire
         from diagrammer.commands.delete_command import DeleteCommand
+        from diagrammer.commands.connect_command import (
+            AddJunctionCommand,
+            CreateConnectionCommand,
+        )
         self._undo_stack.beginMacro("Join wires")
+        # A junction created for this trace (free start) undoes with the wire
+        for junction in self._pending_new_junctions:
+            if junction is source.component:
+                self._undo_stack.push(AddJunctionCommand(self, junction))
         del_cmd = DeleteCommand(self, [best_conn])
         self._undo_stack.push(del_cmd)
 
         # Create merged connection
-        from diagrammer.commands.connect_command import CreateConnectionCommand
         cmd = CreateConnectionCommand(self, source, new_target)
         self._undo_stack.push(cmd)
         if cmd.connection:
@@ -883,9 +1083,19 @@ class DiagramScene(QGraphicsScene):
 
         # Delete old wire and create extended one
         from diagrammer.commands.delete_command import DeleteCommand
-        from diagrammer.commands.connect_command import CreateConnectionCommand
+        from diagrammer.commands.connect_command import (
+            AddJunctionCommand,
+            CreateConnectionCommand,
+        )
 
         self._undo_stack.beginMacro("Extend wire")
+        # A junction created for this trace (double-click end, T-junction)
+        # undoes with the extension
+        for junction in self._pending_new_junctions:
+            if new_target_port is not None and junction is new_target_port.component:
+                self._undo_stack.push(AddJunctionCommand(self, junction))
+        # T-junction: split the host wire at the junction (real topology)
+        self._split_pending_host_wire()
         del_cmd = DeleteCommand(self, [conn])
         self._undo_stack.push(del_cmd)
 
@@ -912,10 +1122,10 @@ class DiagramScene(QGraphicsScene):
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.utils.geometry import closest_point_on_segment
 
-        WIRE_SNAP_DIST = 15.0
+        WIRE_SNAP_DIST = 15.0  # screen px
         best_conn = None
         best_proj = None
-        best_dist = WIRE_SNAP_DIST
+        best_dist = self._pick_tolerance(WIRE_SNAP_DIST)
 
         source = self._connecting_from_port
         for item in self.items():
@@ -953,11 +1163,140 @@ class DiagramScene(QGraphicsScene):
         junction = JunctionItem()
         junction.setPos(best_proj)
         self.addItem(junction)
+        self.adopt_pending_junction(junction)
+        # The host wire will be split in two at this junction so the
+        # T-connection is real topology, not a geometric coincidence.
+        self._pending_wire_split = (best_conn, junction)
 
         return junction.port
 
+    def _split_pending_host_wire(self) -> None:
+        """Split the host wire recorded by _try_junction_on_wire in two.
+
+        Must be called inside the caller's undo macro: the delete + two
+        creates undo together with the branch.
+        """
+        split = self._pending_wire_split
+        self._pending_wire_split = None
+        if not split:
+            return
+        host, junction = split
+        if host.scene() is not self:
+            return
+        self.split_connection_at_junction(host, junction)
+
+    def split_connection_at_junction(self, host, junction) -> None:
+        """Replace *host* with two connections meeting at junction's port.
+
+        Editing or deleting either half can then never strand wires that
+        terminate on the junction — the T (or X) point is real topology.
+        Preserves style, z-order, layer, and group; distributes host
+        waypoints to the halves by arclength along the old route, and
+        remaps crossover overrides that referenced the host onto the
+        halves. Pushes DeleteCommand + 2 CreateConnectionCommands — the
+        caller must wrap in a macro.
+        """
+        from diagrammer.commands.connect_command import (
+            CreateConnectionCommand,
+            SetCrossoverStyleCommand,
+        )
+        from diagrammer.commands.delete_command import DeleteCommand
+        from diagrammer.commands.group_command import set_group_ids
+        from diagrammer.utils.geometry import closest_point_on_segment, point_distance
+
+        jpos = junction.port.scene_center()
+        pts = host.all_points()
+
+        def arc_of(p: QPointF) -> float:
+            """Arclength along the host route of p's closest point."""
+            best_dist = float("inf")
+            best_arc = 0.0
+            acc = 0.0
+            for i in range(len(pts) - 1):
+                proj, dist = closest_point_on_segment(p, pts[i], pts[i + 1])
+                if dist < best_dist:
+                    best_dist = dist
+                    best_arc = acc + point_distance(pts[i], proj)
+                acc += point_distance(pts[i], pts[i + 1])
+            return best_arc
+
+        j_arc = arc_of(jpos)
+        before: list[QPointF] = []
+        after: list[QPointF] = []
+        for w in host.vertices:
+            (before if arc_of(w) <= j_arc else after).append(QPointF(w))
+        # Junction grab-handle waypoints at the split point (same convention
+        # as free-end junction endpoints elsewhere)
+        if not before or point_distance(before[-1], jpos) > 1.0:
+            before.append(QPointF(jpos))
+        if not after or point_distance(after[0], jpos) > 1.0:
+            after.insert(0, QPointF(jpos))
+
+        # Crossover overrides that name the host must follow the halves,
+        # otherwise splitting one crossing silently resets the styles of
+        # the host's other crossings.
+        host_id = host.instance_id
+        host_z = host.zValue()
+        moved_overrides: list[tuple[str, dict]] = []
+        for key, entry in self._crossover_overrides.items():
+            if host_id in key:
+                other_ids = key - {host_id}
+                if len(other_ids) == 1:
+                    moved_overrides.append((next(iter(other_ids)), dict(entry)))
+
+        self._undo_stack.push(DeleteCommand(self, [host]))
+        group_stack = list(getattr(host, '_group_ids', []) or [])
+        halves = []
+        for src_port, tgt_port, wps in (
+            (host.source_port, junction.port, before),
+            (junction.port, host.target_port, after),
+        ):
+            cmd = CreateConnectionCommand(self, src_port, tgt_port)
+            # Halves take the host's exact z so stacking (and therefore
+            # hop ownership at other crossings) is unchanged by the split.
+            cmd._z = host_z
+            self._undo_stack.push(cmd)
+            half = cmd.connection
+            if half is None:
+                continue
+            half.routing_mode = host.routing_mode
+            half.corner_radius = host.corner_radius
+            half.line_width = host.line_width
+            half.line_color = host.line_color
+            half._layer_index = getattr(host, '_layer_index', 0)
+            if group_stack:
+                set_group_ids(half, list(group_stack))
+            half.vertices = wps
+            halves.append(half)
+
+        if moved_overrides and halves:
+            from diagrammer.items.connection_item import ConnectionItem
+            conn_by_id = {
+                c.instance_id: c
+                for c in self.items()
+                if isinstance(c, ConnectionItem)
+            }
+            for other_id, entry in moved_overrides:
+                other = conn_by_id.get(other_id)
+                if other is None:
+                    continue
+                self._undo_stack.push(
+                    SetCrossoverStyleCommand(self, host, other, entry, None))
+                for half in halves:
+                    new_entry = dict(entry)
+                    if new_entry.get("owner") == host_id:
+                        new_entry["owner"] = half.instance_id
+                    self._undo_stack.push(
+                        SetCrossoverStyleCommand(self, half, other, None, new_entry))
+
     def _cancel_connection(self) -> None:
         """Clean up connection-in-progress state without creating a connection."""
+        # Remove junctions that were created for this trace and never got
+        # a wire — leaving them would leak invisible items into the scene
+        # (and into the saved file).
+        for junction in self._pending_new_junctions:
+            if junction.scene() is self and not self.connections_on_port(junction.port):
+                self.removeItem(junction)
         self._cleanup_connection_state()
 
     def _cleanup_connection_state(self) -> None:
@@ -974,6 +1313,8 @@ class DiagramScene(QGraphicsScene):
             self._current_target_port = None
 
         self._connecting_from_port = None
+        self._pending_new_junctions = []
+        self._pending_wire_split = None
 
         # Restore normal port visibility
         for comp in self._all_component_items():
@@ -1002,12 +1343,20 @@ class DiagramScene(QGraphicsScene):
             self.update_connections()
 
     def update_connections(self) -> None:
-        """Rebuild routes for all connections and refresh component lead rendering."""
+        """Rebuild routes for all connections and refresh component lead rendering.
+
+        Two passes: first every wire recomputes its expanded route, then
+        every wire rebuilds its painted path. Hop (crossover) geometry
+        reads the OTHER wire's expanded route, so paths must only be
+        built once all routes are current.
+        """
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
-        for item in self.items():
-            if isinstance(item, ConnectionItem):
-                item.update_route()
+        conns = [i for i in self.items() if isinstance(i, ConnectionItem)]
+        for item in conns:
+            item.rebuild_expanded()
+        for item in conns:
+            item.rebuild_path()
         # Recompute lead shortening (outside paint path to avoid perf issues)
         for item in self.items():
             if isinstance(item, ComponentItem):
@@ -1108,6 +1457,104 @@ class DiagramScene(QGraphicsScene):
         for port in self._alignment_ports:
             port.set_alignment_selected(False)
         self._alignment_ports.clear()
+
+    def convert_crossing_to_junction(self, conn_a, conn_b, point: QPointF) -> None:
+        """Turn a geometric wire crossing into a real electrical junction.
+
+        Splits BOTH wires at *point* so four legs meet at one JunctionItem
+        port (which then paints the schematic dot). One undo restores the
+        two original wires. Any crossover-style override for the pair is
+        removed inside the same macro — it is meaningless after the split.
+        """
+        from diagrammer.commands.connect_command import (
+            AddJunctionCommand,
+            SetCrossoverStyleCommand,
+        )
+        from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.utils.geometry import point_distance
+
+        if conn_a.scene() is not self or conn_b.scene() is not self:
+            return
+        # Degenerate guard: refuse to split at a wire endpoint
+        for conn in (conn_a, conn_b):
+            for port in (conn.source_port, conn.target_port):
+                if port is not None and point_distance(point, port.scene_center()) < 1.0:
+                    return
+
+        self._undo_stack.beginMacro("Convert crossing to junction")
+        try:
+            junction = JunctionItem()
+            # Exact intersection — no grid snap, so the wires' geometry
+            # is unchanged by the conversion.
+            junction.setPos(point)
+            self.assign_active_layer(junction)
+            self._undo_stack.push(AddJunctionCommand(self, junction))
+            old = self.get_crossover_override(conn_a.instance_id, conn_b.instance_id)
+            if old is not None:
+                self._undo_stack.push(
+                    SetCrossoverStyleCommand(self, conn_a, conn_b, old, None))
+            self.split_connection_at_junction(conn_a, junction)
+            self.split_connection_at_junction(conn_b, junction)
+        finally:
+            self._undo_stack.endMacro()
+
+    # -- Deletion with dependents --
+
+    def delete_items_with_dependents(self, items: list) -> None:
+        """Delete *items* plus everything that cannot survive without them.
+
+        Expands the deletion set with:
+
+        * connections attached to any port of a deleted component/junction
+          (otherwise they linger as dangling ghosts frozen at the old
+          position, and silently vanish on the next save/load);
+        * junctions stranded by those deletions — a junction whose every
+          remaining wire is also being deleted has no reason to exist.
+
+        Everything goes into a single DeleteCommand so one undo restores
+        the full set.
+        """
+        from diagrammer.commands.delete_command import DeleteCommand
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.junction_item import JunctionItem
+
+        if not items:
+            return
+        doomed_ids = set(id(i) for i in items)
+        doomed = list(items)
+
+        # Wires attached to a deleted component/junction. Scan the scene
+        # rather than the port index so this also works for connections
+        # that were never registered (older files, direct addItem).
+        for si in self.items():
+            if not isinstance(si, ConnectionItem) or id(si) in doomed_ids:
+                continue
+            src_comp = si.source_port.component if si.source_port else None
+            tgt_comp = si.target_port.component if si.target_port else None
+            if id(src_comp) in doomed_ids or id(tgt_comp) in doomed_ids:
+                doomed.append(si)
+                doomed_ids.add(id(si))
+
+        # Junctions stranded once those wires are gone.
+        conns_by_junction: dict[int, list] = {}
+        junctions: dict[int, JunctionItem] = {}
+        for si in self.items():
+            if not isinstance(si, ConnectionItem):
+                continue
+            for port in (si.source_port, si.target_port):
+                comp = port.component if port else None
+                if isinstance(comp, JunctionItem):
+                    junctions[id(comp)] = comp
+                    conns_by_junction.setdefault(id(comp), []).append(si)
+        for jid, conns in conns_by_junction.items():
+            if jid in doomed_ids:
+                continue
+            if all(id(c) in doomed_ids for c in conns):
+                doomed.append(junctions[jid])
+                doomed_ids.add(jid)
+
+        cmd = DeleteCommand(self, doomed)
+        self._undo_stack.push(cmd)
 
     # -- Auto-join overlapping ports --
 

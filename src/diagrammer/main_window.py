@@ -517,6 +517,8 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             self._view._angle_snap_increment = app_settings.angle_snap_increment
         else:
             self._view._angle_snap = False
+        # Repaint wires so a changed crossover default takes effect at once
+        self._scene.update_connections()
 
     def _apply_library_visibility(self) -> None:
         """Rebuild library panel with only visible categories."""

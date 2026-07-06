@@ -84,6 +84,84 @@ def _get_lead_stroke_width(port: PortItem) -> float | None:
     return None
 
 
+class AddJunctionCommand(QUndoCommand):
+    """Add a JunctionItem to the scene (undoable).
+
+    Junctions that anchor wire endpoints (trace started in empty space,
+    double-click terminators, T-junctions on a wire) must ride the undo
+    stack together with their connection — otherwise undoing the wire
+    leaks an invisible junction into the scene and the saved file.
+
+    Tolerates the junction already being in the scene on the first
+    redo() (creation sites add it eagerly so the connection preview can
+    reference its port).
+    """
+
+    def __init__(
+        self,
+        scene: QGraphicsScene,
+        junction,
+        parent: QUndoCommand | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._scene = scene
+        self._junction = junction
+        self._pos = junction.pos()
+        self.setText("Add junction")
+
+    def redo(self) -> None:
+        if self._junction.scene() is None:
+            self._scene.addItem(self._junction)
+        self._junction.setPos(self._pos)
+
+    def undo(self) -> None:
+        if self._junction.scene() is self._scene:
+            self._scene.removeItem(self._junction)
+
+
+class SetCrossoverStyleCommand(QUndoCommand):
+    """Set/replace/remove the crossover override for a pair of wires.
+
+    The override lives in a scene-level dict keyed by the unordered pair
+    of instance_ids (see DiagramScene._crossover_overrides), not as an
+    item attribute — so the generic ChangeStyleCommand cannot be reused.
+    Pasted wires get fresh instance_ids, so overrides do not follow
+    copy/paste.
+    """
+
+    def __init__(
+        self,
+        scene,
+        conn_a,
+        conn_b,
+        old_entry: dict | None,
+        new_entry: dict | None,
+        parent: QUndoCommand | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._scene = scene
+        self._conn_a = conn_a
+        self._conn_b = conn_b
+        self._old = dict(old_entry) if old_entry else None
+        self._new = dict(new_entry) if new_entry else None
+        self.setText("Change wire crossing style")
+
+    def redo(self) -> None:
+        self._apply(self._new)
+
+    def undo(self) -> None:
+        self._apply(self._old)
+
+    def _apply(self, entry: dict | None) -> None:
+        self._scene.set_crossover_override(
+            self._conn_a.instance_id, self._conn_b.instance_id, entry,
+        )
+        # Both wires rebuild — ownership may flip which one paints the arc
+        for conn in (self._conn_a, self._conn_b):
+            if conn.scene() is self._scene:
+                conn.update_route()
+
+
 class CreateConnectionCommand(QUndoCommand):
     """Create a connection between two ports (undoable)."""
 

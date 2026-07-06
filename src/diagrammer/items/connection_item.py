@@ -152,6 +152,10 @@ class ConnectionItem(QGraphicsPathItem):
         # Multi-waypoint selection (Shift+click to toggle) ----------------
         self._selected_waypoints: set[int] = set()
 
+        # Hover state ------------------------------------------------------
+        self._hovered: bool = False
+        self._hover_segment: int | None = None  # index into _expanded
+
         # Dragging state --------------------------------------------------
         self._dragging_waypoint: int | None = None  # index into _waypoints
         self._dragging_group: bool = False           # True when dragging selected group
@@ -557,8 +561,8 @@ class ConnectionItem(QGraphicsPathItem):
         """
         return list(self._expanded)
 
-    def update_route(self) -> None:
-        """Rebuild the expanded route and QPainterPath.
+    def rebuild_expanded(self) -> None:
+        """Recompute the expanded route (without touching the painted path).
 
         Refreshes the scene-space waypoint cache from anchors first so the
         wire automatically follows ports that have moved (component drag,
@@ -566,10 +570,82 @@ class ConnectionItem(QGraphicsPathItem):
         """
         self._refresh_from_anchors()
         self._expanded = self._build_expanded()
+        if self._expanded:
+            xs = [p.x() for p in self._expanded]
+            ys = [p.y() for p in self._expanded]
+            rect = QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+        else:
+            rect = QRectF()
+        pad = self._hop_radius() + 1.0
+        self._expanded_rect = rect.adjusted(-pad, -pad, pad, pad)
+
+    def rebuild_path(self) -> None:
+        """Rebuild the painted QPainterPath from the current expanded route.
+
+        Hop (crossover) geometry lives ONLY in the painted path — never in
+        ``_expanded`` or the waypoints — so segment dragging and waypoint
+        storage can never pick up hop artifacts.
+        """
+        hops = self._compute_hops()
         path = build_rounded_path(
             self._expanded, self._corner_radius, closed=self._closed,
+            hops=hops, hop_radius=self._hop_radius(),
         )
         self.setPath(path)
+
+    def update_route(self) -> None:
+        """Rebuild the expanded route and QPainterPath."""
+        self.rebuild_expanded()
+        self.rebuild_path()
+
+    def _hop_radius(self) -> float:
+        """Radius of crossover hop semicircles for this wire."""
+        return max(5.0, self._line_width * 2.5)
+
+    def _compute_hops(self) -> list[QPointF]:
+        """Crossing points where THIS wire arcs over another wire.
+
+        Only the crossing's resolved hop owner returns points; the other
+        wire renders straight through. Closed polygons never own hops
+        (but their outline can be hopped over, including the closing
+        segment).
+        """
+        scene = self.scene()
+        if scene is None or not hasattr(scene, 'resolve_crossover'):
+            return []
+        if self._closed or len(self._expanded) < 2:
+            return []
+        if not scene.crossover_scan_needed():
+            return []
+
+        from diagrammer.utils.geometry import segment_intersection
+        hops: list[QPointF] = []
+        my_pts = self._expanded
+        my_rect = self._expanded_rect
+        for other in scene.items():
+            if not isinstance(other, ConnectionItem) or other is self:
+                continue
+            style, owner_id = scene.resolve_crossover(self, other)
+            if style != "hop" or owner_id != self._id:
+                continue
+            other_rect = getattr(other, '_expanded_rect', None)
+            if other_rect is None or not my_rect.intersects(other_rect):
+                continue
+            opts = other._expanded
+            m = len(opts)
+            if m < 2:
+                continue
+            num_other_segs = m if other._closed else m - 1
+            for i in range(len(my_pts) - 1):
+                for j in range(num_other_segs):
+                    hit = segment_intersection(
+                        my_pts[i], my_pts[i + 1],
+                        opts[j], opts[(j + 1) % m],
+                        endpoint_exclusion=1.0,
+                    )
+                    if hit is not None:
+                        hops.append(hit)
+        return hops
 
     # =====================================================================
     # Mapping expanded-route edits back to waypoints
@@ -659,6 +735,30 @@ class ConnectionItem(QGraphicsPathItem):
         option: QStyleOptionGraphicsItem,
         widget: QWidget | None = None,
     ) -> None:
+        # Hover feedback: a soft halo on the whole wire signals it is
+        # interactive; when selected, the segment under the cursor gets a
+        # stronger highlight showing what a drag would move.
+        if self._hovered and not self._group_id:
+            halo = QPen(SEGMENT_HOVER_COLOR, self._line_width + HIT_TOLERANCE)
+            halo.setCapStyle(Qt.PenCapStyle.RoundCap)
+            halo.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(halo)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(self.path())
+        if (self._hover_segment is not None and self.isSelected()
+                and not self._group_id):
+            pts = self._expanded
+            n = len(pts)
+            num_segs = n if self._closed else n - 1
+            if 0 <= self._hover_segment < num_segs:
+                seg_color = QColor(SEGMENT_HOVER_COLOR)
+                seg_color.setAlpha(200)
+                seg_pen = QPen(seg_color, self._line_width + HIT_TOLERANCE)
+                seg_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                painter.setPen(seg_pen)
+                painter.drawLine(pts[self._hover_segment],
+                                 pts[(self._hover_segment + 1) % n])
+
         pen = QPen(
             SELECTION_COLOR if (self.isSelected() and not self._group_id) else self._line_color,
             self._line_width,
@@ -694,7 +794,8 @@ class ConnectionItem(QGraphicsPathItem):
                     )
 
     def boundingRect(self) -> QRectF:
-        extra = max(self._line_width, VERTEX_HANDLE_SIZE, HIT_TOLERANCE) / 2 + 2
+        # Must cover the hover halo (line_width + HIT_TOLERANCE wide)
+        extra = max(self._line_width + HIT_TOLERANCE, VERTEX_HANDLE_SIZE) / 2 + 2
         return self.path().boundingRect().adjusted(-extra, -extra, extra, extra)
 
     def shape(self) -> QPainterPath:
@@ -764,10 +865,20 @@ class ConnectionItem(QGraphicsPathItem):
     # Hit-testing helpers
     # =====================================================================
 
+    def _pick_tolerance(self, pixels: float) -> float:
+        """Convert a screen-pixel hit tolerance to scene units at the current zoom."""
+        scene = self.scene()
+        if scene is not None:
+            views = scene.views()
+            if views and hasattr(views[0], 'pick_tolerance'):
+                return views[0].pick_tolerance(pixels)
+        return pixels
+
     def _find_waypoint_at(self, scene_pos: QPointF) -> int | None:
         """Return the index into ``_waypoints`` of the handle near *scene_pos*."""
+        tolerance = self._pick_tolerance(VERTEX_HANDLE_SIZE * 2)
         for i, w in enumerate(self._waypoints):
-            if point_distance(scene_pos, w) < VERTEX_HANDLE_SIZE * 2:
+            if point_distance(scene_pos, w) < tolerance:
                 return i
         return None
 
@@ -776,7 +887,7 @@ class ConnectionItem(QGraphicsPathItem):
 
         A segment ``i`` connects ``_expanded[i]`` to ``_expanded[i+1]``
         (wrapping for closed polygons).
-        Returns ``None`` if nothing is within ``HIT_TOLERANCE * 2``.
+        Returns ``None`` if nothing is within ``HIT_TOLERANCE * 2`` screen px.
         """
         pts = self._expanded
         if len(pts) < 2:
@@ -784,7 +895,7 @@ class ConnectionItem(QGraphicsPathItem):
 
         n = len(pts)
         num_segs = n if self._closed else n - 1
-        best_dist = HIT_TOLERANCE * 2
+        best_dist = self._pick_tolerance(HIT_TOLERANCE * 2)
         best_idx: int | None = None
         for i in range(num_segs):
             _, dist = closest_point_on_segment(scene_pos, pts[i], pts[(i + 1) % n])
@@ -1107,6 +1218,55 @@ class ConnectionItem(QGraphicsPathItem):
 
         super().mouseMoveEvent(event)
 
+    def hoverEnterEvent(self, event) -> None:  # noqa: ANN001
+        if not self._group_id:
+            self._hovered = True
+            self.update()
+        super().hoverEnterEvent(event)
+
+    def hoverMoveEvent(self, event) -> None:  # noqa: ANN001
+        """Highlight the segment under the cursor and show what a drag would do."""
+        if self._group_id:
+            super().hoverMoveEvent(event)
+            return
+        pos = event.scenePos()
+        seg: int | None = None
+        cursor = None
+        if self.isSelected():
+            # Segment drag / waypoint drag only work on a selected wire —
+            # advertise them with directional cursors.
+            if self._find_waypoint_at(pos) is not None:
+                cursor = Qt.CursorShape.SizeAllCursor
+            else:
+                seg = self._find_segment_at(pos)
+                if seg is not None:
+                    pts = self._expanded
+                    is_h = self._seg_is_horizontal(
+                        pts[seg], pts[(seg + 1) % len(pts)]
+                    )
+                    if is_h is True:
+                        cursor = Qt.CursorShape.SizeVerCursor
+                    elif is_h is False:
+                        cursor = Qt.CursorShape.SizeHorCursor
+                    else:
+                        cursor = Qt.CursorShape.SizeAllCursor
+        if cursor is not None:
+            self.setCursor(cursor)
+        else:
+            self.unsetCursor()
+        if seg != self._hover_segment:
+            self._hover_segment = seg
+            self.update()
+        super().hoverMoveEvent(event)
+
+    def hoverLeaveEvent(self, event) -> None:  # noqa: ANN001
+        if self._hovered or self._hover_segment is not None:
+            self._hovered = False
+            self._hover_segment = None
+            self.update()
+        self.unsetCursor()
+        super().hoverLeaveEvent(event)
+
     def mouseReleaseEvent(self, event) -> None:  # noqa: ANN001
         if self._dragging_waypoint is not None or self._dragging_segment is not None:
             # Push undo command for the waypoint change (and any junction moves)
@@ -1225,7 +1385,7 @@ class ConnectionItem(QGraphicsPathItem):
                 best_idx = i
                 best_proj = proj
 
-        if best_dist < HIT_TOLERANCE * 3:
+        if best_dist < self._pick_tolerance(HIT_TOLERANCE * 3):
             kps = self._key_points()
             kp_exp_indices = self._key_point_expanded_indices(kps)
             insert_wp_idx = self._wp_insert_index_for_expanded_segment(
