@@ -1109,6 +1109,64 @@ class DiagramScene(QGraphicsScene):
             port.set_alignment_selected(False)
         self._alignment_ports.clear()
 
+    # -- Deletion with dependents --
+
+    def delete_items_with_dependents(self, items: list) -> None:
+        """Delete *items* plus everything that cannot survive without them.
+
+        Expands the deletion set with:
+
+        * connections attached to any port of a deleted component/junction
+          (otherwise they linger as dangling ghosts frozen at the old
+          position, and silently vanish on the next save/load);
+        * junctions stranded by those deletions — a junction whose every
+          remaining wire is also being deleted has no reason to exist.
+
+        Everything goes into a single DeleteCommand so one undo restores
+        the full set.
+        """
+        from diagrammer.commands.delete_command import DeleteCommand
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.junction_item import JunctionItem
+
+        if not items:
+            return
+        doomed_ids = set(id(i) for i in items)
+        doomed = list(items)
+
+        # Wires attached to a deleted component/junction. Scan the scene
+        # rather than the port index so this also works for connections
+        # that were never registered (older files, direct addItem).
+        for si in self.items():
+            if not isinstance(si, ConnectionItem) or id(si) in doomed_ids:
+                continue
+            src_comp = si.source_port.component if si.source_port else None
+            tgt_comp = si.target_port.component if si.target_port else None
+            if id(src_comp) in doomed_ids or id(tgt_comp) in doomed_ids:
+                doomed.append(si)
+                doomed_ids.add(id(si))
+
+        # Junctions stranded once those wires are gone.
+        conns_by_junction: dict[int, list] = {}
+        junctions: dict[int, JunctionItem] = {}
+        for si in self.items():
+            if not isinstance(si, ConnectionItem):
+                continue
+            for port in (si.source_port, si.target_port):
+                comp = port.component if port else None
+                if isinstance(comp, JunctionItem):
+                    junctions[id(comp)] = comp
+                    conns_by_junction.setdefault(id(comp), []).append(si)
+        for jid, conns in conns_by_junction.items():
+            if jid in doomed_ids:
+                continue
+            if all(id(c) in doomed_ids for c in conns):
+                doomed.append(junctions[jid])
+                doomed_ids.add(jid)
+
+        cmd = DeleteCommand(self, doomed)
+        self._undo_stack.push(cmd)
+
     # -- Auto-join overlapping ports --
 
     def get_group_members(self, group_id: str) -> list:

@@ -47,11 +47,11 @@ class ClipboardMixin:
     # ---------------------------------------------------------- delete
 
     def _delete_selected(self) -> None:
-        from diagrammer.commands.delete_command import DeleteCommand
         selected = self._scene.selectedItems()
         if selected:
-            cmd = DeleteCommand(self._scene, selected)
-            self._scene.undo_stack.push(cmd)
+            # Cascades to attached wires and stranded junctions so no
+            # dangling connections are left behind; one undo restores all.
+            self._scene.delete_items_with_dependents(selected)
 
     # -------------------------------------------------------------- copy
 
