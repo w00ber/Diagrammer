@@ -561,8 +561,8 @@ class ConnectionItem(QGraphicsPathItem):
         """
         return list(self._expanded)
 
-    def update_route(self) -> None:
-        """Rebuild the expanded route and QPainterPath.
+    def rebuild_expanded(self) -> None:
+        """Recompute the expanded route (without touching the painted path).
 
         Refreshes the scene-space waypoint cache from anchors first so the
         wire automatically follows ports that have moved (component drag,
@@ -570,10 +570,82 @@ class ConnectionItem(QGraphicsPathItem):
         """
         self._refresh_from_anchors()
         self._expanded = self._build_expanded()
+        if self._expanded:
+            xs = [p.x() for p in self._expanded]
+            ys = [p.y() for p in self._expanded]
+            rect = QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+        else:
+            rect = QRectF()
+        pad = self._hop_radius() + 1.0
+        self._expanded_rect = rect.adjusted(-pad, -pad, pad, pad)
+
+    def rebuild_path(self) -> None:
+        """Rebuild the painted QPainterPath from the current expanded route.
+
+        Hop (crossover) geometry lives ONLY in the painted path — never in
+        ``_expanded`` or the waypoints — so segment dragging and waypoint
+        storage can never pick up hop artifacts.
+        """
+        hops = self._compute_hops()
         path = build_rounded_path(
             self._expanded, self._corner_radius, closed=self._closed,
+            hops=hops, hop_radius=self._hop_radius(),
         )
         self.setPath(path)
+
+    def update_route(self) -> None:
+        """Rebuild the expanded route and QPainterPath."""
+        self.rebuild_expanded()
+        self.rebuild_path()
+
+    def _hop_radius(self) -> float:
+        """Radius of crossover hop semicircles for this wire."""
+        return max(5.0, self._line_width * 2.5)
+
+    def _compute_hops(self) -> list[QPointF]:
+        """Crossing points where THIS wire arcs over another wire.
+
+        Only the crossing's resolved hop owner returns points; the other
+        wire renders straight through. Closed polygons never own hops
+        (but their outline can be hopped over, including the closing
+        segment).
+        """
+        scene = self.scene()
+        if scene is None or not hasattr(scene, 'resolve_crossover'):
+            return []
+        if self._closed or len(self._expanded) < 2:
+            return []
+        if not scene.crossover_scan_needed():
+            return []
+
+        from diagrammer.utils.geometry import segment_intersection
+        hops: list[QPointF] = []
+        my_pts = self._expanded
+        my_rect = self._expanded_rect
+        for other in scene.items():
+            if not isinstance(other, ConnectionItem) or other is self:
+                continue
+            style, owner_id = scene.resolve_crossover(self, other)
+            if style != "hop" or owner_id != self._id:
+                continue
+            other_rect = getattr(other, '_expanded_rect', None)
+            if other_rect is None or not my_rect.intersects(other_rect):
+                continue
+            opts = other._expanded
+            m = len(opts)
+            if m < 2:
+                continue
+            num_other_segs = m if other._closed else m - 1
+            for i in range(len(my_pts) - 1):
+                for j in range(num_other_segs):
+                    hit = segment_intersection(
+                        my_pts[i], my_pts[i + 1],
+                        opts[j], opts[(j + 1) % m],
+                        endpoint_exclusion=1.0,
+                    )
+                    if hit is not None:
+                        hops.append(hit)
+        return hops
 
     # =====================================================================
     # Mapping expanded-route edits back to waypoints

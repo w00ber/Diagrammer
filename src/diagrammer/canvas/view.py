@@ -2305,6 +2305,23 @@ class DiagramView(QGraphicsView):
             self._finish_trace(snapped)
             event.accept()
             return
+
+        # Double-click on a hop crossing → swap which wire hops.
+        # (Takes precedence over ConnectionItem's double-click select-all
+        # only within pick tolerance of an actual crossing point.)
+        if (event.button() == Qt.MouseButton.LeftButton
+                and not self._trace_routing):
+            scene_pos = self.mapToScene(event.position().toPoint())
+            crossing = self._diagram_scene.find_crossing_at(
+                scene_pos, self.pick_tolerance(10.0))
+            if crossing is not None:
+                conn_a, conn_b, _pt = crossing
+                style, _owner = self._diagram_scene.resolve_crossover(conn_a, conn_b)
+                if style == "hop":
+                    self._swap_crossing_owner(conn_a, conn_b)
+                    event.accept()
+                    return
+
         super().mouseDoubleClickEvent(event)
 
     # -- Drag-and-drop from library panel --
@@ -2378,6 +2395,42 @@ class DiagramView(QGraphicsView):
             delete_wp_act = menu.addAction(f"Delete Waypoint {wp_idx + 1}")
             delete_wp_act.triggered.connect(lambda: _wc._delete_waypoint(_wi))
 
+        # Wire crossing near the click → crossover style submenu
+        crossing = self._diagram_scene.find_crossing_at(
+            scene_pos, self.pick_tolerance(12.0))
+        if crossing is not None:
+            from PySide6.QtGui import QActionGroup
+            owner_conn, other_conn, cross_pt = crossing
+            ov = self._diagram_scene.get_crossover_override(
+                owner_conn.instance_id, other_conn.instance_id)
+            cur = (ov or {}).get("style")  # None = follow global default
+            if menu.actions():
+                menu.addSeparator()
+            cross_menu = menu.addMenu("Wire Crossing")
+            grp = QActionGroup(cross_menu)
+            for label, style in (("Default", None),
+                                 ("Plain Crossing", "plain"),
+                                 ("Hop Over", "hop")):
+                act = cross_menu.addAction(label)
+                act.setCheckable(True)
+                act.setChecked(cur == style)
+                grp.addAction(act)
+                act.triggered.connect(
+                    lambda _c=False, s=style, a=owner_conn, b=other_conn:
+                    self._set_crossing_style(a, b, s))
+            cross_menu.addSeparator()
+            resolved_style, _owner = self._diagram_scene.resolve_crossover(
+                owner_conn, other_conn)
+            swap_act = cross_menu.addAction("Swap Hop Direction")
+            swap_act.setEnabled(resolved_style == "hop")
+            swap_act.triggered.connect(
+                lambda _c=False, a=owner_conn, b=other_conn:
+                self._swap_crossing_owner(a, b))
+            junc_act = cross_menu.addAction("Convert Crossing to Junction")
+            junc_act.triggered.connect(
+                lambda _c=False, a=owner_conn, b=other_conn, pt=cross_pt:
+                self._diagram_scene.convert_crossing_to_junction(a, b, pt))
+
         if isinstance(item, ConnectionItem):
             if menu.actions():
                 menu.addSeparator()
@@ -2443,6 +2496,37 @@ class DiagramView(QGraphicsView):
         if menu.actions():
             menu.exec(event.globalPos())
         event.accept()
+
+    def _set_crossing_style(self, conn_a, conn_b, style: str | None) -> None:
+        """Set (or clear, when style is None) the pair's crossover override."""
+        from diagrammer.commands.connect_command import SetCrossoverStyleCommand
+        scene = self._diagram_scene
+        old = scene.get_crossover_override(conn_a.instance_id, conn_b.instance_id)
+        if style is None:
+            # "Default": drop the style but keep an owner override if set
+            new = dict(old) if old else None
+            if new is not None:
+                new.pop("style", None)
+                if not new:
+                    new = None
+        else:
+            new = dict(old or {})
+            new["style"] = style
+        if new != old:
+            scene.undo_stack.push(
+                SetCrossoverStyleCommand(scene, conn_a, conn_b, old, new))
+
+    def _swap_crossing_owner(self, conn_a, conn_b) -> None:
+        """Flip which wire of the pair arcs over the other."""
+        from diagrammer.commands.connect_command import SetCrossoverStyleCommand
+        scene = self._diagram_scene
+        _style, owner_id = scene.resolve_crossover(conn_a, conn_b)
+        old = scene.get_crossover_override(conn_a.instance_id, conn_b.instance_id)
+        new = dict(old or {})
+        new["owner"] = (conn_b.instance_id if owner_id == conn_a.instance_id
+                        else conn_a.instance_id)
+        scene.undo_stack.push(
+            SetCrossoverStyleCommand(scene, conn_a, conn_b, old, new))
 
     def _move_selection_to_layer(self, layer_index: int) -> None:
         """Move all currently-selected items to the given layer (undoable)."""

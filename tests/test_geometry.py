@@ -195,3 +195,112 @@ class TestBuildRoundedPath:
         pts = [QPointF(0, 0), QPointF(100, 0), QPointF(100, 100)]
         path = build_rounded_path(pts, 0, closed=True)
         assert not path.isEmpty()
+
+
+# ---------------------------------------------------------------------------
+# segment_intersection
+# ---------------------------------------------------------------------------
+
+
+class TestSegmentIntersection:
+    def _si(self, *args, **kwargs):
+        from diagrammer.utils.geometry import segment_intersection
+        return segment_intersection(*args, **kwargs)
+
+    def test_x_crossing(self):
+        pt = self._si(QPointF(0, 0), QPointF(100, 0),
+                      QPointF(50, -50), QPointF(50, 50))
+        assert pt is not None
+        assert pt.x() == pytest.approx(50)
+        assert pt.y() == pytest.approx(0)
+
+    def test_parallel(self):
+        assert self._si(QPointF(0, 0), QPointF(100, 0),
+                        QPointF(0, 10), QPointF(100, 10)) is None
+
+    def test_collinear_overlap(self):
+        assert self._si(QPointF(0, 0), QPointF(100, 0),
+                        QPointF(50, 0), QPointF(150, 0)) is None
+
+    def test_disjoint(self):
+        assert self._si(QPointF(0, 0), QPointF(100, 0),
+                        QPointF(200, -50), QPointF(200, 50)) is None
+
+    def test_endpoint_touch_excluded(self):
+        # T-join: q's endpoint lies exactly on p
+        assert self._si(QPointF(0, 0), QPointF(100, 0),
+                        QPointF(50, 0), QPointF(50, 50),
+                        endpoint_exclusion=1.0) is None
+
+    def test_endpoint_touch_included_without_exclusion(self):
+        pt = self._si(QPointF(0, 0), QPointF(100, 0),
+                      QPointF(50, 0), QPointF(50, 50))
+        assert pt is not None
+        assert pt.x() == pytest.approx(50)
+
+    def test_degenerate_segment(self):
+        assert self._si(QPointF(0, 0), QPointF(0, 0),
+                        QPointF(-10, -10), QPointF(10, 10)) is None
+
+
+# ---------------------------------------------------------------------------
+# build_rounded_path with hops
+# ---------------------------------------------------------------------------
+
+
+def _path_length(path):
+    return path.length()
+
+
+class TestBuildRoundedPathHops:
+    def test_no_hops_matches_legacy_output(self):
+        """The hop-aware refactor must not change no-hop paths."""
+        pts = [QPointF(0, 0), QPointF(100, 0), QPointF(100, 80), QPointF(200, 80)]
+        base = build_rounded_path(pts, 8.0)
+        again = build_rounded_path(pts, 8.0, hops=None, hop_radius=0.0)
+        assert base == again
+        # And the straight 2-point fast path
+        two = [QPointF(0, 0), QPointF(100, 0)]
+        assert build_rounded_path(two, 8.0) == build_rounded_path(two, 8.0, hops=[])
+
+    def test_hop_lengthens_path_and_bulges_up(self):
+        pts = [QPointF(0, 0), QPointF(100, 0)]
+        plain = build_rounded_path(pts, 0.0)
+        hopped = build_rounded_path(pts, 0.0, hops=[QPointF(50, 0)], hop_radius=6.0)
+        assert _path_length(hopped) > _path_length(plain)
+        # Left-of-travel for a left-to-right wire is screen-up (-y)
+        assert hopped.boundingRect().top() == pytest.approx(-6.0, abs=0.2)
+        # Endpoints unchanged
+        assert hopped.currentPosition().x() == pytest.approx(100)
+        assert hopped.currentPosition().y() == pytest.approx(0)
+
+    def test_hop_near_endpoint_dropped(self):
+        pts = [QPointF(0, 0), QPointF(100, 0)]
+        plain = build_rounded_path(pts, 0.0)
+        hopped = build_rounded_path(pts, 0.0, hops=[QPointF(2, 0)], hop_radius=6.0)
+        assert _path_length(hopped) == pytest.approx(_path_length(plain))
+
+    def test_hop_in_corner_zone_dropped(self):
+        pts = [QPointF(0, 0), QPointF(100, 0), QPointF(100, 100)]
+        plain = build_rounded_path(pts, 10.0)
+        # Hop right at the corner arc start — cannot fit
+        hopped = build_rounded_path(pts, 10.0, hops=[QPointF(95, 0)], hop_radius=6.0)
+        assert _path_length(hopped) == pytest.approx(_path_length(plain))
+
+    def test_two_hops_on_one_segment(self):
+        pts = [QPointF(0, 0), QPointF(200, 0)]
+        one = build_rounded_path(pts, 0.0, hops=[QPointF(60, 0)], hop_radius=5.0)
+        two = build_rounded_path(
+            pts, 0.0, hops=[QPointF(140, 0), QPointF(60, 0)], hop_radius=5.0,
+        )
+        extra_one = _path_length(one) - 200.0
+        extra_two = _path_length(two) - 200.0
+        assert extra_two == pytest.approx(2 * extra_one, rel=0.01)
+
+    def test_closed_ignores_hops(self):
+        pts = [QPointF(0, 0), QPointF(100, 0), QPointF(100, 100), QPointF(0, 100)]
+        base = build_rounded_path(pts, 5.0, closed=True)
+        hopped = build_rounded_path(
+            pts, 5.0, closed=True, hops=[QPointF(50, 0)], hop_radius=6.0,
+        )
+        assert base == hopped

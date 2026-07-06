@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QPointF
+from PySide6.QtCore import QPointF, QRectF
 from PySide6.QtGui import QPainterPath
 
 
@@ -127,8 +127,63 @@ def _dedup(points: list[QPointF]) -> list[QPointF]:
 # ---------------------------------------------------------------------------
 
 
+def _emit_run_with_hops(
+    path: QPainterPath,
+    seg_a: QPointF,
+    seg_b: QPointF,
+    run_start_d: float,
+    run_end: QPointF,
+    run_end_d: float,
+    pending_hops: list[QPointF],
+    hop_radius: float,
+) -> None:
+    """Emit the straight run of one segment, arcing over any hop points.
+
+    The run covers the arclength window ``[run_start_d, run_end_d]`` of the
+    segment ``seg_a → seg_b`` (the rest belongs to corner-rounding quads).
+    Hop points projecting onto this segment are consumed from
+    *pending_hops*; those whose semicircle would not fit inside the run
+    window are dropped (that crossing renders plain).
+    """
+    seg_len = point_distance(seg_a, seg_b)
+    if not pending_hops or seg_len < 1e-9 or hop_radius <= 1e-9:
+        path.lineTo(run_end)
+        return
+
+    ux = (seg_b.x() - seg_a.x()) / seg_len
+    uy = (seg_b.y() - seg_a.y()) / seg_len
+
+    accepted: list[float] = []
+    for h in list(pending_hops):
+        proj, dist = closest_point_on_segment(h, seg_a, seg_b)
+        if dist > 0.25:
+            continue
+        # This hop belongs to this segment — consume it either way so a
+        # collinear neighbouring segment can't match it a second time.
+        pending_hops.remove(h)
+        t = (proj.x() - seg_a.x()) * ux + (proj.y() - seg_a.y()) * uy
+        if run_start_d + hop_radius <= t <= run_end_d - hop_radius:
+            accepted.append(t)
+
+    accepted.sort()
+    ang = math.degrees(math.atan2(-uy, ux))  # Qt angle of travel direction
+    for t in accepted:
+        c = QPointF(seg_a.x() + ux * t, seg_a.y() + uy * t)
+        path.lineTo(QPointF(c.x() - ux * hop_radius, c.y() - uy * hop_radius))
+        rect = QRectF(
+            c.x() - hop_radius, c.y() - hop_radius,
+            hop_radius * 2.0, hop_radius * 2.0,
+        )
+        # Semicircle from the near cut to the far cut, bulging to the
+        # left of the travel direction (screen-up for a left-to-right
+        # wire). arcTo ends exactly at c + u*hop_radius.
+        path.arcTo(rect, ang + 180.0, -180.0)
+    path.lineTo(run_end)
+
+
 def build_rounded_path(
     points: list[QPointF], radius: float, *, closed: bool = False,
+    hops: list[QPointF] | None = None, hop_radius: float = 0.0,
 ) -> QPainterPath:
     """Build a QPainterPath from a list of points with rounded corners.
 
@@ -137,6 +192,12 @@ def build_rounded_path(
         radius: Corner rounding radius. 0 means sharp corners.
         closed: If True, close the path into a polygon and round the
                 closing corner as well.
+        hops: Optional crossing points to arc over with a semicircle
+              (wire crossover "hops"). Each point must lie on one of the
+              path's segments. Ignored for closed polygons.
+        hop_radius: Radius of the hop semicircles. Hops that would not
+              fit inside a segment's straight run (too close to a corner
+              or endpoint) are rendered plain.
 
     Returns:
         A QPainterPath with rounded corners at each bend point.
@@ -192,39 +253,61 @@ def build_rounded_path(
         return path
 
     # -- Open polyline path --------------------------------------------
+    pending_hops = (
+        [QPointF(h) for h in hops] if hops and hop_radius > 1e-9 else []
+    )
+    n = len(points)
+    rounded = radius > 0 and n > 2
+
+    # Corner geometry per interior vertex: (arc_start, ctrl, arc_end, r).
+    # Same arithmetic as the pre-hop implementation so no-hop output is
+    # unchanged.
+    corners: list[tuple[QPointF, QPointF, QPointF, float]] = []
+    if rounded:
+        for i in range(1, n - 1):
+            prev = points[i - 1]
+            curr = points[i]
+            nxt = points[i + 1]
+
+            to_prev = QPointF(prev.x() - curr.x(), prev.y() - curr.y())
+            to_next = QPointF(nxt.x() - curr.x(), nxt.y() - curr.y())
+
+            len_prev = max((to_prev.x() ** 2 + to_prev.y() ** 2) ** 0.5, 1e-9)
+            len_next = max((to_next.x() ** 2 + to_next.y() ** 2) ** 0.5, 1e-9)
+
+            r = min(radius, len_prev / 2, len_next / 2)
+
+            arc_start = QPointF(
+                curr.x() + to_prev.x() / len_prev * r,
+                curr.y() + to_prev.y() / len_prev * r,
+            )
+            arc_end = QPointF(
+                curr.x() + to_next.x() / len_next * r,
+                curr.y() + to_next.y() / len_next * r,
+            )
+            corners.append((arc_start, curr, arc_end, r))
+
     path.moveTo(points[0])
-
-    if radius <= 0 or len(points) == 2:
-        for pt in points[1:]:
-            path.lineTo(pt)
-        return path
-
-    for i in range(1, len(points) - 1):
-        prev = points[i - 1]
-        curr = points[i]
-        nxt = points[i + 1]
-
-        to_prev = QPointF(prev.x() - curr.x(), prev.y() - curr.y())
-        to_next = QPointF(nxt.x() - curr.x(), nxt.y() - curr.y())
-
-        len_prev = max((to_prev.x() ** 2 + to_prev.y() ** 2) ** 0.5, 1e-9)
-        len_next = max((to_next.x() ** 2 + to_next.y() ** 2) ** 0.5, 1e-9)
-
-        r = min(radius, len_prev / 2, len_next / 2)
-
-        arc_start = QPointF(
-            curr.x() + to_prev.x() / len_prev * r,
-            curr.y() + to_prev.y() / len_prev * r,
+    for i in range(n - 1):
+        seg_a = points[i]
+        seg_b = points[i + 1]
+        seg_len = point_distance(seg_a, seg_b)
+        # Straight-run window along this segment: the corner quads at
+        # either end own [0, r_i] and [seg_len - r_next, seg_len].
+        run_start_d = corners[i - 1][3] if (rounded and i > 0) else 0.0
+        if rounded and i < n - 2:
+            run_end = corners[i][0]
+            run_end_d = seg_len - corners[i][3]
+        else:
+            run_end = seg_b
+            run_end_d = seg_len
+        _emit_run_with_hops(
+            path, seg_a, seg_b, run_start_d, run_end, run_end_d,
+            pending_hops, hop_radius,
         )
-        arc_end = QPointF(
-            curr.x() + to_next.x() / len_next * r,
-            curr.y() + to_next.y() / len_next * r,
-        )
-
-        path.lineTo(arc_start)
-        path.quadTo(curr, arc_end)
-
-    path.lineTo(points[-1])
+        if rounded and i < n - 2:
+            _, ctrl, arc_end, _ = corners[i]
+            path.quadTo(ctrl, arc_end)
     return path
 
 
@@ -238,6 +321,41 @@ def point_distance(a: QPointF, b: QPointF) -> float:
     dx = a.x() - b.x()
     dy = a.y() - b.y()
     return (dx * dx + dy * dy) ** 0.5
+
+
+def segment_intersection(
+    p1: QPointF, p2: QPointF, q1: QPointF, q2: QPointF,
+    *, endpoint_exclusion: float = 0.0,
+) -> QPointF | None:
+    """Intersection point of segments ``p1-p2`` and ``q1-q2``, or None.
+
+    Parallel and collinear-overlapping segments yield None (overlapping
+    wires get no crossing point). With *endpoint_exclusion* > 0, hits
+    within that arclength of any segment end are rejected — this filters
+    T-joins where wires meet at a shared port rather than crossing.
+    """
+    rx = p2.x() - p1.x()
+    ry = p2.y() - p1.y()
+    sx = q2.x() - q1.x()
+    sy = q2.y() - q1.y()
+    denom = rx * sy - ry * sx
+    if abs(denom) < 1e-9:
+        return None
+    qpx = q1.x() - p1.x()
+    qpy = q1.y() - p1.y()
+    t = (qpx * sy - qpy * sx) / denom
+    u = (qpx * ry - qpy * rx) / denom
+    if not (0.0 <= t <= 1.0 and 0.0 <= u <= 1.0):
+        return None
+    if endpoint_exclusion > 0.0:
+        len_r = math.hypot(rx, ry)
+        len_s = math.hypot(sx, sy)
+        if (t * len_r < endpoint_exclusion
+                or (1.0 - t) * len_r < endpoint_exclusion
+                or u * len_s < endpoint_exclusion
+                or (1.0 - u) * len_s < endpoint_exclusion):
+            return None
+    return QPointF(p1.x() + t * rx, p1.y() + t * ry)
 
 
 def closest_point_on_segment(

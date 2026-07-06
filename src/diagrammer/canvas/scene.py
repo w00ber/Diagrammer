@@ -111,6 +111,14 @@ class DiagramScene(QGraphicsScene):
         # Maps id(port) → list[ConnectionItem]
         self._port_connections: dict[int, list] = {}
 
+        # Pair-level crossover overrides. Key: frozenset({id_a, id_b}) of
+        # two wires' instance_ids; value: {"style": "plain"|"hop",
+        # "owner": instance_id|None} (either key optional). Pair-level
+        # means ALL crossings between the same two wires share one
+        # style/owner — a deliberate simplification. Entries referencing
+        # missing wires are ignored at render time and pruned on save.
+        self._crossover_overrides: dict[frozenset, dict] = {}
+
         # Scene bounds — large default workspace
         self.setSceneRect(-5000, -5000, 10000, 10000)
 
@@ -158,7 +166,124 @@ class DiagramScene(QGraphicsScene):
     def clear(self) -> None:
         """Clear scene and reset port-connections index."""
         self._port_connections.clear()
+        self._crossover_overrides.clear()
         super().clear()
+
+    # -- Crossover overrides --
+
+    @staticmethod
+    def crossover_key(id_a: str, id_b: str) -> frozenset:
+        return frozenset((id_a, id_b))
+
+    def get_crossover_override(self, id_a: str, id_b: str) -> dict | None:
+        return self._crossover_overrides.get(self.crossover_key(id_a, id_b))
+
+    def set_crossover_override(self, id_a: str, id_b: str, entry: dict | None) -> None:
+        """Raw dict mutation, no undo — used by SetCrossoverStyleCommand.
+
+        ``entry=None`` deletes the override (style/owner fall back to the
+        global default and the z-order rule).
+        """
+        key = self.crossover_key(id_a, id_b)
+        if entry:
+            self._crossover_overrides[key] = dict(entry)
+        else:
+            self._crossover_overrides.pop(key, None)
+
+    def default_crossover_style(self) -> str:
+        from diagrammer.panels.settings_dialog import app_settings
+        return getattr(app_settings, "default_crossover_style", "plain")
+
+    def crossover_scan_needed(self) -> bool:
+        """False when no wire could possibly need hop geometry.
+
+        Keeps the O(wires x segments^2) crossing scan entirely off for
+        documents that use plain crossings only.
+        """
+        return bool(self._crossover_overrides) or self.default_crossover_style() == "hop"
+
+    def find_crossing_at(self, scene_pos: QPointF, tolerance: float):
+        """Find a wire-crossing near *scene_pos*.
+
+        Returns ``(owner_conn, other_conn, point)`` for the geometric
+        crossing nearest the position within *tolerance*, or None. Works
+        regardless of the crossing's resolved style, so a plain crossing
+        can be right-clicked to restyle or convert it.
+        """
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.utils.geometry import (
+            closest_point_on_segment,
+            point_distance,
+            segment_intersection,
+        )
+
+        candidates = []
+        for item in self.items():
+            if not isinstance(item, ConnectionItem):
+                continue
+            rect = getattr(item, '_expanded_rect', None)
+            if rect is None:
+                continue
+            if rect.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(scene_pos):
+                candidates.append(item)
+
+        best = None
+        best_dist = tolerance
+        for ai in range(len(candidates)):
+            for bi in range(ai + 1, len(candidates)):
+                conn_a, conn_b = candidates[ai], candidates[bi]
+                a_pts, b_pts = conn_a._expanded, conn_b._expanded
+                na, nb = len(a_pts), len(b_pts)
+                a_segs = na if conn_a._closed else na - 1
+                b_segs = nb if conn_b._closed else nb - 1
+                for i in range(a_segs):
+                    p1, p2 = a_pts[i], a_pts[(i + 1) % na]
+                    _, d_a = closest_point_on_segment(scene_pos, p1, p2)
+                    if d_a > tolerance:
+                        continue
+                    for j in range(b_segs):
+                        q1, q2 = b_pts[j], b_pts[(j + 1) % nb]
+                        _, d_b = closest_point_on_segment(scene_pos, q1, q2)
+                        if d_b > tolerance:
+                            continue
+                        hit = segment_intersection(
+                            p1, p2, q1, q2, endpoint_exclusion=1.0,
+                        )
+                        if hit is None:
+                            continue
+                        d = point_distance(hit, scene_pos)
+                        if d <= best_dist:
+                            best_dist = d
+                            best = (conn_a, conn_b, hit)
+
+        if best is None:
+            return None
+        conn_a, conn_b, hit = best
+        _style, owner_id = self.resolve_crossover(conn_a, conn_b)
+        if owner_id == conn_b.instance_id:
+            conn_a, conn_b = conn_b, conn_a
+        return conn_a, conn_b, hit
+
+    def resolve_crossover(self, conn_a, conn_b) -> tuple[str, str]:
+        """Return ``(style, owner_instance_id)`` for a pair of wires.
+
+        Style: the pair's override, else the global default. Owner (the
+        wire that arcs over the other): the override's owner if it still
+        names one of the pair, else the wire with the higher zValue
+        (tie → larger instance_id).
+        """
+        ov = self._crossover_overrides.get(
+            self.crossover_key(conn_a.instance_id, conn_b.instance_id))
+        style = (ov or {}).get("style") or self.default_crossover_style()
+        owner = (ov or {}).get("owner")
+        if owner not in (conn_a.instance_id, conn_b.instance_id):
+            if conn_a.zValue() != conn_b.zValue():
+                owner = (conn_a.instance_id
+                         if conn_a.zValue() > conn_b.zValue()
+                         else conn_b.instance_id)
+            else:
+                owner = max(conn_a.instance_id, conn_b.instance_id)
+        return style, owner
 
     # -- Mode management --
 
@@ -1048,10 +1173,8 @@ class DiagramScene(QGraphicsScene):
     def _split_pending_host_wire(self) -> None:
         """Split the host wire recorded by _try_junction_on_wire in two.
 
-        Replaces the host connection with two connections that meet at the
-        junction's port, so editing or deleting either half can never
-        strand the branch wire. Must be called inside the caller's undo
-        macro: the delete + two creates undo together with the branch.
+        Must be called inside the caller's undo macro: the delete + two
+        creates undo together with the branch.
         """
         split = self._pending_wire_split
         self._pending_wire_split = None
@@ -1060,8 +1183,23 @@ class DiagramScene(QGraphicsScene):
         host, junction = split
         if host.scene() is not self:
             return
+        self.split_connection_at_junction(host, junction)
 
-        from diagrammer.commands.connect_command import CreateConnectionCommand
+    def split_connection_at_junction(self, host, junction) -> None:
+        """Replace *host* with two connections meeting at junction's port.
+
+        Editing or deleting either half can then never strand wires that
+        terminate on the junction — the T (or X) point is real topology.
+        Preserves style, z-order, layer, and group; distributes host
+        waypoints to the halves by arclength along the old route, and
+        remaps crossover overrides that referenced the host onto the
+        halves. Pushes DeleteCommand + 2 CreateConnectionCommands — the
+        caller must wrap in a macro.
+        """
+        from diagrammer.commands.connect_command import (
+            CreateConnectionCommand,
+            SetCrossoverStyleCommand,
+        )
         from diagrammer.commands.delete_command import DeleteCommand
         from diagrammer.commands.group_command import set_group_ids
         from diagrammer.utils.geometry import closest_point_on_segment, point_distance
@@ -1094,13 +1232,29 @@ class DiagramScene(QGraphicsScene):
         if not after or point_distance(after[0], jpos) > 1.0:
             after.insert(0, QPointF(jpos))
 
+        # Crossover overrides that name the host must follow the halves,
+        # otherwise splitting one crossing silently resets the styles of
+        # the host's other crossings.
+        host_id = host.instance_id
+        host_z = host.zValue()
+        moved_overrides: list[tuple[str, dict]] = []
+        for key, entry in self._crossover_overrides.items():
+            if host_id in key:
+                other_ids = key - {host_id}
+                if len(other_ids) == 1:
+                    moved_overrides.append((next(iter(other_ids)), dict(entry)))
+
         self._undo_stack.push(DeleteCommand(self, [host]))
         group_stack = list(getattr(host, '_group_ids', []) or [])
+        halves = []
         for src_port, tgt_port, wps in (
             (host.source_port, junction.port, before),
             (junction.port, host.target_port, after),
         ):
             cmd = CreateConnectionCommand(self, src_port, tgt_port)
+            # Halves take the host's exact z so stacking (and therefore
+            # hop ownership at other crossings) is unchanged by the split.
+            cmd._z = host_z
             self._undo_stack.push(cmd)
             half = cmd.connection
             if half is None:
@@ -1113,6 +1267,27 @@ class DiagramScene(QGraphicsScene):
             if group_stack:
                 set_group_ids(half, list(group_stack))
             half.vertices = wps
+            halves.append(half)
+
+        if moved_overrides and halves:
+            from diagrammer.items.connection_item import ConnectionItem
+            conn_by_id = {
+                c.instance_id: c
+                for c in self.items()
+                if isinstance(c, ConnectionItem)
+            }
+            for other_id, entry in moved_overrides:
+                other = conn_by_id.get(other_id)
+                if other is None:
+                    continue
+                self._undo_stack.push(
+                    SetCrossoverStyleCommand(self, host, other, entry, None))
+                for half in halves:
+                    new_entry = dict(entry)
+                    if new_entry.get("owner") == host_id:
+                        new_entry["owner"] = half.instance_id
+                    self._undo_stack.push(
+                        SetCrossoverStyleCommand(self, half, other, None, new_entry))
 
     def _cancel_connection(self) -> None:
         """Clean up connection-in-progress state without creating a connection."""
@@ -1168,12 +1343,20 @@ class DiagramScene(QGraphicsScene):
             self.update_connections()
 
     def update_connections(self) -> None:
-        """Rebuild routes for all connections and refresh component lead rendering."""
+        """Rebuild routes for all connections and refresh component lead rendering.
+
+        Two passes: first every wire recomputes its expanded route, then
+        every wire rebuilds its painted path. Hop (crossover) geometry
+        reads the OTHER wire's expanded route, so paths must only be
+        built once all routes are current.
+        """
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
-        for item in self.items():
-            if isinstance(item, ConnectionItem):
-                item.update_route()
+        conns = [i for i in self.items() if isinstance(i, ConnectionItem)]
+        for item in conns:
+            item.rebuild_expanded()
+        for item in conns:
+            item.rebuild_path()
         # Recompute lead shortening (outside paint path to avoid perf issues)
         for item in self.items():
             if isinstance(item, ComponentItem):
@@ -1274,6 +1457,46 @@ class DiagramScene(QGraphicsScene):
         for port in self._alignment_ports:
             port.set_alignment_selected(False)
         self._alignment_ports.clear()
+
+    def convert_crossing_to_junction(self, conn_a, conn_b, point: QPointF) -> None:
+        """Turn a geometric wire crossing into a real electrical junction.
+
+        Splits BOTH wires at *point* so four legs meet at one JunctionItem
+        port (which then paints the schematic dot). One undo restores the
+        two original wires. Any crossover-style override for the pair is
+        removed inside the same macro — it is meaningless after the split.
+        """
+        from diagrammer.commands.connect_command import (
+            AddJunctionCommand,
+            SetCrossoverStyleCommand,
+        )
+        from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.utils.geometry import point_distance
+
+        if conn_a.scene() is not self or conn_b.scene() is not self:
+            return
+        # Degenerate guard: refuse to split at a wire endpoint
+        for conn in (conn_a, conn_b):
+            for port in (conn.source_port, conn.target_port):
+                if port is not None and point_distance(point, port.scene_center()) < 1.0:
+                    return
+
+        self._undo_stack.beginMacro("Convert crossing to junction")
+        try:
+            junction = JunctionItem()
+            # Exact intersection — no grid snap, so the wires' geometry
+            # is unchanged by the conversion.
+            junction.setPos(point)
+            self.assign_active_layer(junction)
+            self._undo_stack.push(AddJunctionCommand(self, junction))
+            old = self.get_crossover_override(conn_a.instance_id, conn_b.instance_id)
+            if old is not None:
+                self._undo_stack.push(
+                    SetCrossoverStyleCommand(self, conn_a, conn_b, old, None))
+            self.split_connection_at_junction(conn_a, junction)
+            self.split_connection_at_junction(conn_b, junction)
+        finally:
+            self._undo_stack.endMacro()
 
     # -- Deletion with dependents --
 
