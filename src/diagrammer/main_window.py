@@ -519,6 +519,9 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             self._view._angle_snap = False
         # Repaint wires so a changed crossover default takes effect at once
         self._scene.update_connections()
+        # Full scene repaint for items update_connections doesn't touch
+        # (junction dots react to the "Show junction dots" toggle)
+        self._scene.update()
 
     def _apply_library_visibility(self) -> None:
         """Rebuild library panel with only visible categories."""
