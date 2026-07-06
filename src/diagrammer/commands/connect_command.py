@@ -84,6 +84,41 @@ def _get_lead_stroke_width(port: PortItem) -> float | None:
     return None
 
 
+class AddJunctionCommand(QUndoCommand):
+    """Add a JunctionItem to the scene (undoable).
+
+    Junctions that anchor wire endpoints (trace started in empty space,
+    double-click terminators, T-junctions on a wire) must ride the undo
+    stack together with their connection — otherwise undoing the wire
+    leaks an invisible junction into the scene and the saved file.
+
+    Tolerates the junction already being in the scene on the first
+    redo() (creation sites add it eagerly so the connection preview can
+    reference its port).
+    """
+
+    def __init__(
+        self,
+        scene: QGraphicsScene,
+        junction,
+        parent: QUndoCommand | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._scene = scene
+        self._junction = junction
+        self._pos = junction.pos()
+        self.setText("Add junction")
+
+    def redo(self) -> None:
+        if self._junction.scene() is None:
+            self._scene.addItem(self._junction)
+        self._junction.setPos(self._pos)
+
+    def undo(self) -> None:
+        if self._junction.scene() is self._scene:
+            self._scene.removeItem(self._junction)
+
+
 class CreateConnectionCommand(QUndoCommand):
     """Create a connection between two ports (undoable)."""
 

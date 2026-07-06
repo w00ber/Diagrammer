@@ -82,6 +82,11 @@ class DiagramScene(QGraphicsScene):
         self._rubberband_path: QGraphicsPathItem | None = None
         self._rubberband_dots: list[QGraphicsEllipseItem] = []  # waypoint markers
         self._current_target_port = None   # PortItem currently highlighted as target
+        # Junctions created for the in-progress connection. They are added
+        # to the scene eagerly (the preview needs their port), then either
+        # pushed onto the undo stack with the finished connection or
+        # removed again when the connection is cancelled.
+        self._pending_new_junctions: list = []
 
         # Rotation pivot port — set via Shift+click on a port
         self._rotation_pivot_port = None  # PortItem or None
@@ -364,6 +369,16 @@ class DiagramScene(QGraphicsScene):
         for comp in self._all_component_items():
             yield from comp.ports
 
+    def adopt_pending_junction(self, junction) -> None:
+        """Track a junction created for the in-progress connection.
+
+        Adopted junctions are pushed onto the undo stack with the finished
+        connection, or removed from the scene if the connection is
+        cancelled — they must never outlive a wire that was never made.
+        """
+        if junction not in self._pending_new_junctions:
+            self._pending_new_junctions.append(junction)
+
     def begin_connection(self, port) -> None:
         """Start drawing a connection from the given port."""
         from diagrammer.items.port_item import PortItem
@@ -615,8 +630,22 @@ class DiagramScene(QGraphicsScene):
             self._cancel_connection()
             return False
 
+        # Junctions created for this trace (free start, double-click end,
+        # T-junction) must undo together with the connection.
+        from diagrammer.commands.connect_command import (
+            AddJunctionCommand,
+            CreateConnectionCommand,
+        )
+        pending = [
+            j for j in self._pending_new_junctions
+            if j in (source.component, target.component)
+        ]
+        if pending:
+            self._undo_stack.beginMacro("Create connection")
+        for junction in pending:
+            self._undo_stack.push(AddJunctionCommand(self, junction))
+
         # Create the connection
-        from diagrammer.commands.connect_command import CreateConnectionCommand
         cmd = CreateConnectionCommand(self, source, target)
         self._undo_stack.push(cmd)
 
@@ -657,6 +686,9 @@ class DiagramScene(QGraphicsScene):
         # corner rounding at the join point.
         if cmd.connection and vertices:
             self._try_merge_at_source(cmd.connection)
+
+        if pending:
+            self._undo_stack.endMacro()
 
         self._cleanup_connection_state()
         return True
@@ -747,12 +779,19 @@ class DiagramScene(QGraphicsScene):
 
         # Delete the other wire
         from diagrammer.commands.delete_command import DeleteCommand
+        from diagrammer.commands.connect_command import (
+            AddJunctionCommand,
+            CreateConnectionCommand,
+        )
         self._undo_stack.beginMacro("Join wires")
+        # A junction created for this trace (free start) undoes with the wire
+        for junction in self._pending_new_junctions:
+            if junction is source.component:
+                self._undo_stack.push(AddJunctionCommand(self, junction))
         del_cmd = DeleteCommand(self, [best_conn])
         self._undo_stack.push(del_cmd)
 
         # Create merged connection
-        from diagrammer.commands.connect_command import CreateConnectionCommand
         cmd = CreateConnectionCommand(self, source, new_target)
         self._undo_stack.push(cmd)
         if cmd.connection:
@@ -883,9 +922,17 @@ class DiagramScene(QGraphicsScene):
 
         # Delete old wire and create extended one
         from diagrammer.commands.delete_command import DeleteCommand
-        from diagrammer.commands.connect_command import CreateConnectionCommand
+        from diagrammer.commands.connect_command import (
+            AddJunctionCommand,
+            CreateConnectionCommand,
+        )
 
         self._undo_stack.beginMacro("Extend wire")
+        # A junction created for this trace (double-click end, T-junction)
+        # undoes with the extension
+        for junction in self._pending_new_junctions:
+            if new_target_port is not None and junction is new_target_port.component:
+                self._undo_stack.push(AddJunctionCommand(self, junction))
         del_cmd = DeleteCommand(self, [conn])
         self._undo_stack.push(del_cmd)
 
@@ -953,11 +1000,18 @@ class DiagramScene(QGraphicsScene):
         junction = JunctionItem()
         junction.setPos(best_proj)
         self.addItem(junction)
+        self.adopt_pending_junction(junction)
 
         return junction.port
 
     def _cancel_connection(self) -> None:
         """Clean up connection-in-progress state without creating a connection."""
+        # Remove junctions that were created for this trace and never got
+        # a wire — leaving them would leak invisible items into the scene
+        # (and into the saved file).
+        for junction in self._pending_new_junctions:
+            if junction.scene() is self and not self.connections_on_port(junction.port):
+                self.removeItem(junction)
         self._cleanup_connection_state()
 
     def _cleanup_connection_state(self) -> None:
@@ -974,6 +1028,7 @@ class DiagramScene(QGraphicsScene):
             self._current_target_port = None
 
         self._connecting_from_port = None
+        self._pending_new_junctions = []
 
         # Restore normal port visibility
         for comp in self._all_component_items():

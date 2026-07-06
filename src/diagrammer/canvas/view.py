@@ -853,6 +853,7 @@ class DiagramView(QGraphicsView):
                     junc.setPos(snapped)
                     junc.setVisible(False)
                     self._diagram_scene.addItem(junc)
+                    self._diagram_scene.adopt_pending_junction(junc)
                     if hasattr(self._diagram_scene, 'assign_active_layer'):
                         self._diagram_scene.assign_active_layer(junc)
                     self._trace_vertices.clear()
@@ -1685,12 +1686,20 @@ class DiagramView(QGraphicsView):
     def _finish_trace(self, cursor_pos: QPointF) -> None:
         """Finish a trace route — either extending an existing wire or creating a new one."""
         if self._extending_wire is not None:
-            # Extension mode: append new waypoints to the existing wire
+            # Extension mode: append new waypoints to the existing wire.
+            # If no port is highlighted, resolve a T-junction on a nearby
+            # wire; failing that, ignore the click (finishing with no
+            # target would otherwise crash in extend_wire).
+            target = self._diagram_scene._current_target_port
+            if target is None:
+                target = self._diagram_scene._try_junction_on_wire(cursor_pos)
+            if target is None:
+                return
             self._diagram_scene.extend_wire(
                 self._extending_wire,
                 self._extending_end,
                 self._trace_vertices,
-                new_target_port=self._diagram_scene._current_target_port,
+                new_target_port=target,
             )
             self._extending_wire = None
             self._extending_end = ""
@@ -2279,6 +2288,7 @@ class DiagramView(QGraphicsView):
             junction.setPos(snapped)
             junction.setVisible(False)  # endpoint, not a visual junction
             self._diagram_scene.addItem(junction)
+            self._diagram_scene.adopt_pending_junction(junction)
             if hasattr(self._diagram_scene, 'assign_active_layer'):
                 self._diagram_scene.assign_active_layer(junction)
             self._diagram_scene._current_target_port = junction.port
