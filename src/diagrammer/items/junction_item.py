@@ -38,6 +38,10 @@ class JunctionItem(QGraphicsItem):
         self._port.setVisible(True)
         self._port.setBrush(QBrush(Qt.GlobalColor.transparent))
         self._port.setPen(QPen(Qt.GlobalColor.transparent))
+        # Junction ports are valid connection targets and get the green
+        # target pulse; the "normal" brush restored afterwards must stay
+        # transparent, not the component-port steel blue.
+        self._port._normal_brush = QBrush(Qt.GlobalColor.transparent)
         # Junction ports must stay invisible; hover events would restore the
         # steel-blue _normal_brush on leave and leave orphan dots on canvas.
         self._port.setAcceptHoverEvents(False)

@@ -87,6 +87,9 @@ class DiagramScene(QGraphicsScene):
         # pushed onto the undo stack with the finished connection or
         # removed again when the connection is cancelled.
         self._pending_new_junctions: list = []
+        # (host ConnectionItem, JunctionItem) recorded when a T-junction
+        # is dropped onto a wire; consumed by _split_pending_host_wire.
+        self._pending_wire_split: tuple | None = None
 
         # Rotation pivot port — set via Shift+click on a port
         self._rotation_pivot_port = None  # PortItem or None
@@ -573,7 +576,17 @@ class DiagramScene(QGraphicsScene):
                 best_dist = d
                 best_port = source
 
-        for port in self._all_port_items():
+        from diagrammer.items.junction_item import JunctionItem
+
+        def _junction_ports():
+            # Existing junction ports are valid targets too, so a third
+            # branch reuses the junction instead of stacking a second,
+            # invisible one on top of it.
+            for item in self.items():
+                if isinstance(item, JunctionItem):
+                    yield item.port
+
+        for port in (*self._all_port_items(), *_junction_ports()):
             # Skip only the source port itself — ports on the same component
             # are valid targets (e.g. wiring a loop between an inductor's ends).
             if port is source:
@@ -644,6 +657,8 @@ class DiagramScene(QGraphicsScene):
             self._undo_stack.beginMacro("Create connection")
         for junction in pending:
             self._undo_stack.push(AddJunctionCommand(self, junction))
+        # T-junction: split the host wire at the junction (real topology)
+        self._split_pending_host_wire()
 
         # Create the connection
         cmd = CreateConnectionCommand(self, source, target)
@@ -933,6 +948,8 @@ class DiagramScene(QGraphicsScene):
         for junction in self._pending_new_junctions:
             if new_target_port is not None and junction is new_target_port.component:
                 self._undo_stack.push(AddJunctionCommand(self, junction))
+        # T-junction: split the host wire at the junction (real topology)
+        self._split_pending_host_wire()
         del_cmd = DeleteCommand(self, [conn])
         self._undo_stack.push(del_cmd)
 
@@ -1001,8 +1018,80 @@ class DiagramScene(QGraphicsScene):
         junction.setPos(best_proj)
         self.addItem(junction)
         self.adopt_pending_junction(junction)
+        # The host wire will be split in two at this junction so the
+        # T-connection is real topology, not a geometric coincidence.
+        self._pending_wire_split = (best_conn, junction)
 
         return junction.port
+
+    def _split_pending_host_wire(self) -> None:
+        """Split the host wire recorded by _try_junction_on_wire in two.
+
+        Replaces the host connection with two connections that meet at the
+        junction's port, so editing or deleting either half can never
+        strand the branch wire. Must be called inside the caller's undo
+        macro: the delete + two creates undo together with the branch.
+        """
+        split = self._pending_wire_split
+        self._pending_wire_split = None
+        if not split:
+            return
+        host, junction = split
+        if host.scene() is not self:
+            return
+
+        from diagrammer.commands.connect_command import CreateConnectionCommand
+        from diagrammer.commands.delete_command import DeleteCommand
+        from diagrammer.commands.group_command import set_group_ids
+        from diagrammer.utils.geometry import closest_point_on_segment, point_distance
+
+        jpos = junction.port.scene_center()
+        pts = host.all_points()
+
+        def arc_of(p: QPointF) -> float:
+            """Arclength along the host route of p's closest point."""
+            best_dist = float("inf")
+            best_arc = 0.0
+            acc = 0.0
+            for i in range(len(pts) - 1):
+                proj, dist = closest_point_on_segment(p, pts[i], pts[i + 1])
+                if dist < best_dist:
+                    best_dist = dist
+                    best_arc = acc + point_distance(pts[i], proj)
+                acc += point_distance(pts[i], pts[i + 1])
+            return best_arc
+
+        j_arc = arc_of(jpos)
+        before: list[QPointF] = []
+        after: list[QPointF] = []
+        for w in host.vertices:
+            (before if arc_of(w) <= j_arc else after).append(QPointF(w))
+        # Junction grab-handle waypoints at the split point (same convention
+        # as free-end junction endpoints elsewhere)
+        if not before or point_distance(before[-1], jpos) > 1.0:
+            before.append(QPointF(jpos))
+        if not after or point_distance(after[0], jpos) > 1.0:
+            after.insert(0, QPointF(jpos))
+
+        self._undo_stack.push(DeleteCommand(self, [host]))
+        group_stack = list(getattr(host, '_group_ids', []) or [])
+        for src_port, tgt_port, wps in (
+            (host.source_port, junction.port, before),
+            (junction.port, host.target_port, after),
+        ):
+            cmd = CreateConnectionCommand(self, src_port, tgt_port)
+            self._undo_stack.push(cmd)
+            half = cmd.connection
+            if half is None:
+                continue
+            half.routing_mode = host.routing_mode
+            half.corner_radius = host.corner_radius
+            half.line_width = host.line_width
+            half.line_color = host.line_color
+            half._layer_index = getattr(host, '_layer_index', 0)
+            if group_stack:
+                set_group_ids(half, list(group_stack))
+            half.vertices = wps
 
     def _cancel_connection(self) -> None:
         """Clean up connection-in-progress state without creating a connection."""
@@ -1029,6 +1118,7 @@ class DiagramScene(QGraphicsScene):
 
         self._connecting_from_port = None
         self._pending_new_junctions = []
+        self._pending_wire_split = None
 
         # Restore normal port visibility
         for comp in self._all_component_items():
