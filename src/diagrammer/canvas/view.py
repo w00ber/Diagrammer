@@ -1100,18 +1100,7 @@ class DiagramView(QGraphicsView):
                         item.set_snap_anchor_closest_to(scene_pos)
 
                     # Expand selection to include group members
-                    from diagrammer.commands.group_command import get_top_group as _gtg_drag
                     selected = self._expand_group_selection(item)
-
-                    # Detect explicit multi-selection (user rubber-banded or
-                    # shift-clicked, as opposed to clicking a single unselected
-                    # item).  When multi-selecting, the user's selection is
-                    # authoritative — don't auto-include extra junctions.
-                    _is_explicit_multiselect = (
-                        not _gtg_drag(item)
-                        and len(selected) > 1
-                        and item in self._diagram_scene.selectedItems()
-                    )
 
                     # Only the clicked item should snap — disable snap on group siblings
                     for s in selected:
@@ -1471,6 +1460,33 @@ class DiagramView(QGraphicsView):
         scene_pos = self.mapToScene(event.position().toPoint())
         self._diagram_scene.cursor_scene_pos_changed.emit(scene_pos.x(), scene_pos.y())
 
+    def _drag_changed_anything(self) -> bool:
+        """True if the in-progress drag moved any item or edited any waypoints.
+
+        Used to decide whether mouseReleaseEvent may touch the undo stack:
+        opening a macro for a no-op click would wipe the redo history.
+        """
+        starts = self._diagram_scene._drag_start_positions
+        for comp in self._dragging_components:
+            start = starts.get(comp.instance_id)
+            if start is not None and start != comp.pos():
+                return True
+        if self._unified_drag_active:
+            for conn_id, orig_wps in self._unified_drag_waypoint_starts.items():
+                conn = self._selected_waypoint_conns.get(conn_id)
+                if conn is not None and orig_wps != list(conn.vertices):
+                    return True
+        for conn in self._drag_internal_conns:
+            if self._drag_conn_waypoints.get(conn.instance_id, []) != list(conn.vertices):
+                return True
+        if self._drag_ext_conn_orig_wps:
+            for item in self._diagram_scene.items():
+                if isinstance(item, ConnectionItem):
+                    orig = self._drag_ext_conn_orig_wps.get(item.instance_id)
+                    if orig is not None and orig != list(item.vertices):
+                        return True
+        return False
+
     def mouseReleaseEvent(self, event) -> None:
         # Zoom window — complete
         if self._zoom_window_mode and event.button() == Qt.MouseButton.LeftButton:
@@ -1533,8 +1549,21 @@ class DiagramView(QGraphicsView):
             # Record move end for undo for all dragged items
             if self._dragging_components:
                 from diagrammer.commands.connect_command import EditWaypointsCommand
-                self._diagram_scene.undo_stack.beginMacro("Move group")
+                # Only open an undo macro when something actually changed.
+                # Qt keeps empty macros on the stack, and beginMacro()
+                # unconditionally deletes all redoable commands — so a
+                # plain selection click (which also lands here) must not
+                # touch the undo stack at all.
+                changed = self._drag_changed_anything()
+                if changed:
+                    self._diagram_scene.undo_stack.beginMacro("Move group")
                 try:
+                    moved_components = [
+                        comp for comp in self._dragging_components
+                        if isinstance(comp, ComponentItem)
+                        and self._diagram_scene._drag_start_positions.get(comp.instance_id)
+                        not in (None, comp.pos())
+                    ]
                     # Record each item's move WITHOUT triggering per-item updates
                     for comp in self._dragging_components:
                         if hasattr(comp, '_alt_drag_clone'):
@@ -1544,6 +1573,11 @@ class DiagramView(QGraphicsView):
                         self._diagram_scene.record_move_end(comp, update=False)
                         if hasattr(comp, 'clear_snap_anchor'):
                             comp.clear_snap_anchor()
+                    # Auto-join ports that were dropped onto other ports —
+                    # inside the macro so the created wire undoes together
+                    # with the move.
+                    for comp in moved_components:
+                        self._diagram_scene.auto_join_overlapping_ports(comp)
                     # Record waypoint changes for unified-selected connections
                     if self._unified_drag_active:
                         for conn_id, orig_wps in self._unified_drag_waypoint_starts.items():
@@ -1573,7 +1607,8 @@ class DiagramView(QGraphicsView):
                                         self._diagram_scene.undo_stack.push(cmd)
                                     break
                 finally:
-                    self._diagram_scene.undo_stack.endMacro()
+                    if changed:
+                        self._diagram_scene.undo_stack.endMacro()
                     # Clear drag state BEFORE update so approach segments aren't suppressed
                     self._dragging_components = []
                     self._drag_anchor_item = None
