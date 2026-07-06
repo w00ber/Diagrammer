@@ -363,3 +363,35 @@ class TestTJunctionTopology:
         found = scene._find_nearest_target_port(QPointF(198, 3))
         scene._cancel_connection()
         assert found is j2.port, "existing junction port was not offered as target"
+
+
+class TestVisualFeedback:
+    def test_junction_with_two_wires_becomes_visible(self, scene):
+        """A hidden endpoint anchor that gains a second wire is a real
+        T point and must show the schematic dot."""
+        hub = _add_junction(scene, 0, 0, visible=False)
+        a = _add_junction(scene, 100, 0, visible=False)
+        b = _add_junction(scene, 0, 100, visible=False)
+        _connect(scene, hub.port, a.port)
+        assert not hub.isVisible()
+        _connect(scene, hub.port, b.port)
+        assert hub.isVisible(), "junction with 2 wires stayed invisible"
+        assert not hub.boundingRect().isNull()
+
+    def test_wire_hover_state_toggles(self, scene):
+        from PySide6.QtWidgets import QGraphicsSceneHoverEvent
+        from PySide6.QtCore import QEvent
+
+        j1 = _add_junction(scene, 0, 0, visible=False)
+        j2 = _add_junction(scene, 200, 0, visible=False)
+        conn = _connect(scene, j1.port, j2.port)
+
+        enter = QGraphicsSceneHoverEvent(QEvent.Type.GraphicsSceneHoverEnter)
+        enter.setScenePos(QPointF(100, 0))
+        conn.hoverEnterEvent(enter)
+        assert conn._hovered
+
+        leave = QGraphicsSceneHoverEvent(QEvent.Type.GraphicsSceneHoverLeave)
+        conn.hoverLeaveEvent(leave)
+        assert not conn._hovered
+        assert conn._hover_segment is None

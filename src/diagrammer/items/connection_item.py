@@ -152,6 +152,10 @@ class ConnectionItem(QGraphicsPathItem):
         # Multi-waypoint selection (Shift+click to toggle) ----------------
         self._selected_waypoints: set[int] = set()
 
+        # Hover state ------------------------------------------------------
+        self._hovered: bool = False
+        self._hover_segment: int | None = None  # index into _expanded
+
         # Dragging state --------------------------------------------------
         self._dragging_waypoint: int | None = None  # index into _waypoints
         self._dragging_group: bool = False           # True when dragging selected group
@@ -659,6 +663,30 @@ class ConnectionItem(QGraphicsPathItem):
         option: QStyleOptionGraphicsItem,
         widget: QWidget | None = None,
     ) -> None:
+        # Hover feedback: a soft halo on the whole wire signals it is
+        # interactive; when selected, the segment under the cursor gets a
+        # stronger highlight showing what a drag would move.
+        if self._hovered and not self._group_id:
+            halo = QPen(SEGMENT_HOVER_COLOR, self._line_width + HIT_TOLERANCE)
+            halo.setCapStyle(Qt.PenCapStyle.RoundCap)
+            halo.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(halo)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(self.path())
+        if (self._hover_segment is not None and self.isSelected()
+                and not self._group_id):
+            pts = self._expanded
+            n = len(pts)
+            num_segs = n if self._closed else n - 1
+            if 0 <= self._hover_segment < num_segs:
+                seg_color = QColor(SEGMENT_HOVER_COLOR)
+                seg_color.setAlpha(200)
+                seg_pen = QPen(seg_color, self._line_width + HIT_TOLERANCE)
+                seg_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                painter.setPen(seg_pen)
+                painter.drawLine(pts[self._hover_segment],
+                                 pts[(self._hover_segment + 1) % n])
+
         pen = QPen(
             SELECTION_COLOR if (self.isSelected() and not self._group_id) else self._line_color,
             self._line_width,
@@ -694,7 +722,8 @@ class ConnectionItem(QGraphicsPathItem):
                     )
 
     def boundingRect(self) -> QRectF:
-        extra = max(self._line_width, VERTEX_HANDLE_SIZE, HIT_TOLERANCE) / 2 + 2
+        # Must cover the hover halo (line_width + HIT_TOLERANCE wide)
+        extra = max(self._line_width + HIT_TOLERANCE, VERTEX_HANDLE_SIZE) / 2 + 2
         return self.path().boundingRect().adjusted(-extra, -extra, extra, extra)
 
     def shape(self) -> QPainterPath:
@@ -1116,6 +1145,55 @@ class ConnectionItem(QGraphicsPathItem):
             return
 
         super().mouseMoveEvent(event)
+
+    def hoverEnterEvent(self, event) -> None:  # noqa: ANN001
+        if not self._group_id:
+            self._hovered = True
+            self.update()
+        super().hoverEnterEvent(event)
+
+    def hoverMoveEvent(self, event) -> None:  # noqa: ANN001
+        """Highlight the segment under the cursor and show what a drag would do."""
+        if self._group_id:
+            super().hoverMoveEvent(event)
+            return
+        pos = event.scenePos()
+        seg: int | None = None
+        cursor = None
+        if self.isSelected():
+            # Segment drag / waypoint drag only work on a selected wire —
+            # advertise them with directional cursors.
+            if self._find_waypoint_at(pos) is not None:
+                cursor = Qt.CursorShape.SizeAllCursor
+            else:
+                seg = self._find_segment_at(pos)
+                if seg is not None:
+                    pts = self._expanded
+                    is_h = self._seg_is_horizontal(
+                        pts[seg], pts[(seg + 1) % len(pts)]
+                    )
+                    if is_h is True:
+                        cursor = Qt.CursorShape.SizeVerCursor
+                    elif is_h is False:
+                        cursor = Qt.CursorShape.SizeHorCursor
+                    else:
+                        cursor = Qt.CursorShape.SizeAllCursor
+        if cursor is not None:
+            self.setCursor(cursor)
+        else:
+            self.unsetCursor()
+        if seg != self._hover_segment:
+            self._hover_segment = seg
+            self.update()
+        super().hoverMoveEvent(event)
+
+    def hoverLeaveEvent(self, event) -> None:  # noqa: ANN001
+        if self._hovered or self._hover_segment is not None:
+            self._hovered = False
+            self._hover_segment = None
+            self.update()
+        self.unsetCursor()
+        super().hoverLeaveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: ANN001
         if self._dragging_waypoint is not None or self._dragging_segment is not None:

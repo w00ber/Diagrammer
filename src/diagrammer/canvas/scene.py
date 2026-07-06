@@ -118,15 +118,24 @@ class DiagramScene(QGraphicsScene):
 
     def register_connection(self, conn) -> None:
         """Add *conn* to the port-connections index."""
+        from diagrammer.items.junction_item import JunctionItem
         for port in (conn.source_port, conn.target_port):
             if port is not None:
                 key = id(port)
                 bucket = self._port_connections.setdefault(key, [])
                 if conn not in bucket:
                     bucket.append(conn)
+                comp = port.component
+                if isinstance(comp, JunctionItem):
+                    # A junction where wires actually meet paints a dot —
+                    # make sure hidden endpoint anchors become visible.
+                    if len(bucket) >= 2 and not comp.isVisible():
+                        comp.setVisible(True)
+                    comp.update()
 
     def unregister_connection(self, conn) -> None:
         """Remove *conn* from the port-connections index."""
+        from diagrammer.items.junction_item import JunctionItem
         for port in (conn.source_port, conn.target_port):
             if port is not None:
                 key = id(port)
@@ -138,6 +147,9 @@ class DiagramScene(QGraphicsScene):
                         pass
                     if not bucket:
                         del self._port_connections[key]
+                comp = port.component
+                if isinstance(comp, JunctionItem):
+                    comp.update()
 
     def connections_on_port(self, port) -> list:
         """Return all connections attached to *port* (O(1) lookup)."""
