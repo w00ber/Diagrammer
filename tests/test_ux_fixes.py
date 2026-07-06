@@ -325,6 +325,32 @@ class TestTJunctionTopology:
         juncs = [i for i in scene.items() if isinstance(i, JunctionItem)]
         assert len(juncs) == n_junc_before - 1  # src was consumed/removed
 
+    def test_snap_tolerance_is_zoom_compensated(self, scene):
+        """Port snap distance is constant in screen px: zooming in must
+        shrink the scene-space capture radius."""
+        j1 = _add_junction(scene, 0, 0, visible=False)
+        target = _add_junction(scene, 200, 0, visible=False)
+        _connect(scene, target.port, _add_junction(scene, 300, 0, visible=False).port)
+
+        view = _make_view(scene)
+        assert view.pick_tolerance(16.0) == pytest.approx(16.0)
+        view.scale(4.0, 4.0)
+        assert view.pick_tolerance(16.0) == pytest.approx(4.0)
+
+        scene.begin_connection(j1.port)
+        # 10 scene units from the target port: inside the 20px radius at
+        # 100% zoom, outside the 5-unit radius at 400%.
+        probe = QPointF(210, 0)
+        found = scene._find_nearest_target_port(probe)
+        scene._cancel_connection()
+        assert found is None, "snap radius did not shrink when zoomed in"
+
+        view.resetTransform()
+        scene.begin_connection(j1.port)
+        found = scene._find_nearest_target_port(probe)
+        scene._cancel_connection()
+        assert found is target.port
+
     def test_existing_junction_is_a_snap_target(self, scene):
         """A third wire near an existing junction reuses it instead of
         stacking a second junction on top."""

@@ -192,13 +192,14 @@ class DiagramView(QGraphicsView):
         Returns (ConnectionItem, waypoint_index) or (None, None).
         """
         from diagrammer.utils.geometry import point_distance
+        tolerance = self.pick_tolerance(16.0)
         for conn_id, indices in self._selected_waypoint_set.items():
             conn = self._selected_waypoint_conns.get(conn_id)
             if conn is None:
                 continue
             for idx in indices:
                 if 0 <= idx < len(conn.vertices):
-                    if point_distance(scene_pos, conn.vertices[idx]) < 16.0:
+                    if point_distance(scene_pos, conn.vertices[idx]) < tolerance:
                         return conn, idx
         return None, None
 
@@ -320,6 +321,15 @@ class DiagramView(QGraphicsView):
     def current_scale(self) -> float:
         return self.transform().m11()
 
+    def pick_tolerance(self, pixels: float) -> float:
+        """Convert a screen-pixel pick/snap tolerance to scene units.
+
+        Hit targets and snap distances should be constant on screen: a
+        fixed scene-unit tolerance is untouchable zoomed out and grabby
+        zoomed in.
+        """
+        return pixels / max(self.current_scale(), 1e-6)
+
     def snap(self, scene_pos: QPointF) -> QPointF:
         return snap_to_grid(scene_pos, self._grid_spacing)
 
@@ -335,11 +345,11 @@ class DiagramView(QGraphicsView):
         or 'target', or (None, '', None) if nothing nearby.
         """
         from diagrammer.utils.geometry import point_distance
-        ENDPOINT_SNAP = 15.0
+        ENDPOINT_SNAP = 15.0  # screen px
         best_conn = None
         best_end = ""
         best_port = None
-        best_dist = ENDPOINT_SNAP
+        best_dist = self.pick_tolerance(ENDPOINT_SNAP)
         for item in self._diagram_scene.items():
             if not isinstance(item, ConnectionItem):
                 continue

@@ -764,10 +764,20 @@ class ConnectionItem(QGraphicsPathItem):
     # Hit-testing helpers
     # =====================================================================
 
+    def _pick_tolerance(self, pixels: float) -> float:
+        """Convert a screen-pixel hit tolerance to scene units at the current zoom."""
+        scene = self.scene()
+        if scene is not None:
+            views = scene.views()
+            if views and hasattr(views[0], 'pick_tolerance'):
+                return views[0].pick_tolerance(pixels)
+        return pixels
+
     def _find_waypoint_at(self, scene_pos: QPointF) -> int | None:
         """Return the index into ``_waypoints`` of the handle near *scene_pos*."""
+        tolerance = self._pick_tolerance(VERTEX_HANDLE_SIZE * 2)
         for i, w in enumerate(self._waypoints):
-            if point_distance(scene_pos, w) < VERTEX_HANDLE_SIZE * 2:
+            if point_distance(scene_pos, w) < tolerance:
                 return i
         return None
 
@@ -776,7 +786,7 @@ class ConnectionItem(QGraphicsPathItem):
 
         A segment ``i`` connects ``_expanded[i]`` to ``_expanded[i+1]``
         (wrapping for closed polygons).
-        Returns ``None`` if nothing is within ``HIT_TOLERANCE * 2``.
+        Returns ``None`` if nothing is within ``HIT_TOLERANCE * 2`` screen px.
         """
         pts = self._expanded
         if len(pts) < 2:
@@ -784,7 +794,7 @@ class ConnectionItem(QGraphicsPathItem):
 
         n = len(pts)
         num_segs = n if self._closed else n - 1
-        best_dist = HIT_TOLERANCE * 2
+        best_dist = self._pick_tolerance(HIT_TOLERANCE * 2)
         best_idx: int | None = None
         for i in range(num_segs):
             _, dist = closest_point_on_segment(scene_pos, pts[i], pts[(i + 1) % n])
@@ -1225,7 +1235,7 @@ class ConnectionItem(QGraphicsPathItem):
                 best_idx = i
                 best_proj = proj
 
-        if best_dist < HIT_TOLERANCE * 3:
+        if best_dist < self._pick_tolerance(HIT_TOLERANCE * 3):
             kps = self._key_points()
             kp_exp_indices = self._key_point_expanded_indices(kps)
             insert_wp_idx = self._wp_insert_index_for_expanded_segment(

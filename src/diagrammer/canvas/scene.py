@@ -22,7 +22,9 @@ class InteractionMode(Enum):
 # Rubber-band line style for in-progress connections
 _RUBBERBAND_PEN = QPen(QColor(100, 100, 255, 180), 2.0, Qt.PenStyle.DashLine)
 
-# Maximum distance (in scene units) to snap to a target port during connection
+# Maximum distance (in screen pixels) to snap to a target port during
+# connection. Converted to scene units at the current zoom via
+# DiagramScene._pick_tolerance so snapping feels the same at any zoom.
 PORT_SNAP_DISTANCE = 20.0
 
 # Layer-aware Z stacking.
@@ -372,6 +374,13 @@ class DiagramScene(QGraphicsScene):
         for comp in self._all_component_items():
             yield from comp.ports
 
+    def _pick_tolerance(self, pixels: float) -> float:
+        """Convert a screen-pixel tolerance to scene units at the current zoom."""
+        views = self.views()
+        if views and hasattr(views[0], 'pick_tolerance'):
+            return views[0].pick_tolerance(pixels)
+        return pixels
+
     def adopt_pending_junction(self, junction) -> None:
         """Track a junction created for the in-progress connection.
 
@@ -530,11 +539,11 @@ class DiagramScene(QGraphicsScene):
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.utils.geometry import closest_point_on_segment
 
-        WIRE_SNAP_DIST = 15.0
+        WIRE_SNAP_DIST = 15.0  # screen px
         source = self._connecting_from_port
 
         best_proj = None
-        best_dist = WIRE_SNAP_DIST
+        best_dist = self._pick_tolerance(WIRE_SNAP_DIST)
 
         for item in self.items():
             if not isinstance(item, ConnectionItem):
@@ -559,7 +568,7 @@ class DiagramScene(QGraphicsScene):
             return None
 
         best_port = None
-        best_dist = PORT_SNAP_DISTANCE
+        best_dist = self._pick_tolerance(PORT_SNAP_DISTANCE)
 
         # Check source port for polygon closure (source is on a JunctionItem
         # which isn't yielded by _all_port_items).  Require at least 2 trace
@@ -722,12 +731,12 @@ class DiagramScene(QGraphicsScene):
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.utils.geometry import point_distance
 
-        ENDPOINT_SNAP = 15.0  # pixels
+        ENDPOINT_SNAP = 15.0  # screen px
 
         source = source_port
         best_conn = None
         best_end = None  # "source" or "target"
-        best_dist = ENDPOINT_SNAP
+        best_dist = self._pick_tolerance(ENDPOINT_SNAP)
 
         for item in self.items():
             if not isinstance(item, ConnectionItem):
@@ -976,10 +985,10 @@ class DiagramScene(QGraphicsScene):
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.utils.geometry import closest_point_on_segment
 
-        WIRE_SNAP_DIST = 15.0
+        WIRE_SNAP_DIST = 15.0  # screen px
         best_conn = None
         best_proj = None
-        best_dist = WIRE_SNAP_DIST
+        best_dist = self._pick_tolerance(WIRE_SNAP_DIST)
 
         source = self._connecting_from_port
         for item in self.items():
