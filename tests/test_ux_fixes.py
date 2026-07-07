@@ -438,3 +438,54 @@ class TestSelectionHalo:
         img = self._render_wire(scene, selected=False)
         c = img.pixelColor(60, 20)  # beside the wire — should be plain white
         assert c.red() > 240 and c.green() > 240 and c.blue() > 240
+
+
+class TestDeleteWaypointUndo:
+    def _wire_with_waypoints(self, scene, wps):
+        j1 = _add_junction(scene, 0, 0, visible=False)
+        j2 = _add_junction(scene, 300, 0, visible=False)
+        conn = _connect(scene, j1.port, j2.port)
+        conn.vertices = [QPointF(x, y) for x, y in wps]
+        conn.update_route()
+        return conn, j1, j2
+
+    def test_interior_delete_is_undoable(self, scene):
+        conn, j1, j2 = self._wire_with_waypoints(
+            scene, [(0, 0), (150, 80), (300, 0)])
+        assert len(conn.vertices) == 3
+        count_before = scene.undo_stack.count()
+
+        conn._delete_waypoint(1)
+        assert len(conn.vertices) == 2
+        assert scene.undo_stack.count() == count_before + 1
+
+        scene.undo_stack.undo()
+        assert len(conn.vertices) == 3
+        assert conn.vertices[1].x() == pytest.approx(150)
+        assert conn.vertices[1].y() == pytest.approx(80)
+
+        scene.undo_stack.redo()
+        assert len(conn.vertices) == 2
+
+    def test_endpoint_delete_moves_junction_undoably(self, scene):
+        conn, j1, j2 = self._wire_with_waypoints(
+            scene, [(0, 0), (150, 80), (300, 0)])
+        j1_start = QPointF(j1.pos())
+
+        conn._delete_waypoint(0)  # source-junction endpoint
+        assert len(conn.vertices) == 2
+        assert j1.pos() != j1_start, "adjacent junction did not follow the delete"
+
+        scene.undo_stack.undo()
+        assert len(conn.vertices) == 3
+        assert j1.pos() == j1_start, "junction position not restored on undo"
+
+        scene.undo_stack.redo()
+        assert len(conn.vertices) == 2
+
+    def test_out_of_range_index_is_noop(self, scene):
+        conn, j1, j2 = self._wire_with_waypoints(scene, [(0, 0), (300, 0)])
+        count_before = scene.undo_stack.count()
+        conn._delete_waypoint(5)
+        assert len(conn.vertices) == 2
+        assert scene.undo_stack.count() == count_before

@@ -1341,46 +1341,78 @@ class ConnectionItem(QGraphicsPathItem):
         super().contextMenuEvent(event)
 
     def _delete_waypoint(self, index: int) -> None:
-        """Remove the waypoint at the given index and rebuild the route.
+        """Remove the waypoint at the given index and rebuild the route (undoable).
 
         When the deleted waypoint is adjacent to a free-end JunctionItem,
         collapse the junction onto the next remaining waypoint (or the
-        opposite port) so the segment doesn't become orphaned.
+        opposite port) so the segment doesn't become orphaned. The edit
+        (and any junction move) is pushed onto the undo stack using the
+        same macro pattern as a waypoint drag, so Ctrl+Z restores it.
         """
         from diagrammer.items.junction_item import JunctionItem
 
         if not (0 <= index < len(self._waypoints)):
             return
 
-        n = len(self._waypoints)
+        old_wps = [QPointF(w) for w in self._waypoints]
+        new_wps = [QPointF(w) for i, w in enumerate(old_wps) if i != index]
+        n = len(old_wps)
 
-        # Deleting first waypoint — check source junction
+        # An adjacent free-end junction must follow the delete so its
+        # segment isn't left dangling.
+        junction = None
+        junction_new_pos = None
         if index == 0 and self._source_port:
             comp = self._source_port.component
             if isinstance(comp, JunctionItem):
-                # Snap junction to next waypoint, or target port if none remain
-                if n > 1:
-                    new_pos = QPointF(self._waypoints[1])
-                else:
-                    new_pos = self._target_port.scene_center()
-                comp._skip_snap = True
-                comp.setPos(new_pos)
-                comp._skip_snap = False
-
-        # Deleting last waypoint — check target junction
+                junction = comp
+                junction_new_pos = (QPointF(old_wps[1]) if n > 1
+                                    else self._target_port.scene_center())
         if index == n - 1 and self._target_port:
             comp = self._target_port.component
             if isinstance(comp, JunctionItem):
-                if n > 1:
-                    new_pos = QPointF(self._waypoints[n - 2])
-                else:
-                    new_pos = self._source_port.scene_center()
-                comp._skip_snap = True
-                comp.setPos(new_pos)
-                comp._skip_snap = False
+                junction = comp
+                junction_new_pos = (QPointF(old_wps[n - 2]) if n > 1
+                                    else self._source_port.scene_center())
 
-        self._waypoints.pop(index)
+        scene = self.scene()
+        undo_stack = getattr(scene, 'undo_stack', None) if scene else None
+
+        def _apply_junction_move():
+            if junction is not None:
+                junction._skip_snap = True
+                junction.setPos(junction_new_pos)
+                junction._skip_snap = False
+
+        if undo_stack is None:
+            # No undo stack (e.g. detached item) — mutate directly.
+            _apply_junction_move()
+            self._set_waypoints_from_scene(new_wps)
+            self.update_route()
+            return
+
+        from diagrammer.commands.add_command import MoveComponentCommand
+        from diagrammer.commands.connect_command import EditWaypointsCommand
+
+        junction_old_pos = QPointF(junction.pos()) if junction is not None else None
+        has_junction_move = (junction is not None
+                             and junction_new_pos != junction_old_pos)
+
+        # Apply the changes live, then record them. Same push order as the
+        # waypoint-drag release (EditWaypoints first, then the junction
+        # move) so undo/redo restore in the correct sequence.
+        _apply_junction_move()
+        self._set_waypoints_from_scene(new_wps)
         self.update_route()
+
+        if has_junction_move:
+            undo_stack.beginMacro("Delete waypoint")
+        undo_stack.push(EditWaypointsCommand(self, old_wps, new_wps))
+        if has_junction_move:
+            undo_stack.push(
+                MoveComponentCommand(junction, junction_old_pos,
+                                     QPointF(junction_new_pos)))
+            undo_stack.endMacro()
 
     def _insert_waypoint_at(self, pos: QPointF) -> None:
         """Insert a new waypoint at the closest point on the route to pos (Ctrl+Click)."""
