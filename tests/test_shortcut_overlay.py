@@ -147,9 +147,36 @@ def test_hint_keys_resolve_live_after_rebind(main_window):
     try:
         rows = dict((label, keys) for keys, label in
                     main_window._shortcut_hint_rows("component"))
-        assert rows["Flip horizontal"] == "Ctrl+Alt+M"
+        # flip_h is paired with flip_v on one row: "keyH / keyV".
+        assert rows["Flip horizontal / vertical"] == "Ctrl+Alt+M / Shift+F"
     finally:
         shortcuts.get_shortcut("edit.flip_h").reset()
+
+
+def test_overlay_reexpands_after_parent_grows():
+    """Regression: an overlay sized while its parent was tiny (as happens
+    during window construction) must re-expand once the parent grows, instead
+    of staying cropped until the next toggle."""
+    from PySide6.QtCore import QSize
+    from PySide6.QtGui import QResizeEvent
+    from PySide6.QtWidgets import QApplication, QWidget
+
+    from diagrammer.panels.shortcut_overlay import ShortcutOverlay
+
+    host = QWidget()
+    host.resize(80, 40)  # tiny, like a not-yet-laid-out viewport
+    overlay = ShortcutOverlay(host)
+    overlay.set_rows("Shortcuts", [(f"Key{i}", f"Action {i}") for i in range(12)])
+    clamped_height = overlay.height()
+
+    # Grow the host and deliver the resize the way Qt would; the overlay's
+    # event filter should re-expand it.
+    host.resize(1000, 700)
+    QApplication.sendEvent(host, QResizeEvent(QSize(1000, 700), QSize(80, 40)))
+
+    assert overlay.height() > clamped_height
+    # And it should now fit all 12 rows (well above the tiny clamp).
+    assert overlay.height() >= overlay.sizeHint().height()
 
 
 def test_none_context_has_connect_mode_and_escape(main_window):
@@ -162,12 +189,13 @@ def test_none_context_has_connect_mode_and_escape(main_window):
     assert rows["Exit to select mode"] == "Esc"
 
 
-def test_component_context_distinguishes_90_and_fine_rotation(main_window):
+def test_component_context_pairs_shift_variants_on_one_row(main_window):
     rows = dict((label, keys) for keys, label in
                 main_window._shortcut_hint_rows("component"))
-    # 90° rotation on Space / Shift+Space
-    assert rows["Rotate CCW 90°"] == "Space"
-    assert rows["Rotate CW 90°"] == "Shift+Space"
-    # Fine 15° rotation on R / Shift+R
-    assert rows["Fine rotate CCW 15°"] == "R"
-    assert rows["Fine rotate CW 15°"] == "Shift+R"
+    # Shift-variant pairs collapse to a single "keyA / keyB" row.
+    assert rows["Rotate CCW / CW 90°"] == "Space / Shift+Space"
+    assert rows["Fine rotate CCW / CW 15°"] == "R / Shift+R"
+    assert rows["Flip horizontal / vertical"] == "F / Shift+F"
+    # Align uses unrelated keys, so it stays on separate rows (no wide pair).
+    assert rows["Align horizontally"] == "Ctrl+Shift+H"
+    assert "Align horizontal / vertical" not in rows

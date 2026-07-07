@@ -728,12 +728,9 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             ("overlay.toggle", "Hide hints"),
         ],
         "component": [
-            ("edit.rotate_ccw", "Rotate CCW 90°"),
-            ("edit.rotate_cw", "Rotate CW 90°"),
-            ("edit.fine_ccw", "Fine rotate CCW 15°"),
-            ("edit.fine_cw", "Fine rotate CW 15°"),
-            ("edit.flip_h", "Flip horizontal"),
-            ("edit.flip_v", "Flip vertical"),
+            (("edit.rotate_ccw", "edit.rotate_cw"), "Rotate CCW / CW 90°"),
+            (("edit.fine_ccw", "edit.fine_cw"), "Fine rotate CCW / CW 15°"),
+            (("edit.flip_h", "edit.flip_v"), "Flip horizontal / vertical"),
             ("edit.align_h", "Align horizontally"),
             ("edit.align_v", "Align vertically"),
             ("edit.group", "Group"),
@@ -744,17 +741,17 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         ],
         "wire": [
             ("edit.join_wires", "Join wires"),
-            ("edit.copy", "Copy"),
             ("edit.bring_fwd", "Bring forward"),
             ("edit.send_bwd", "Send backward"),
+            ("edit.copy", "Copy"),
             ("edit.delete", "Delete"),
             ("overlay.toggle", "Hide hints"),
         ],
         "annotation": [
             (None, "Double-click", "Edit text"),
-            ("edit.rotate_ccw", "Rotate CCW 90°"),
-            ("edit.fine_ccw", "Fine rotate CCW 15°"),
-            ("edit.flip_h", "Flip horizontal"),
+            (("edit.rotate_ccw", "edit.rotate_cw"), "Rotate CCW / CW 90°"),
+            (("edit.fine_ccw", "edit.fine_cw"), "Fine rotate CCW / CW 15°"),
+            (("edit.flip_h", "edit.flip_v"), "Flip horizontal / vertical"),
             ("edit.copy", "Copy"),
             ("edit.delete", "Delete"),
             ("overlay.toggle", "Hide hints"),
@@ -804,17 +801,27 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         return "component"
 
     def _shortcut_hint_rows(self, context: str):
-        """Build ``[(keys, label), ...]`` for a context, resolving keys live."""
+        """Build ``[(keys, label), ...]`` for a context, resolving keys live.
+
+        Each source entry is one of:
+        - ``(action_id, label)`` — a single shortcut.
+        - ``((action_id_a, action_id_b), label)`` — a pair of related
+          shortcuts (e.g. CCW/CW) collapsed onto one row as ``"keyA / keyB"``.
+        - ``(None, keys, label)`` — a verbatim hint (e.g. a mouse gesture).
+        """
         rows = []
         for entry in self._SHORTCUT_HINTS.get(context, []):
-            if entry[0] is None:
-                # Verbatim (None, keys, label) hint, e.g. a mouse gesture.
+            first = entry[0]
+            if first is None:
                 rows.append((entry[1], entry[2]))
                 continue
-            action_id, label = entry
-            keys = get_shortcut(action_id).display_text
+            if isinstance(first, tuple):
+                parts = [get_shortcut(aid).display_text for aid in first]
+                keys = " / ".join(p for p in parts if p)
+            else:
+                keys = get_shortcut(first).display_text
             if keys:
-                rows.append((keys, label))
+                rows.append((keys, entry[1]))
         return rows
 
     def _update_shortcut_overlay(self) -> None:

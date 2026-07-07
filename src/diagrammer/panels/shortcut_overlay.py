@@ -135,12 +135,25 @@ class ShortcutOverlay(QWidget):
         y = ph - h - _MARGIN if bottom else _MARGIN
         self.move(max(_MARGIN, x), max(_MARGIN, y))
 
+    def _relayout(self) -> None:
+        """Re-expand to the content's natural size for the current parent
+        bounds, then clamp and reposition.
+
+        The adjustSize() is essential: if the panel was clamped to a smaller
+        size while the parent was still tiny (e.g. during window construction,
+        before the viewport has its real size), a bare reposition would leave
+        it cropped. Re-running adjustSize() recomputes the full size from the
+        label content so it grows back once the parent is large enough."""
+        self.adjustSize()
+        self._clamp_to_parent()
+        self._reposition()
+
     def eventFilter(self, obj, event):
         if obj is self._host and event.type() == QEvent.Type.Resize:
-            self._reposition()
+            self._relayout()
         return super().eventFilter(obj, event)
 
     def showEvent(self, event):
         super().showEvent(event)
-        self._reposition()
+        self._relayout()
         self.raise_()
