@@ -2431,6 +2431,32 @@ class DiagramView(QGraphicsView):
                 lambda _c=False, a=owner_conn, b=other_conn, pt=cross_pt:
                 self._diagram_scene.convert_crossing_to_junction(a, b, pt))
 
+        # Free wire end near the click → end-marker submenu
+        _end_conn, _end_name, end_port = self._find_wire_endpoint_for_extend(scene_pos)
+        if end_port is not None:
+            end_junction = end_port.component
+            is_free_end = (
+                isinstance(end_junction, JunctionItem)
+                and len(self._diagram_scene.connections_on_port(end_port)) == 1
+            )
+            if is_free_end:
+                from PySide6.QtGui import QActionGroup as _EndActionGroup
+                if menu.actions():
+                    menu.addSeparator()
+                end_menu = menu.addMenu("Wire End")
+                end_grp = _EndActionGroup(end_menu)
+                current = end_junction.end_marker
+                for label, marker in (("No Dot", "none"),
+                                      ("Filled Dot", "filled"),
+                                      ("Open Dot", "open")):
+                    act = end_menu.addAction(label)
+                    act.setCheckable(True)
+                    act.setChecked(current == marker)
+                    end_grp.addAction(act)
+                    act.triggered.connect(
+                        lambda _c=False, j=end_junction, m=marker:
+                        self._set_wire_end_marker(j, m))
+
         if isinstance(item, ConnectionItem):
             if menu.actions():
                 menu.addSeparator()
@@ -2496,6 +2522,14 @@ class DiagramView(QGraphicsView):
         if menu.actions():
             menu.exec(event.globalPos())
         event.accept()
+
+    def _set_wire_end_marker(self, junction, marker: str) -> None:
+        """Set a free wire end's terminal marker (undoable)."""
+        from diagrammer.commands.style_command import ChangeStyleCommand
+        old = junction.end_marker
+        if marker != old:
+            self._diagram_scene.undo_stack.push(
+                ChangeStyleCommand(junction, 'end_marker', old, marker))
 
     def _set_crossing_style(self, conn_a, conn_b, style: str | None) -> None:
         """Set (or clear, when style is None) the pair's crossover override."""

@@ -61,10 +61,12 @@ from PySide6.QtWidgets import QGraphicsScene
 #         load and rebound to the closest endpoint port automatically.
 #   2.1 - optional top-level "crossovers" list: per-pair wire crossover
 #         style overrides [{"a": id, "b": id, "style": ..., "owner": ...}].
+#   2.2 - optional junction "end_marker" field ("filled" | "open") for
+#         explicit terminal dots on free wire ends.
 # ---------------------------------------------------------------------------
 
 FORMAT_MAJOR = 2
-FORMAT_MINOR = 1
+FORMAT_MINOR = 2
 FORMAT_VERSION = f"{FORMAT_MAJOR}.{FORMAT_MINOR}"
 
 
@@ -273,6 +275,8 @@ class DiagramSerializer:
             item.setPos(QPointF(jd["pos"][0], jd["pos"][1]))
             item._layer_index = jd.get("layer", 0)
             scene.addItem(item)
+            if jd.get("end_marker") in ("filled", "open"):
+                item.end_marker = jd["end_marker"]
             _restore_group(item, jd)
             id_map[item.instance_id] = item
 
@@ -506,13 +510,16 @@ def _serialize_component(item) -> dict:
 
 
 def _serialize_junction(item) -> dict:
-    return {
+    data = {
         "id": item.instance_id,
         "pos": [item.pos().x(), item.pos().y()],
         "layer": getattr(item, '_layer_index', 0),
         "z": item.zValue(),
         "group": getattr(item, '_group_ids', []) or [],
     }
+    if getattr(item, 'end_marker', "none") != "none":
+        data["end_marker"] = item.end_marker
+    return data
 
 
 def _serialize_connection(item) -> dict:

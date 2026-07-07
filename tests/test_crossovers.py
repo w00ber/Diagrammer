@@ -335,13 +335,13 @@ class TestCrossoverSerialization:
         DiagramSerializer.load(scene2, path)  # must not raise
         assert scene2._crossover_overrides == {}
 
-    def test_version_is_2_1(self, scene, tmp_path):
+    def test_version_is_current_format(self, scene, tmp_path):
         import json
-        from diagrammer.io.serializer import DiagramSerializer
+        from diagrammer.io.serializer import DiagramSerializer, FORMAT_VERSION
 
         path = tmp_path / "x.dgm"
         DiagramSerializer.save(scene, path)
-        assert json.loads(path.read_text())["version"] == "2.1"
+        assert json.loads(path.read_text())["version"] == FORMAT_VERSION
 
 
 class TestJunctionDotSetting:
@@ -372,3 +372,101 @@ class TestJunctionDotSetting:
         hub = _add_junction(scene, 100, 50)
         _connect(scene, _add_junction(scene, 0, 50).port, hub.port)
         assert not hub._should_draw_dot()
+
+
+class TestWireEndMarkers:
+    def _free_end_wire(self, scene):
+        """Wire between two hidden free-end junctions; returns the target end."""
+        end = _add_junction(scene, 200, 0)
+        _connect(scene, _add_junction(scene, 0, 0).port, end.port)
+        return end
+
+    def test_default_is_none(self, scene):
+        end = self._free_end_wire(scene)
+        assert end.end_marker == "none"
+        assert not end.isVisible()
+
+    def test_marker_makes_hidden_junction_visible(self, scene):
+        end = self._free_end_wire(scene)
+        end.end_marker = "filled"
+        assert end.isVisible()
+        # And it paints above the attached wire
+        conn = scene.connections_on_port(end.port)[0]
+        assert end.zValue() > conn.zValue()
+
+    def test_marker_undoable_via_change_style_command(self, scene):
+        from diagrammer.commands.style_command import ChangeStyleCommand
+
+        end = self._free_end_wire(scene)
+        scene.undo_stack.push(
+            ChangeStyleCommand(end, 'end_marker', "none", "open"))
+        assert end.end_marker == "open"
+        scene.undo_stack.undo()
+        assert end.end_marker == "none"
+        scene.undo_stack.redo()
+        assert end.end_marker == "open"
+
+    def test_bogus_value_coerced_to_none(self, scene):
+        end = self._free_end_wire(scene)
+        end.end_marker = "sparkles"
+        assert end.end_marker == "none"
+
+    def test_marker_independent_of_junction_dots_setting(self, scene):
+        from diagrammer.panels.settings_dialog import app_settings
+
+        end = self._free_end_wire(scene)
+        end.end_marker = "filled"
+        old = getattr(app_settings, "show_junction_dots", True)
+        app_settings.show_junction_dots = False
+        try:
+            # The automatic-dot gate is off, but the explicit marker stands
+            assert not end._should_draw_dot()
+            assert end.end_marker == "filled"
+            assert end.isVisible()
+        finally:
+            app_settings.show_junction_dots = old
+
+    def test_serialization_round_trip(self, scene, tmp_path):
+        import json
+        from diagrammer.canvas.scene import DiagramScene
+        from diagrammer.io.serializer import DiagramSerializer
+        from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.models.library import ComponentLibrary
+
+        end_a = self._free_end_wire(scene)
+        end_a.end_marker = "filled"
+        end_b = self._free_end_wire(scene)
+        end_b.end_marker = "open"
+        path = tmp_path / "markers.dgm"
+        DiagramSerializer.save(scene, path)
+        assert json.loads(path.read_text())["version"] == "2.2"
+
+        scene2 = DiagramScene(library=ComponentLibrary())
+        DiagramSerializer.load(scene2, path)
+        markers = {
+            j.instance_id: j.end_marker
+            for j in scene2.items() if isinstance(j, JunctionItem)
+        }
+        assert markers[end_a.instance_id] == "filled"
+        assert markers[end_b.instance_id] == "open"
+
+    def test_bogus_marker_in_file_ignored(self, scene, tmp_path):
+        import json
+        from diagrammer.canvas.scene import DiagramScene
+        from diagrammer.io.serializer import DiagramSerializer
+        from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.models.library import ComponentLibrary
+
+        end = self._free_end_wire(scene)
+        path = tmp_path / "markers.dgm"
+        DiagramSerializer.save(scene, path)
+        data = json.loads(path.read_text())
+        for jd in data["junctions"]:
+            jd["end_marker"] = "bogus"
+        path.write_text(json.dumps(data))
+
+        scene2 = DiagramScene(library=ComponentLibrary())
+        DiagramSerializer.load(scene2, path)  # must not raise
+        for j in scene2.items():
+            if isinstance(j, JunctionItem):
+                assert j.end_marker == "none"
