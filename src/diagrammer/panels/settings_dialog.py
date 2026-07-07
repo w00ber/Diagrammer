@@ -828,6 +828,28 @@ class SettingsDialog(QDialog):
         theme_group.setLayout(theme_v)
         appearance_layout.addWidget(theme_group)
 
+        # Shortcut-hints overlay (the '?'-toggled on-canvas cheat-sheet)
+        hints_group = QGroupBox("Keyboard Shortcut Hints")
+        hints_form = QFormLayout()
+        self._overlay_default_cb = QCheckBox(
+            "Show shortcut hints overlay by default")
+        self._overlay_default_cb.setChecked(settings.show_shortcut_overlay)
+        hints_form.addRow(self._overlay_default_cb)
+        self._overlay_corner_combo = QComboBox()
+        for _label, _val in (
+            ("Top Left", "top-left"),
+            ("Top Right", "top-right"),
+            ("Bottom Left", "bottom-left"),
+            ("Bottom Right", "bottom-right"),
+        ):
+            self._overlay_corner_combo.addItem(_label, _val)
+        _ci = self._overlay_corner_combo.findData(settings.shortcut_overlay_corner)
+        if _ci >= 0:
+            self._overlay_corner_combo.setCurrentIndex(_ci)
+        hints_form.addRow("Overlay position:", self._overlay_corner_combo)
+        hints_group.setLayout(hints_form)
+        appearance_layout.addWidget(hints_group)
+
         # Working copy of theme_colors so Cancel discards edits
         import copy
         self._theme_colors_edit: dict[str, dict[str, str]] = copy.deepcopy(
@@ -1567,6 +1589,10 @@ class SettingsDialog(QDialog):
         self._settings.default_annotation_size = self._annot_size_spin.value()
         self._settings.default_annotation_color = QColor(self._annot_color)
         self._settings.annotation_text_as_outlines = self._annot_outlines_cb.isChecked()
+        # Shortcut-hints overlay defaults
+        self._settings.show_shortcut_overlay = self._overlay_default_cb.isChecked()
+        self._settings.shortcut_overlay_corner = (
+            self._overlay_corner_combo.currentData())
         # Keyboard shortcut overrides
         from diagrammer import shortcuts as _sc
         for aid, row in self._sc_rows.items():

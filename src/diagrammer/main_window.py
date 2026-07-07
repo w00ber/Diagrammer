@@ -95,6 +95,18 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         mode_bar.addWidget(self._mode_label)
         diagram_layout.addLayout(mode_bar)
         diagram_layout.addWidget(self._view)
+        # Persistent discoverability hint under the lower-right of the canvas.
+        # Text is set (and kept in sync with the live toggle key) by
+        # _refresh_overlay_hint_label() once the shortcut registry is ready.
+        from diagrammer.app import hint_text_color
+        hint_bar = QHBoxLayout()
+        hint_bar.setContentsMargins(0, 2, 6, 2)
+        hint_bar.addStretch()
+        self._overlay_hint_label = QLabel("")
+        self._overlay_hint_label.setStyleSheet(
+            f"color: {hint_text_color()}; font-size: 11px;")
+        hint_bar.addWidget(self._overlay_hint_label)
+        diagram_layout.addLayout(hint_bar)
         self._tab_widget.addTab(diagram_container, "Diagram")
         # Diagram tab is never closable
         self._tab_widget.tabBar().setTabButton(
@@ -504,8 +516,9 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             self._apply_library_visibility()
             # Re-apply keyboard shortcuts (may have been customized)
             self._refresh_action_shortcuts()
-            # Re-render the hint overlay so any rebound keys show up live
-            self._update_shortcut_overlay()
+            # Re-sync the overlay to the (possibly changed) default + corner,
+            # and re-render so any rebound keys show up live.
+            self._apply_shortcut_overlay_settings()
             # Refresh help window if open so the live shortcut table updates
             try:
                 from diagrammer.panels.help_window import HelpWindow
@@ -703,10 +716,11 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
     _SHORTCUT_HINTS = {
         "none": [
             ("canvas.select_mode", "Select mode"),
+            ("routing.trace", "Connect / wire mode"),
+            ("canvas.escape", "Exit to select mode"),
             ("view.fit_all", "Zoom to fit"),
             ("view.zoom_window", "Zoom window"),
             ("view.toggle_grid", "Toggle grid"),
-            ("routing.trace", "Trace routing"),
             ("draw.text", "Add text"),
             ("edit.undo", "Undo"),
             ("edit.settings", "Settings"),
@@ -714,8 +728,10 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             ("overlay.toggle", "Hide hints"),
         ],
         "component": [
-            ("edit.rotate_ccw", "Rotate CCW"),
-            ("edit.rotate_cw", "Rotate CW"),
+            ("edit.rotate_ccw", "Rotate CCW 90°"),
+            ("edit.rotate_cw", "Rotate CW 90°"),
+            ("edit.fine_ccw", "Fine rotate CCW 15°"),
+            ("edit.fine_cw", "Fine rotate CW 15°"),
             ("edit.flip_h", "Flip horizontal"),
             ("edit.flip_v", "Flip vertical"),
             ("edit.align_h", "Align horizontally"),
@@ -736,7 +752,8 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         ],
         "annotation": [
             (None, "Double-click", "Edit text"),
-            ("edit.rotate_ccw", "Rotate CCW"),
+            ("edit.rotate_ccw", "Rotate CCW 90°"),
+            ("edit.fine_ccw", "Fine rotate CCW 15°"),
             ("edit.flip_h", "Flip horizontal"),
             ("edit.copy", "Copy"),
             ("edit.delete", "Delete"),
@@ -755,14 +772,16 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         """Create the hint overlay over the canvas. Call once, after the view."""
         from diagrammer.panels.shortcut_overlay import ShortcutOverlay
         self._shortcut_overlay = ShortcutOverlay(self._view.viewport())
-        # Runtime visibility flag, seeded from the persisted default; the '?'
-        # hotkey (and Help menu item) toggle it for the session.
+        # Runtime visibility flag, seeded from the persisted default (set in
+        # Settings → Appearance). The '?' hotkey / Help menu item toggle it for
+        # the session; the default is re-applied when Settings are accepted.
         self._shortcut_overlay_on = bool(
             getattr(app_settings, "show_shortcut_overlay", False))
         act = getattr(self, "_shortcut_hints_act", None)
         if act is not None:
             act.setChecked(self._shortcut_overlay_on)
         self._update_shortcut_overlay()
+        self._refresh_overlay_hint_label()
 
     def _shortcut_context(self) -> str:
         """Selection context: 'none' | 'component' | 'wire' | 'annotation'."""
@@ -816,15 +835,38 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             overlay.show()
 
     def _toggle_shortcut_overlay(self) -> None:
-        """'?' hotkey / Help menu: flip the overlay on or off and persist it."""
+        """'?' hotkey / Help menu: flip the overlay on or off for this session.
+
+        This is a session-only toggle; the persistent default lives in
+        Settings → Appearance ("Show shortcut hints overlay by default").
+        """
         self._shortcut_overlay_on = not getattr(
             self, "_shortcut_overlay_on", False)
         act = getattr(self, "_shortcut_hints_act", None)
         if act is not None:
             act.setChecked(self._shortcut_overlay_on)
-        app_settings.show_shortcut_overlay = self._shortcut_overlay_on
-        app_settings.save()
         self._update_shortcut_overlay()
+
+    def _apply_shortcut_overlay_settings(self) -> None:
+        """Re-sync the overlay to the persisted default (called on Settings OK)."""
+        self._shortcut_overlay_on = bool(
+            getattr(app_settings, "show_shortcut_overlay", False))
+        act = getattr(self, "_shortcut_hints_act", None)
+        if act is not None:
+            act.setChecked(self._shortcut_overlay_on)
+        self._update_shortcut_overlay()
+        self._refresh_overlay_hint_label()
+
+    def _refresh_overlay_hint_label(self) -> None:
+        """Update the persistent 'X to toggle …' hint under the canvas so it
+        always shows the current (possibly rebound) overlay toggle key."""
+        label = getattr(self, "_overlay_hint_label", None)
+        if label is None:
+            return
+        from diagrammer.app import hint_text_color
+        keys = get_shortcut("overlay.toggle").display_text or "?"
+        label.setText(f"{keys} to toggle keyboard shortcut overlay")
+        label.setStyleSheet(f"color: {hint_text_color()}; font-size: 11px;")
 
     def _on_layers_changed(self) -> None:
         """Apply layer visibility/lock state to all scene items."""

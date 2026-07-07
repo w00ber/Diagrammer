@@ -52,8 +52,11 @@ def test_overlay_created_over_viewport_and_hidden_by_default(main_window):
     assert not main_window._shortcut_hints_act.isChecked()
 
 
-def test_toggle_shows_hides_and_persists(main_window):
+def test_toggle_shows_and_hides_session_only(main_window):
+    """'?' toggles for the session without changing the persistent default."""
     from diagrammer.panels import settings_dialog as sd
+
+    assert sd.app_settings.show_shortcut_overlay is False
 
     main_window._toggle_shortcut_overlay()
     assert main_window._shortcut_overlay_on is True
@@ -61,12 +64,40 @@ def test_toggle_shows_hides_and_persists(main_window):
     # would be False regardless); the overlay called show() on itself.
     assert not main_window._shortcut_overlay.isHidden()
     assert main_window._shortcut_hints_act.isChecked()
-    assert sd.app_settings.show_shortcut_overlay is True
+    # The session toggle must NOT mutate the persisted default.
+    assert sd.app_settings.show_shortcut_overlay is False
 
     main_window._toggle_shortcut_overlay()
     assert main_window._shortcut_overlay_on is False
     assert main_window._shortcut_overlay.isHidden()
-    assert sd.app_settings.show_shortcut_overlay is False
+
+
+def test_apply_settings_resyncs_to_default(main_window):
+    """Accepting Settings re-applies the persisted default visibility."""
+    from diagrammer.panels import settings_dialog as sd
+
+    # Simulate turning the default on in Settings, then applying.
+    sd.app_settings.show_shortcut_overlay = True
+    main_window._apply_shortcut_overlay_settings()
+    assert main_window._shortcut_overlay_on is True
+    assert main_window._shortcut_hints_act.isChecked()
+    assert not main_window._shortcut_overlay.isHidden()
+
+
+def test_discoverability_label_tracks_toggle_key(main_window):
+    """The persistent under-canvas hint shows the live overlay toggle key."""
+    from diagrammer import shortcuts
+
+    main_window._refresh_overlay_hint_label()
+    assert main_window._overlay_hint_label.text() == (
+        "? to toggle keyboard shortcut overlay")
+
+    shortcuts.get_shortcut("overlay.toggle").set_override("Ctrl+Shift+K")
+    try:
+        main_window._refresh_overlay_hint_label()
+        assert "Ctrl+Shift+K" in main_window._overlay_hint_label.text()
+    finally:
+        shortcuts.get_shortcut("overlay.toggle").reset()
 
 
 def test_toggle_shortcut_is_registered_as_question_mark():
@@ -119,3 +150,24 @@ def test_hint_keys_resolve_live_after_rebind(main_window):
         assert rows["Flip horizontal"] == "Ctrl+Alt+M"
     finally:
         shortcuts.get_shortcut("edit.flip_h").reset()
+
+
+def test_none_context_has_connect_mode_and_escape(main_window):
+    labels = {label for _keys, label in main_window._shortcut_hint_rows("none")}
+    assert "Connect / wire mode" in labels
+    assert "Exit to select mode" in labels
+    rows = dict((label, keys) for keys, label in
+                main_window._shortcut_hint_rows("none"))
+    assert rows["Connect / wire mode"] == "W"
+    assert rows["Exit to select mode"] == "Esc"
+
+
+def test_component_context_distinguishes_90_and_fine_rotation(main_window):
+    rows = dict((label, keys) for keys, label in
+                main_window._shortcut_hint_rows("component"))
+    # 90° rotation on Space / Shift+Space
+    assert rows["Rotate CCW 90°"] == "Space"
+    assert rows["Rotate CW 90°"] == "Shift+Space"
+    # Fine 15° rotation on R / Shift+R
+    assert rows["Fine rotate CCW 15°"] == "R"
+    assert rows["Fine rotate CW 15°"] == "Shift+R"

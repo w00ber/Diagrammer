@@ -93,7 +93,8 @@ that you can execute directly from the command line.
 
 Press **?** in the app to toggle a floating on-canvas cheat-sheet of the
 shortcuts relevant to your current selection, or **F1** for the full in-app
-help reference.
+help reference. The overlay's default visibility and corner can be set in
+**Settings → Appearance → Keyboard Shortcut Hints**.
 
 ## Keyboard Shortcuts
 
