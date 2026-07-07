@@ -80,6 +80,13 @@ DEFAULT_LINE_COLOR = QColor(50, 50, 50)
 DEFAULT_LINE_WIDTH = 3.0  # match SVG component wiring stroke width
 DEFAULT_CORNER_RADIUS = 8.0
 SELECTION_COLOR = QColor(0, 120, 215)
+# Selection is shown as a soft halo drawn BENEATH the wire (so the wire
+# keeps its own color and stays fully visible) rather than by recoloring
+# the wire itself. Light alpha so it reads as a glow, not a slab.
+SELECTION_HALO_COLOR = QColor(0, 120, 215, 90)
+# Extra width of the halo beyond the wire, in scene units — enough to
+# show a ring of colour on each side even for thin wires.
+SELECTION_HALO_EXTRA = 8.0
 VERTEX_HANDLE_SIZE = 8.0
 VERTEX_HANDLE_COLOR = QColor(0, 120, 215)
 SEGMENT_HOVER_COLOR = QColor(0, 120, 215, 80)
@@ -737,34 +744,36 @@ class ConnectionItem(QGraphicsPathItem):
         option: QStyleOptionGraphicsItem,
         widget: QWidget | None = None,
     ) -> None:
-        # Hover feedback: a soft halo on the whole wire signals it is
-        # interactive; when selected, the segment under the cursor gets a
-        # stronger highlight showing what a drag would move.
-        if self._hovered and not self._group_id:
-            halo = QPen(SEGMENT_HOVER_COLOR, self._line_width + HIT_TOLERANCE)
+        # Selection / hover are shown as a halo drawn BENEATH the wire, so
+        # the wire keeps its own colour and stays clearly visible on top.
+        selected = self.isSelected() and not self._group_id
+        hovered = self._hovered and not self._group_id
+        if selected or hovered:
+            halo_col = QColor(SELECTION_HALO_COLOR) if selected else QColor(SEGMENT_HOVER_COLOR)
+            halo = QPen(halo_col, self._line_width + SELECTION_HALO_EXTRA)
             halo.setCapStyle(Qt.PenCapStyle.RoundCap)
             halo.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
             painter.setPen(halo)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(self.path())
-        if (self._hover_segment is not None and self.isSelected()
-                and not self._group_id):
+        # When a selected wire is hovered, emphasise the segment a drag
+        # would move — also beneath the wire, a touch stronger than the halo.
+        if self._hover_segment is not None and selected:
             pts = self._expanded
             n = len(pts)
             num_segs = n if self._closed else n - 1
             if 0 <= self._hover_segment < num_segs:
-                seg_color = QColor(SEGMENT_HOVER_COLOR)
-                seg_color.setAlpha(200)
-                seg_pen = QPen(seg_color, self._line_width + HIT_TOLERANCE)
+                seg_color = QColor(SELECTION_COLOR)
+                seg_color.setAlpha(150)
+                seg_pen = QPen(seg_color, self._line_width + SELECTION_HALO_EXTRA)
                 seg_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
                 painter.setPen(seg_pen)
                 painter.drawLine(pts[self._hover_segment],
                                  pts[(self._hover_segment + 1) % n])
 
-        pen = QPen(
-            SELECTION_COLOR if (self.isSelected() and not self._group_id) else self._line_color,
-            self._line_width,
-        )
+        # The wire itself, always in its own colour — selection never
+        # hides it.
+        pen = QPen(self._line_color, self._line_width)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)

@@ -395,3 +395,46 @@ class TestVisualFeedback:
         conn.hoverLeaveEvent(leave)
         assert not conn._hovered
         assert conn._hover_segment is None
+
+
+class TestSelectionHalo:
+    """The selection halo sits beneath the wire so the wire stays visible."""
+
+    def _render_wire(self, scene, selected):
+        from PySide6.QtCore import QRectF
+        from PySide6.QtGui import QColor, QImage, QPainter
+
+        j1 = _add_junction(scene, 10, 25, visible=False)
+        j2 = _add_junction(scene, 110, 25, visible=False)
+        conn = _connect(scene, j1.port, j2.port)
+        conn.line_color = QColor(255, 0, 0)  # pure red
+        conn.line_width = 6.0
+        if selected:
+            conn.setSelected(True)
+        scene.update_connections()
+
+        img = QImage(120, 50, QImage.Format.Format_RGB32)
+        img.fill(QColor("white"))
+        p = QPainter(img)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        scene.render(p, QRectF(0, 0, 120, 50), QRectF(0, 0, 120, 50))
+        p.end()
+        return img
+
+    def test_selected_wire_keeps_its_colour(self, scene):
+        img = self._render_wire(scene, selected=True)
+        # On the wire centerline the red wire must show through, not blue
+        c = img.pixelColor(60, 25)
+        assert c.red() > 150
+        assert c.red() > c.blue(), "selection overpainted the wire in blue"
+
+    def test_halo_sits_beside_the_wire(self, scene):
+        img = self._render_wire(scene, selected=True)
+        # 5 px above the centerline: outside the 6px wire, inside the halo
+        c = img.pixelColor(60, 20)
+        assert c.blue() > c.red(), "no blue halo beside the selected wire"
+
+    def test_unselected_wire_has_no_halo(self, scene):
+        img = self._render_wire(scene, selected=False)
+        c = img.pixelColor(60, 20)  # beside the wire — should be plain white
+        assert c.red() > 240 and c.green() > 240 and c.blue() > 240
