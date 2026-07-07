@@ -5,7 +5,20 @@ from __future__ import annotations
 import pytest
 from PySide6.QtCore import QPointF
 
-from diagrammer.items.connection_item import WireArrow
+from diagrammer.items.connection_item import ConnectionItem, WireArrow
+
+
+@pytest.fixture(autouse=True)
+def _reset_sticky_arrow_direction():
+    """Reset the shared session-sticky arrow direction between tests.
+
+    ``ConnectionItem._new_arrow_forward`` is a class attribute persisting
+    across tests; without this a test that flips an arrow would leak the
+    direction into unrelated placement tests.
+    """
+    ConnectionItem._new_arrow_forward = True
+    yield
+    ConnectionItem._new_arrow_forward = True
 
 
 def _add_junction(scene, x, y):
@@ -182,6 +195,54 @@ class TestArrowOperations:
         finally:
             (app_settings.default_wire_arrow_style,
              app_settings.default_wire_arrow_size) = old
+
+
+class TestStickyArrowDirection:
+    def test_new_arrow_defaults_forward(self, scene):
+        conn = _h_wire(scene)
+        conn.add_arrow_at(QPointF(100, 0))
+        assert conn.arrows[0].forward is True
+
+    def test_flip_makes_next_placement_backward_same_wire(self, scene):
+        conn = _h_wire(scene)
+        conn.add_arrow_at(QPointF(50, 0))
+        conn._flip_arrow(0)
+        conn.add_arrow_at(QPointF(150, 0))
+        assert conn.arrows[1].forward is False
+
+    def test_sticky_direction_is_global_across_wires(self, scene):
+        wire_a = _h_wire(scene, y=0.0)
+        wire_b = _h_wire(scene, y=100.0)
+        wire_a.add_arrow_at(QPointF(100, 0))
+        wire_a._flip_arrow(0)
+        # A brand-new arrow on a different wire inherits the flipped default
+        wire_b.add_arrow_at(QPointF(100, 100))
+        assert wire_b.arrows[0].forward is False
+
+    def test_dialog_direction_change_updates_sticky(self, scene):
+        conn = _h_wire(scene)
+        conn.add_arrow_at(QPointF(50, 0))
+        conn._set_arrow_fields(0, forward=False)
+        conn.add_arrow_at(QPointF(150, 0))
+        assert conn.arrows[1].forward is False
+
+    def test_style_only_edit_leaves_sticky_unchanged(self, scene):
+        conn = _h_wire(scene)
+        conn.add_arrow_at(QPointF(50, 0))
+        conn._set_arrow_fields(0, style="open")
+        conn.add_arrow_at(QPointF(150, 0))
+        # Direction default untouched by a style-only edit
+        assert conn.arrows[1].forward is True
+
+    def test_undo_of_flip_does_not_rewind_sticky(self, scene):
+        conn = _h_wire(scene)
+        conn.add_arrow_at(QPointF(50, 0))
+        conn._flip_arrow(0)
+        scene.undo_stack.undo()  # restores arrow 0 to forward
+        assert conn.arrows[0].forward is True
+        # Sticky default (UI state) stays flipped — new placements honor it
+        conn.add_arrow_at(QPointF(150, 0))
+        assert conn.arrows[-1].forward is False
 
 
 class TestArrowUndo:

@@ -148,6 +148,15 @@ class ConnectionItem(QGraphicsPathItem):
     - Double-click a segment to insert a new waypoint.
     """
 
+    # Session-sticky direction for newly placed arrows (not persisted to
+    # disk; resets to source->target each launch). Updated whenever the
+    # user switches an arrow's direction, so the next arrow placed on any
+    # wire inherits that orientation. Shared across all instances — always
+    # read/write it through the class name (``ConnectionItem._new_arrow_
+    # forward``), never ``self._new_arrow_forward = ...`` which would
+    # silently create a per-instance shadow.
+    _new_arrow_forward: bool = True
+
     def __init__(
         self,
         source_port: PortItem,
@@ -368,20 +377,33 @@ class ConnectionItem(QGraphicsPathItem):
         undo_stack.push(ChangeStyleCommand(self, 'arrows', old, new))
 
     def add_arrow_at(self, scene_pos: QPointF) -> None:
-        """Add a direction arrow at *scene_pos* projected onto the route."""
+        """Add a direction arrow at *scene_pos* projected onto the route.
+
+        The new arrow inherits the session-sticky direction, so once the
+        user flips an arrow, subsequently placed arrows point the same way.
+        """
         if len(self._expanded) < 2:
             return
         t, _proj, _dist = fraction_at_point(self._expanded, scene_pos)
         old = self.arrows
-        self._push_arrows_change(old, old + [WireArrow(t=t)])
+        new_arrow = WireArrow(t=t, forward=ConnectionItem._new_arrow_forward)
+        self._push_arrows_change(old, old + [new_arrow])
 
     def _flip_arrow(self, index: int) -> None:
-        """Reverse the direction of arrow *index* (undoable)."""
+        """Reverse the direction of arrow *index* (undoable).
+
+        Remembers the new direction as the session default for future
+        placements. The sticky value is UI state, not document state, so
+        it is set outside the undo command — undoing the flip restores the
+        arrow's direction but does not rewind the sticky default.
+        """
         if not (0 <= index < len(self._arrows)):
             return
         old = self.arrows
         new = self.arrows
-        new[index].forward = not new[index].forward
+        nf = not new[index].forward
+        new[index].forward = nf
+        ConnectionItem._new_arrow_forward = nf
         self._push_arrows_change(old, new)
 
     def _delete_arrow(self, index: int) -> None:
@@ -400,6 +422,11 @@ class ConnectionItem(QGraphicsPathItem):
         """
         if not (0 <= index < len(self._arrows)):
             return
+        # A dialog Forward/Backward change also updates the session-sticky
+        # direction (same intent as the flip gesture); style-only edits
+        # leave it untouched.
+        if 'forward' in fields and fields['forward'] != self._arrows[index].forward:
+            ConnectionItem._new_arrow_forward = fields['forward']
         old = self.arrows
         new = self.arrows
         new[index] = dataclasses.replace(new[index], **fields)
