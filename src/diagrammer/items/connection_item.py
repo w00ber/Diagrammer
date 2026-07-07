@@ -602,13 +602,14 @@ class ConnectionItem(QGraphicsPathItem):
         """Radius of crossover hop semicircles for this wire."""
         return max(5.0, self._line_width * 2.5)
 
-    def _compute_hops(self) -> list[QPointF]:
+    def _compute_hops(self) -> list[tuple[QPointF, int]]:
         """Crossing points where THIS wire arcs over another wire.
 
-        Only the crossing's resolved hop owner returns points; the other
-        wire renders straight through. Closed polygons never own hops
-        (but their outline can be hopped over, including the closing
-        segment).
+        Returns ``(point, sign)`` pairs; ``sign=-1`` mirrors the hop's
+        bulge (per the pair's ``flip`` override), else ``+1``. Only the
+        crossing's resolved hop owner returns points; the other wire
+        renders straight through. Closed polygons never own hops (but
+        their outline can be hopped over, including the closing segment).
         """
         scene = self.scene()
         if scene is None or not hasattr(scene, 'resolve_crossover'):
@@ -619,13 +620,13 @@ class ConnectionItem(QGraphicsPathItem):
             return []
 
         from diagrammer.utils.geometry import segment_intersection
-        hops: list[QPointF] = []
+        hops: list[tuple[QPointF, int]] = []
         my_pts = self._expanded
         my_rect = self._expanded_rect
         for other in scene.items():
             if not isinstance(other, ConnectionItem) or other is self:
                 continue
-            style, owner_id = scene.resolve_crossover(self, other)
+            style, owner_id, flip = scene.resolve_crossover(self, other)
             if style != "hop" or owner_id != self._id:
                 continue
             other_rect = getattr(other, '_expanded_rect', None)
@@ -635,6 +636,7 @@ class ConnectionItem(QGraphicsPathItem):
             m = len(opts)
             if m < 2:
                 continue
+            sign = -1 if flip else 1
             num_other_segs = m if other._closed else m - 1
             for i in range(len(my_pts) - 1):
                 for j in range(num_other_segs):
@@ -644,7 +646,7 @@ class ConnectionItem(QGraphicsPathItem):
                         endpoint_exclusion=1.0,
                     )
                     if hit is not None:
-                        hops.append(hit)
+                        hops.append((hit, sign))
         return hops
 
     # =====================================================================

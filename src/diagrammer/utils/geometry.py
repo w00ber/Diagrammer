@@ -134,16 +134,18 @@ def _emit_run_with_hops(
     run_start_d: float,
     run_end: QPointF,
     run_end_d: float,
-    pending_hops: list[QPointF],
+    pending_hops: list[tuple[QPointF, int]],
     hop_radius: float,
 ) -> None:
     """Emit the straight run of one segment, arcing over any hop points.
 
     The run covers the arclength window ``[run_start_d, run_end_d]`` of the
     segment ``seg_a → seg_b`` (the rest belongs to corner-rounding quads).
-    Hop points projecting onto this segment are consumed from
-    *pending_hops*; those whose semicircle would not fit inside the run
-    window are dropped (that crossing renders plain).
+    Each pending hop is a ``(point, sign)`` pair; the sign selects which
+    side the semicircle bulges (``+1`` = left of travel, ``-1`` = mirror).
+    Hops projecting onto this segment are consumed from *pending_hops*;
+    those whose semicircle would not fit inside the run window are dropped
+    (that crossing renders plain).
     """
     seg_len = point_distance(seg_a, seg_b)
     if not pending_hops or seg_len < 1e-9 or hop_radius <= 1e-9:
@@ -153,31 +155,33 @@ def _emit_run_with_hops(
     ux = (seg_b.x() - seg_a.x()) / seg_len
     uy = (seg_b.y() - seg_a.y()) / seg_len
 
-    accepted: list[float] = []
-    for h in list(pending_hops):
-        proj, dist = closest_point_on_segment(h, seg_a, seg_b)
+    accepted: list[tuple[float, int]] = []
+    for hop in list(pending_hops):
+        pt, sign = hop
+        proj, dist = closest_point_on_segment(pt, seg_a, seg_b)
         if dist > 0.25:
             continue
         # This hop belongs to this segment — consume it either way so a
         # collinear neighbouring segment can't match it a second time.
-        pending_hops.remove(h)
+        pending_hops.remove(hop)
         t = (proj.x() - seg_a.x()) * ux + (proj.y() - seg_a.y()) * uy
         if run_start_d + hop_radius <= t <= run_end_d - hop_radius:
-            accepted.append(t)
+            accepted.append((t, sign))
 
-    accepted.sort()
+    accepted.sort(key=lambda ts: ts[0])
     ang = math.degrees(math.atan2(-uy, ux))  # Qt angle of travel direction
-    for t in accepted:
+    for t, sign in accepted:
         c = QPointF(seg_a.x() + ux * t, seg_a.y() + uy * t)
         path.lineTo(QPointF(c.x() - ux * hop_radius, c.y() - uy * hop_radius))
         rect = QRectF(
             c.x() - hop_radius, c.y() - hop_radius,
             hop_radius * 2.0, hop_radius * 2.0,
         )
-        # Semicircle from the near cut to the far cut, bulging to the
-        # left of the travel direction (screen-up for a left-to-right
-        # wire). arcTo ends exactly at c + u*hop_radius.
-        path.arcTo(rect, ang + 180.0, -180.0)
+        # Semicircle from the near cut to the far cut. sign=+1 bulges to
+        # the left of travel (screen-up for a left-to-right wire); sign=-1
+        # sweeps the opposite half-circle between the same two cut points
+        # = mirror. arcTo ends exactly at c + u*hop_radius either way.
+        path.arcTo(rect, ang + 180.0, -180.0 * sign)
     path.lineTo(run_end)
 
 
@@ -193,8 +197,11 @@ def build_rounded_path(
         closed: If True, close the path into a polygon and round the
                 closing corner as well.
         hops: Optional crossing points to arc over with a semicircle
-              (wire crossover "hops"). Each point must lie on one of the
-              path's segments. Ignored for closed polygons.
+              (wire crossover "hops"). Each entry is either a bare
+              ``QPointF`` (bulges left of travel) or a ``(QPointF, sign)``
+              pair where ``sign=-1`` mirrors the bulge to the other side.
+              Each point must lie on one of the path's segments. Ignored
+              for closed polygons.
         hop_radius: Radius of the hop semicircles. Hops that would not
               fit inside a segment's straight run (too close to a corner
               or endpoint) are rendered plain.
@@ -253,8 +260,17 @@ def build_rounded_path(
         return path
 
     # -- Open polyline path --------------------------------------------
+    # Normalize hops to (point, sign) tuples. A bare QPointF (the form
+    # used by the geometry tests and any caller that doesn't care about
+    # bulge side) defaults to sign +1 (left-of-travel).
+    def _norm_hop(h):
+        if isinstance(h, QPointF):
+            return (QPointF(h), 1)
+        pt, sign = h
+        return (QPointF(pt), 1 if sign >= 0 else -1)
+
     pending_hops = (
-        [QPointF(h) for h in hops] if hops and hop_radius > 1e-9 else []
+        [_norm_hop(h) for h in hops] if hops and hop_radius > 1e-9 else []
     )
     n = len(points)
     rounded = radius > 0 and n > 2

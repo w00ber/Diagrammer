@@ -63,10 +63,12 @@ from PySide6.QtWidgets import QGraphicsScene
 #         style overrides [{"a": id, "b": id, "style": ..., "owner": ...}].
 #   2.2 - optional junction "end_marker" field ("filled" | "open") for
 #         explicit terminal dots on free wire ends.
+#   2.3 - optional crossover "flip" field (bool) selecting the hop's
+#         bulge side.
 # ---------------------------------------------------------------------------
 
 FORMAT_MAJOR = 2
-FORMAT_MINOR = 2
+FORMAT_MINOR = 3
 FORMAT_VERSION = f"{FORMAT_MAJOR}.{FORMAT_MINOR}"
 
 
@@ -164,12 +166,15 @@ class DiagramSerializer:
             for key, entry in scene._crossover_overrides.items():
                 ids = sorted(key)
                 if len(ids) == 2 and ids[0] in conn_ids and ids[1] in conn_ids:
-                    crossovers.append({
+                    xd = {
                         "a": ids[0],
                         "b": ids[1],
                         "style": entry.get("style"),
                         "owner": entry.get("owner"),
-                    })
+                    }
+                    if entry.get("flip"):
+                        xd["flip"] = True
+                    crossovers.append(xd)
             if crossovers:
                 data["crossovers"] = crossovers
 
@@ -353,6 +358,8 @@ class DiagramSerializer:
                     entry["style"] = xd["style"]
                 if xd.get("owner") in (a, b):
                     entry["owner"] = xd["owner"]
+                if xd.get("flip") is True:
+                    entry["flip"] = True
                 if entry:
                     scene._crossover_overrides[frozenset((a, b))] = entry
 
