@@ -26,6 +26,7 @@ from diagrammer.menu_ops import MenuMixin
 from diagrammer.models.library import ComponentLibrary
 from diagrammer.panels.library_panel import LibraryPanel
 from diagrammer.panels.settings_dialog import SettingsDialog, app_settings
+from diagrammer.shortcuts import get_shortcut
 from diagrammer.transform_ops import TransformMixin
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,9 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
 
         # -- Panels --
         self._create_panels()
+
+        # -- Keyboard-shortcut hint overlay (floats over the canvas) --
+        self._init_shortcut_overlay()
 
         # -- Pin canvas + library to a light background regardless of
         # the current chrome theme, so grid and component artwork stay
@@ -500,6 +504,8 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             self._apply_library_visibility()
             # Re-apply keyboard shortcuts (may have been customized)
             self._refresh_action_shortcuts()
+            # Re-render the hint overlay so any rebound keys show up live
+            self._update_shortcut_overlay()
             # Refresh help window if open so the live shortcut table updates
             try:
                 from diagrammer.panels.help_window import HelpWindow
@@ -686,6 +692,139 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
 
     def _on_selection_changed(self) -> None:
         self._props_panel.update_for_selection(self._scene)
+        self._update_shortcut_overlay()
+
+    # ------------------------------------------- Shortcut hint overlay
+
+    # Curated per-context hint rows. Each entry is either
+    # ``(action_id, label)`` -- the key string is resolved live from the
+    # shortcut registry so rebindings show up automatically -- or
+    # ``(None, keys, label)`` for a verbatim, non-registry hint (e.g. mouse).
+    _SHORTCUT_HINTS = {
+        "none": [
+            ("canvas.select_mode", "Select mode"),
+            ("view.fit_all", "Zoom to fit"),
+            ("view.zoom_window", "Zoom window"),
+            ("view.toggle_grid", "Toggle grid"),
+            ("routing.trace", "Trace routing"),
+            ("draw.text", "Add text"),
+            ("edit.undo", "Undo"),
+            ("edit.settings", "Settings"),
+            ("help.help", "Help"),
+            ("overlay.toggle", "Hide hints"),
+        ],
+        "component": [
+            ("edit.rotate_ccw", "Rotate CCW"),
+            ("edit.rotate_cw", "Rotate CW"),
+            ("edit.flip_h", "Flip horizontal"),
+            ("edit.flip_v", "Flip vertical"),
+            ("edit.align_h", "Align horizontally"),
+            ("edit.align_v", "Align vertically"),
+            ("edit.group", "Group"),
+            ("edit.bring_fwd", "Bring forward"),
+            ("edit.copy", "Copy"),
+            ("edit.delete", "Delete"),
+            ("overlay.toggle", "Hide hints"),
+        ],
+        "wire": [
+            ("edit.join_wires", "Join wires"),
+            ("edit.copy", "Copy"),
+            ("edit.bring_fwd", "Bring forward"),
+            ("edit.send_bwd", "Send backward"),
+            ("edit.delete", "Delete"),
+            ("overlay.toggle", "Hide hints"),
+        ],
+        "annotation": [
+            (None, "Double-click", "Edit text"),
+            ("edit.rotate_ccw", "Rotate CCW"),
+            ("edit.flip_h", "Flip horizontal"),
+            ("edit.copy", "Copy"),
+            ("edit.delete", "Delete"),
+            ("overlay.toggle", "Hide hints"),
+        ],
+    }
+
+    _SHORTCUT_CONTEXT_TITLES = {
+        "none": "Shortcuts",
+        "component": "Component selected",
+        "wire": "Wire selected",
+        "annotation": "Annotation selected",
+    }
+
+    def _init_shortcut_overlay(self) -> None:
+        """Create the hint overlay over the canvas. Call once, after the view."""
+        from diagrammer.panels.shortcut_overlay import ShortcutOverlay
+        self._shortcut_overlay = ShortcutOverlay(self._view.viewport())
+        # Runtime visibility flag, seeded from the persisted default; the '?'
+        # hotkey (and Help menu item) toggle it for the session.
+        self._shortcut_overlay_on = bool(
+            getattr(app_settings, "show_shortcut_overlay", False))
+        act = getattr(self, "_shortcut_hints_act", None)
+        if act is not None:
+            act.setChecked(self._shortcut_overlay_on)
+        self._update_shortcut_overlay()
+
+    def _shortcut_context(self) -> str:
+        """Selection context: 'none' | 'component' | 'wire' | 'annotation'."""
+        from diagrammer.items.annotation_item import AnnotationItem
+        from diagrammer.items.component_item import ComponentItem
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.shape_item import LineItem, ShapeItem
+        from diagrammer.items.svg_image_item import SvgImageItem
+
+        sel = self._scene.selectedItems()
+        if not sel:
+            return "none"
+        obj_types = (ComponentItem, ShapeItem, LineItem, SvgImageItem)
+        if any(isinstance(i, obj_types) for i in sel):
+            return "component"
+        if any(isinstance(i, ConnectionItem) for i in sel):
+            return "wire"
+        if any(isinstance(i, AnnotationItem) for i in sel):
+            return "annotation"
+        return "component"
+
+    def _shortcut_hint_rows(self, context: str):
+        """Build ``[(keys, label), ...]`` for a context, resolving keys live."""
+        rows = []
+        for entry in self._SHORTCUT_HINTS.get(context, []):
+            if entry[0] is None:
+                # Verbatim (None, keys, label) hint, e.g. a mouse gesture.
+                rows.append((entry[1], entry[2]))
+                continue
+            action_id, label = entry
+            keys = get_shortcut(action_id).display_text
+            if keys:
+                rows.append((keys, label))
+        return rows
+
+    def _update_shortcut_overlay(self) -> None:
+        """Refresh the overlay for the current selection + on/off state."""
+        overlay = getattr(self, "_shortcut_overlay", None)
+        if overlay is None:
+            return
+        if not getattr(self, "_shortcut_overlay_on", False):
+            overlay.hide()
+            return
+        corner = getattr(app_settings, "shortcut_overlay_corner", "top-right")
+        overlay.set_corner(corner)
+        context = self._shortcut_context()
+        title = self._SHORTCUT_CONTEXT_TITLES.get(context, "Shortcuts")
+        rows = self._shortcut_hint_rows(context)
+        overlay.set_rows(title, rows)
+        if overlay.isHidden() and rows:
+            overlay.show()
+
+    def _toggle_shortcut_overlay(self) -> None:
+        """'?' hotkey / Help menu: flip the overlay on or off and persist it."""
+        self._shortcut_overlay_on = not getattr(
+            self, "_shortcut_overlay_on", False)
+        act = getattr(self, "_shortcut_hints_act", None)
+        if act is not None:
+            act.setChecked(self._shortcut_overlay_on)
+        app_settings.show_shortcut_overlay = self._shortcut_overlay_on
+        app_settings.save()
+        self._update_shortcut_overlay()
 
     def _on_layers_changed(self) -> None:
         """Apply layer visibility/lock state to all scene items."""
