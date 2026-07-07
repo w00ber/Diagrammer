@@ -12,7 +12,9 @@ Implements KiCad/Altium-style interactive routing:
 
 from __future__ import annotations
 
+import dataclasses
 import uuid
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QPointF, QRectF, Qt
@@ -27,8 +29,10 @@ from PySide6.QtWidgets import (
 from diagrammer.utils.geometry import (
     build_rounded_path,
     closest_point_on_segment,
+    fraction_at_point,
     ortho_route,
     ortho_route_45,
+    point_at_fraction,
     point_distance,
     segment_orientation,
 )
@@ -71,6 +75,32 @@ class Waypoint:
     def __repr__(self) -> str:
         port_name = getattr(self.anchor, "port_name", "?")
         return f"Waypoint({port_name}, {self.dx:.1f}, {self.dy:.1f})"
+
+@dataclass
+class WireArrow:
+    """A signal-flow direction arrow riding on a connection.
+
+    Positioned by normalized arclength fraction ``t`` along the wire's
+    expanded route, so it follows reroutes and component moves. Style
+    fields left as ``None`` resolve against the app-wide defaults at
+    paint time (junction end-marker pattern), so changing the global
+    default restyles all default-styled arrows live.
+    """
+
+    t: float                          # arclength fraction, 0 = source, 1 = target
+    forward: bool = True              # True = points source -> target
+    style: str | None = None          # "filled" | "open"
+    size: float | None = None         # arrow length, scene units
+    line_width: float | None = None   # outline width for "open" style
+
+    def copy(self) -> "WireArrow":
+        return dataclasses.replace(self)
+
+
+ARROW_STYLE_FILLED = "filled"
+ARROW_STYLE_OPEN = "open"
+WIRE_ARROW_STYLES = (ARROW_STYLE_FILLED, ARROW_STYLE_OPEN)
+
 
 # ---------------------------------------------------------------------------
 # Visual defaults
@@ -118,6 +148,15 @@ class ConnectionItem(QGraphicsPathItem):
     - Double-click a segment to insert a new waypoint.
     """
 
+    # Session-sticky direction for newly placed arrows (not persisted to
+    # disk; resets to source->target each launch). Updated whenever the
+    # user switches an arrow's direction, so the next arrow placed on any
+    # wire inherits that orientation. Shared across all instances — always
+    # read/write it through the class name (``ConnectionItem._new_arrow_
+    # forward``), never ``self._new_arrow_forward = ...`` which would
+    # silently create a per-instance shadow.
+    _new_arrow_forward: bool = True
+
     def __init__(
         self,
         source_port: PortItem,
@@ -156,6 +195,9 @@ class ConnectionItem(QGraphicsPathItem):
         # Cached expanded route (rebuilt by update_route) -----------------
         self._expanded: list[QPointF] = []
 
+        # Direction arrows (signal-flow indicators) ------------------------
+        self._arrows: list[WireArrow] = []
+
         # Multi-waypoint selection (Shift+click to toggle) ----------------
         self._selected_waypoints: set[int] = set()
 
@@ -167,9 +209,11 @@ class ConnectionItem(QGraphicsPathItem):
         self._dragging_waypoint: int | None = None  # index into _waypoints
         self._dragging_group: bool = False           # True when dragging selected group
         self._dragging_segment: int | None = None    # index into _expanded
+        self._dragging_arrow: int | None = None      # index into _arrows
         self._drag_start_pos: QPointF | None = None
         self._drag_start_expanded: list[QPointF] | None = None
         self._drag_start_waypoints: list[QPointF] | None = None  # for undo
+        self._drag_start_arrows: list[WireArrow] | None = None   # for undo
         self._drag_start_junction_pos: dict[str, QPointF] = {}  # instance_id → start pos
 
         # Flags -----------------------------------------------------------
@@ -246,6 +290,147 @@ class ConnectionItem(QGraphicsPathItem):
         if value != self._closed:
             self._closed = value
             self.update_route()
+
+    # -- Direction arrows --------------------------------------------------
+
+    @property
+    def arrows(self) -> list[WireArrow]:
+        """Copies of this wire's direction arrows (safe to mutate)."""
+        return [a.copy() for a in self._arrows]
+
+    @arrows.setter
+    def arrows(self, arrs: list[WireArrow]) -> None:
+        # Entry point for ChangeStyleCommand: whole-list snapshots.
+        self.prepareGeometryChange()
+        self._arrows = [a.copy() for a in arrs]
+        self.update()
+
+    def _resolved_arrow(self, arrow: WireArrow) -> tuple[str, float, float]:
+        """Fill an arrow's ``None`` fields from the app-wide defaults."""
+        style, size, lw = arrow.style, arrow.size, arrow.line_width
+        if style is None or size is None or lw is None:
+            from diagrammer.panels.settings_dialog import app_settings
+            if style is None:
+                style = getattr(app_settings, "default_wire_arrow_style", ARROW_STYLE_FILLED)
+            if size is None:
+                size = getattr(app_settings, "default_wire_arrow_size", 14.0)
+            if lw is None:
+                lw = getattr(app_settings, "default_wire_arrow_line_width", 2.0)
+        if style not in WIRE_ARROW_STYLES:
+            style = ARROW_STYLE_FILLED
+        return style, size, lw
+
+    def _arrow_pick_radius(self, arrow: WireArrow) -> float:
+        """Grab/click radius of an arrow, from its resolved size.
+
+        The single source of truth shared by ``shape()``, the item hit
+        test, and the scene-level lookup, so the visual hit region and
+        the interaction hit tests can't drift apart.
+        """
+        _style, size, _lw = self._resolved_arrow(arrow)
+        return size * 0.6
+
+    def _max_arrow_extent(self) -> float:
+        """Largest half-extent any arrow adds beyond the wire centerline."""
+        extent = 0.0
+        for a in self._arrows:
+            _style, _size, lw = self._resolved_arrow(a)
+            extent = max(extent, self._arrow_pick_radius(a) + lw)
+        return extent
+
+    def _nearest_arrow(
+        self, scene_pos: QPointF, base_tolerance: float
+    ) -> tuple[int, float] | None:
+        """Nearest arrow within pick range of *scene_pos*.
+
+        Returns ``(index, distance)`` or None. Each arrow's pick radius
+        is at least *base_tolerance* (scene units) and grows with the
+        arrow size.
+        """
+        best: tuple[int, float] | None = None
+        for i, a in enumerate(self._arrows):
+            pt, _tang = point_at_fraction(self._expanded, a.t)
+            tol = max(base_tolerance, self._arrow_pick_radius(a))
+            dist = point_distance(scene_pos, pt)
+            if dist < tol and (best is None or dist < best[1]):
+                best = (i, dist)
+        return best
+
+    def _find_arrow_at(self, scene_pos: QPointF) -> int | None:
+        """Return the index of the direction arrow near *scene_pos*.
+
+        The base tolerance stays below the waypoint pick tolerance; on a
+        selected wire ``mousePressEvent`` additionally gives waypoint
+        handles priority, since a large arrow's radius can exceed it.
+        """
+        hit = self._nearest_arrow(scene_pos, self._pick_tolerance(10.0))
+        return hit[0] if hit is not None else None
+
+    def _push_arrows_change(self, old: list[WireArrow], new: list[WireArrow]) -> None:
+        """Apply + record an arrows-list change (undoable when on a scene)."""
+        scene = self.scene()
+        undo_stack = getattr(scene, 'undo_stack', None) if scene else None
+        if undo_stack is None:
+            self.arrows = new
+            return
+        from diagrammer.commands.style_command import ChangeStyleCommand
+        undo_stack.push(ChangeStyleCommand(self, 'arrows', old, new))
+
+    def add_arrow_at(self, scene_pos: QPointF) -> None:
+        """Add a direction arrow at *scene_pos* projected onto the route.
+
+        The new arrow inherits the session-sticky direction, so once the
+        user flips an arrow, subsequently placed arrows point the same way.
+        """
+        if len(self._expanded) < 2:
+            return
+        t, _proj, _dist = fraction_at_point(self._expanded, scene_pos)
+        old = self.arrows
+        new_arrow = WireArrow(t=t, forward=ConnectionItem._new_arrow_forward)
+        self._push_arrows_change(old, old + [new_arrow])
+
+    def _flip_arrow(self, index: int) -> None:
+        """Reverse the direction of arrow *index* (undoable).
+
+        Remembers the new direction as the session default for future
+        placements. The sticky value is UI state, not document state, so
+        it is set outside the undo command — undoing the flip restores the
+        arrow's direction but does not rewind the sticky default.
+        """
+        if not (0 <= index < len(self._arrows)):
+            return
+        old = self.arrows
+        new = self.arrows
+        nf = not new[index].forward
+        new[index].forward = nf
+        ConnectionItem._new_arrow_forward = nf
+        self._push_arrows_change(old, new)
+
+    def _delete_arrow(self, index: int) -> None:
+        """Remove arrow *index* (undoable)."""
+        if not (0 <= index < len(self._arrows)):
+            return
+        old = self.arrows
+        new = [a for i, a in enumerate(old) if i != index]
+        self._push_arrows_change(old, new)
+
+    def _set_arrow_fields(self, index: int, **fields) -> None:
+        """Update style fields of arrow *index* (undoable).
+
+        Accepts any WireArrow field; ``None`` values reset a field to
+        "use the global default".
+        """
+        if not (0 <= index < len(self._arrows)):
+            return
+        # A dialog Forward/Backward change also updates the session-sticky
+        # direction (same intent as the flip gesture); style-only edits
+        # leave it untouched.
+        if 'forward' in fields and fields['forward'] != self._arrows[index].forward:
+            ConnectionItem._new_arrow_forward = fields['forward']
+        old = self.arrows
+        new = self.arrows
+        new[index] = dataclasses.replace(new[index], **fields)
+        self._push_arrows_change(old, new)
 
     # -- Waypoint / vertex access ----------------------------------------
     # The public property is called ``vertices`` for backward compatibility
@@ -780,6 +965,11 @@ class ConnectionItem(QGraphicsPathItem):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(self.path())
 
+        # Direction arrows — never gated on selection: exports render
+        # through paint() with selection chrome hidden, arrows must stay.
+        if self._arrows:
+            self._draw_direction_arrows(painter)
+
         # Draw waypoint handles when selected
         if self.isSelected():
             for i, w in enumerate(self._waypoints):
@@ -804,15 +994,63 @@ class ConnectionItem(QGraphicsPathItem):
                         QRectF(w.x() - r, w.y() - r, VERTEX_HANDLE_SIZE, VERTEX_HANDLE_SIZE)
                     )
 
+    def _draw_direction_arrows(self, painter: QPainter) -> None:
+        """Paint the signal-flow arrows riding on this wire.
+
+        Arrows sit on the raw expanded polyline (not the rounded/hopped
+        painted path) — deviation at corners is a couple of px at the
+        default corner radius.
+        """
+        pts = self._expanded
+        if len(pts) < 2:
+            return
+        for a in self._arrows:
+            style, size, lw = self._resolved_arrow(a)
+            pt, tang = point_at_fraction(pts, a.t)
+            ux, uy = tang.x(), tang.y()
+            if not a.forward:
+                ux, uy = -ux, -uy
+            px, py = -uy, ux  # perpendicular
+            half = size / 2.0
+            half_w = size * 0.4
+            tip = QPointF(pt.x() + ux * half, pt.y() + uy * half)
+            base = QPointF(pt.x() - ux * half, pt.y() - uy * half)
+            left = QPointF(base.x() + px * half_w, base.y() + py * half_w)
+            right = QPointF(base.x() - px * half_w, base.y() - py * half_w)
+            tri = QPolygonF([tip, left, right])
+
+            if style == ARROW_STYLE_OPEN:
+                # Hollow triangle: background fill masks the wire so the
+                # outline reads cleanly (junction "open" marker pattern).
+                from diagrammer.panels.settings_dialog import app_settings
+                pen = QPen(self._line_color, lw)
+                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                painter.setPen(pen)
+                painter.setBrush(app_settings.current_background_color())
+            else:
+                painter.setPen(QPen(self._line_color, 1.0))
+                painter.setBrush(self._line_color)
+            painter.drawPolygon(tri)
+
     def boundingRect(self) -> QRectF:
         # Must cover the hover halo (line_width + HIT_TOLERANCE wide)
+        # and the largest direction arrow.
         extra = max(self._line_width + HIT_TOLERANCE, VERTEX_HANDLE_SIZE) / 2 + 2
+        extra = max(extra, self._max_arrow_extent())
         return self.path().boundingRect().adjusted(-extra, -extra, extra, extra)
 
     def shape(self) -> QPainterPath:
         stroker = QPainterPathStroker()
         stroker.setWidth(max(self._line_width + HIT_TOLERANCE, 12.0))
-        return stroker.createStroke(self.path())
+        stroke = stroker.createStroke(self.path())
+        # Arrows may extend beyond the stroke — add a clickable disc per
+        # arrow so they can be grabbed on unselected wires too.
+        if self._arrows and len(self._expanded) >= 2:
+            for a in self._arrows:
+                pt, _tang = point_at_fraction(self._expanded, a.t)
+                r = self._arrow_pick_radius(a)
+                stroke.addEllipse(pt, r, r)
+        return stroke
 
     # =====================================================================
     # Grid snapping for waypoints
@@ -1058,6 +1296,38 @@ class ConnectionItem(QGraphicsPathItem):
         if self._group_id:
             super().mousePressEvent(event)
             return
+        # Direction arrows respond regardless of selection state (they are
+        # always visible, unlike waypoint handles). Waypoint handles win
+        # ties on a selected wire — a large arrow's pick radius can
+        # otherwise cover a handle and make it ungrabbable.
+        if event.button() == Qt.MouseButton.LeftButton and self._arrows:
+            mods = event.modifiers()
+            shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
+            ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
+            alt = bool(mods & Qt.KeyboardModifier.AltModifier)
+            pos = event.scenePos()
+            waypoint_wins = (self.isSelected()
+                             and self._find_waypoint_at(pos) is not None)
+            ai = None if waypoint_wins else self._find_arrow_at(pos)
+            if ai is not None:
+                if ctrl and shift:
+                    # Deletion parity with Ctrl+Shift+click on waypoints
+                    self._delete_arrow(ai)
+                    event.accept()
+                    return
+                if not (ctrl or shift or alt):
+                    # Plain press → begin dragging the arrow along the wire.
+                    # Keep the click-selects-the-wire invariant intact.
+                    if not self.isSelected():
+                        scene = self.scene()
+                        if scene is not None:
+                            scene.clearSelection()
+                        self.setSelected(True)
+                    self._dragging_arrow = ai
+                    self._drag_start_arrows = self.arrows
+                    self._drag_start_pos = QPointF(pos)
+                    event.accept()
+                    return
         if event.button() == Qt.MouseButton.LeftButton and self.isSelected():
             pos = event.scenePos()
             shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
@@ -1141,6 +1411,23 @@ class ConnectionItem(QGraphicsPathItem):
 
     def mouseMoveEvent(self, event) -> None:  # noqa: ANN001
         pos = event.scenePos()
+
+        # --- Direction-arrow drag (constrained to the wire path) ---
+        if self._dragging_arrow is not None:
+            # Ignore sub-threshold jitter so a sloppy click (or the first
+            # click of a double-click) doesn't commit a spurious move.
+            if (self._drag_start_pos is not None
+                    and point_distance(pos, self._drag_start_pos)
+                    < self._pick_tolerance(4.0)
+                    and self.arrows == self._drag_start_arrows):
+                event.accept()
+                return
+            if 0 <= self._dragging_arrow < len(self._arrows) and len(self._expanded) >= 2:
+                t, _proj, _dist = fraction_at_point(self._expanded, pos)
+                self._arrows[self._dragging_arrow].t = t
+                self.update()
+            event.accept()
+            return
 
         # --- Waypoint drag (single or group, snaps to grid) ---
         if self._dragging_waypoint is not None:
@@ -1243,7 +1530,13 @@ class ConnectionItem(QGraphicsPathItem):
         pos = event.scenePos()
         seg: int | None = None
         cursor = None
-        if self.isSelected():
+        # Same precedence as mousePressEvent: on a selected wire a
+        # waypoint handle under the cursor outranks an arrow.
+        waypoint_wins = (self.isSelected()
+                         and self._find_waypoint_at(pos) is not None)
+        if self._arrows and not waypoint_wins and self._find_arrow_at(pos) is not None:
+            cursor = Qt.CursorShape.PointingHandCursor
+        elif self.isSelected():
             # Segment drag / waypoint drag only work on a selected wire —
             # advertise them with directional cursors.
             if self._find_waypoint_at(pos) is not None:
@@ -1279,6 +1572,17 @@ class ConnectionItem(QGraphicsPathItem):
         super().hoverLeaveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: ANN001
+        if self._dragging_arrow is not None:
+            old = self._drag_start_arrows
+            self._dragging_arrow = None
+            self._drag_start_arrows = None
+            self._drag_start_pos = None
+            new = self.arrows
+            if old is not None and new != old:
+                # State is already live; record the change for undo/redo.
+                self._push_arrows_change(old, new)
+            event.accept()
+            return
         if self._dragging_waypoint is not None or self._dragging_segment is not None:
             # Push undo command for the waypoint change (and any junction moves)
             if self._drag_start_waypoints is not None:
@@ -1442,6 +1746,9 @@ class ConnectionItem(QGraphicsPathItem):
         if self._group_id:
             super().mouseDoubleClickEvent(event)
             return
+        # (Double-click on a direction arrow is handled at the view level —
+        # DiagramView.mouseDoubleClickEvent flips it before items see the
+        # event, alongside the hop-cycle and trace-mode double-clicks.)
         if event.button() == Qt.MouseButton.LeftButton and self.isSelected():
             pos = event.scenePos()
             # Only select-all when double-clicking a segment, not a waypoint

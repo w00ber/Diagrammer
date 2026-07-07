@@ -32,6 +32,9 @@ Components are simple SVGs with named layers (`artwork`,
   and vertical flip, and stretchable bodies for variable-length parts.
 - **Rounded wire corners** with dynamic lead shortening so junctions
   meet components seamlessly.
+- **Wire direction arrows** — Ctrl+Alt+click a wire to drop a
+  signal-flow arrow; drag it along the wire, double-click to flip, and
+  style it (filled/hollow, size, outline) globally or per arrow.
 - **Simple shape drawing** — rectangles, ellipses, and lines with
   editable properties and resize handles.
 - **Annotations with LaTeX math** — inline `$...$` and display `$$...$$`

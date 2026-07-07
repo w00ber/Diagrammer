@@ -184,6 +184,20 @@ class PropertiesPanel(QDockWidget):
         )
         self._form.addRow("Routing:", mode_combo)
 
+        # Direction arrows (placed with Ctrl+Alt+click on the wire)
+        arrows = item.arrows
+        if arrows:
+            count_label = QLabel(str(len(arrows)))
+            count_label.setToolTip(
+                "Drag an arrow along the wire to move it; double-click "
+                "to flip; right-click for style and deletion.")
+            self._form.addRow("Direction arrows:", count_label)
+            clear_btn = QPushButton("Remove All Arrows")
+            clear_btn.clicked.connect(
+                lambda checked=False, it=item:
+                self._push_style(it, 'arrows', it.arrows, []))
+            self._form.addRow("", clear_btn)
+
         # Set as Default button
         default_btn = QPushButton("Set as Default")
         default_btn.setToolTip("Use this wire's style as the default for new connections")

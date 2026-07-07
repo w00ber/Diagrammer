@@ -147,3 +147,106 @@ class TestSerializerEmptyScene:
                               AnnotationItem, JunctionItem, ComponentItem))
         ]
         assert len(user_items) == 0
+
+
+class TestWireArrowSerialization:
+    @staticmethod
+    def _wired_scene(library):
+        """A scene with one wire between two junctions."""
+        from diagrammer.commands.connect_command import CreateConnectionCommand
+
+        scene = DiagramScene(library=library)
+        j1, j2 = JunctionItem(), JunctionItem()
+        j1.setPos(QPointF(0, 0))
+        j2.setPos(QPointF(200, 0))
+        scene.addItem(j1)
+        scene.addItem(j2)
+        cmd = CreateConnectionCommand(scene, j1.port, j2.port)
+        scene.undo_stack.push(cmd)
+        return scene, cmd.connection
+
+    @staticmethod
+    def _load(tmp_path, library, name="arrows.dgm", scene=None):
+        from diagrammer.items.connection_item import ConnectionItem
+
+        new_scene = DiagramScene(library=library)
+        DiagramSerializer.load(new_scene, tmp_path / name, library=library)
+        conns = [i for i in new_scene.items() if isinstance(i, ConnectionItem)]
+        assert len(conns) == 1
+        return conns[0]
+
+    def test_round_trip_default_and_overridden(self, tmp_path, library):
+        from diagrammer.items.connection_item import WireArrow
+
+        scene, conn = self._wired_scene(library)
+        conn.arrows = [
+            WireArrow(t=0.25),
+            WireArrow(t=0.75, forward=False, style="open",
+                      size=20.0, line_width=3.0),
+        ]
+        out = tmp_path / "arrows.dgm"
+        DiagramSerializer.save(scene, out)
+
+        loaded = self._load(tmp_path, library)
+        assert loaded.arrows == [
+            WireArrow(t=0.25),
+            WireArrow(t=0.75, forward=False, style="open",
+                      size=20.0, line_width=3.0),
+        ]
+
+    def test_default_fields_omitted_from_json(self, tmp_path, library):
+        from diagrammer.items.connection_item import WireArrow
+
+        scene, conn = self._wired_scene(library)
+        conn.arrows = [WireArrow(t=0.5)]
+        out = tmp_path / "arrows.dgm"
+        DiagramSerializer.save(scene, out)
+        data = json.loads(out.read_text())
+        (ad,) = data["connections"][0]["arrows"]
+        assert set(ad) == {"t", "forward"}
+
+    def test_no_arrows_key_when_none(self, tmp_path, library):
+        scene, _conn = self._wired_scene(library)
+        out = tmp_path / "arrows.dgm"
+        DiagramSerializer.save(scene, out)
+        data = json.loads(out.read_text())
+        assert "arrows" not in data["connections"][0]
+
+    def test_pre_2_4_file_loads_with_no_arrows(self, tmp_path, library):
+        scene, _conn = self._wired_scene(library)
+        out = tmp_path / "arrows.dgm"
+        DiagramSerializer.save(scene, out)
+        data = json.loads(out.read_text())
+        data["version"] = "2.3"
+        data["connections"][0].pop("arrows", None)
+        out.write_text(json.dumps(data))
+        loaded = self._load(tmp_path, library)
+        assert loaded.arrows == []
+
+    def test_malformed_arrow_entries_skipped(self, tmp_path, library):
+        from diagrammer.items.connection_item import WireArrow
+
+        scene, conn = self._wired_scene(library)
+        conn.arrows = [WireArrow(t=0.5)]
+        out = tmp_path / "arrows.dgm"
+        DiagramSerializer.save(scene, out)
+        data = json.loads(out.read_text())
+        data["connections"][0]["arrows"] = [
+            "junk",                            # not a dict
+            {"t": "NaN?"},                     # unparseable t
+            {"t": 3.0, "style": "sparkly"},    # t clamped, style discarded
+            {"t": 0.5, "forward": False},      # valid
+        ]
+        out.write_text(json.dumps(data))
+        loaded = self._load(tmp_path, library)
+        assert loaded.arrows == [
+            WireArrow(t=1.0, forward=True),
+            WireArrow(t=0.5, forward=False),
+        ]
+
+    def test_format_version_is_2_4(self, tmp_path, library):
+        scene, _conn = self._wired_scene(library)
+        out = tmp_path / "v.dgm"
+        DiagramSerializer.save(scene, out)
+        data = json.loads(out.read_text())
+        assert data["version"] == "2.4"

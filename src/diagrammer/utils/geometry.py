@@ -396,6 +396,93 @@ def closest_point_on_segment(
 
 
 # ---------------------------------------------------------------------------
+# Arclength parameterization (position along a polyline)
+# ---------------------------------------------------------------------------
+
+
+def polyline_length(points: list[QPointF]) -> float:
+    """Total arclength of a polyline."""
+    total = 0.0
+    for i in range(len(points) - 1):
+        total += point_distance(points[i], points[i + 1])
+    return total
+
+
+def point_at_fraction(
+    points: list[QPointF], t: float
+) -> tuple[QPointF, QPointF]:
+    """Point and unit tangent at arclength fraction *t* along a polyline.
+
+    *t* is clamped to ``[0, 1]``. The tangent is the direction of the
+    segment containing the point; when the point lands exactly on a
+    shared vertex it is the incoming segment's direction. Degenerate
+    polylines (< 2 points or zero length) return
+    ``(first_point_or_origin, QPointF(1, 0))``.
+    """
+    fallback_tangent = QPointF(1.0, 0.0)
+    if not points:
+        return QPointF(), fallback_tangent
+    if len(points) < 2:
+        return QPointF(points[0]), fallback_tangent
+
+    total = polyline_length(points)
+    if total < 1e-9:
+        return QPointF(points[0]), fallback_tangent
+
+    t = max(0.0, min(1.0, t))
+    target = t * total
+    walked = 0.0
+    for i in range(len(points) - 1):
+        seg_len = point_distance(points[i], points[i + 1])
+        if seg_len < 1e-12:
+            continue
+        if walked + seg_len >= target or i == len(points) - 2:
+            s = (target - walked) / seg_len
+            s = max(0.0, min(1.0, s))
+            a, b = points[i], points[i + 1]
+            pt = QPointF(a.x() + (b.x() - a.x()) * s,
+                         a.y() + (b.y() - a.y()) * s)
+            tang = QPointF((b.x() - a.x()) / seg_len,
+                           (b.y() - a.y()) / seg_len)
+            return pt, tang
+        walked += seg_len
+    return QPointF(points[-1]), fallback_tangent
+
+
+def fraction_at_point(
+    points: list[QPointF], pos: QPointF
+) -> tuple[float, QPointF, float]:
+    """Project *pos* onto a polyline.
+
+    Returns ``(t, projected_point, distance)`` where *t* is the
+    arclength fraction of the projection. Degenerate polylines return
+    ``(0.0, first_point_or_origin, distance)``.
+    """
+    if not points:
+        return 0.0, QPointF(), point_distance(pos, QPointF())
+    if len(points) < 2:
+        return 0.0, QPointF(points[0]), point_distance(pos, points[0])
+
+    total = polyline_length(points)
+    if total < 1e-9:
+        return 0.0, QPointF(points[0]), point_distance(pos, points[0])
+
+    best_t = 0.0
+    best_proj = QPointF(points[0])
+    best_dist = float("inf")
+    walked = 0.0
+    for i in range(len(points) - 1):
+        seg_len = point_distance(points[i], points[i + 1])
+        proj, dist = closest_point_on_segment(pos, points[i], points[i + 1])
+        if dist < best_dist:
+            best_dist = dist
+            best_proj = proj
+            best_t = (walked + point_distance(points[i], proj)) / total
+        walked += seg_len
+    return max(0.0, min(1.0, best_t)), best_proj, best_dist
+
+
+# ---------------------------------------------------------------------------
 # Segment classification
 # ---------------------------------------------------------------------------
 

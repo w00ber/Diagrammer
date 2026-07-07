@@ -65,10 +65,13 @@ from PySide6.QtWidgets import QGraphicsScene
 #         explicit terminal dots on free wire ends.
 #   2.3 - optional crossover "flip" field (bool) selecting the hop's
 #         bulge side.
+#   2.4 - optional connection "arrows" list — signal-flow direction
+#         arrows riding on a wire: [{"t": float, "forward": bool,
+#         "style"?: "filled"|"open", "size"?: float, "line_width"?: float}].
 # ---------------------------------------------------------------------------
 
 FORMAT_MAJOR = 2
-FORMAT_MINOR = 3
+FORMAT_MINOR = 4
 FORMAT_VERSION = f"{FORMAT_MAJOR}.{FORMAT_MINOR}"
 
 
@@ -319,6 +322,34 @@ class DiagramSerializer:
                 conn.routing_mode = cd["routing_mode"]
             if cd.get("closed"):
                 conn.closed = True
+            # Direction arrows (2.4+) — tolerant of malformed entries
+            if "arrows" in cd:
+                from diagrammer.items.connection_item import (
+                    WIRE_ARROW_STYLES,
+                    WireArrow,
+                )
+                arrows = []
+                for ad in cd.get("arrows") or []:
+                    if not isinstance(ad, dict):
+                        continue
+                    try:
+                        t = max(0.0, min(1.0, float(ad.get("t", 0.5))))
+                    except (TypeError, ValueError):
+                        continue
+                    style = ad.get("style")
+                    if style not in WIRE_ARROW_STYLES:
+                        style = None
+                    size = ad.get("size")
+                    lw = ad.get("line_width")
+                    arrows.append(WireArrow(
+                        t=t,
+                        forward=bool(ad.get("forward", True)),
+                        style=style,
+                        size=float(size) if isinstance(size, (int, float)) else None,
+                        line_width=float(lw) if isinstance(lw, (int, float)) else None,
+                    ))
+                if arrows:
+                    conn.arrows = arrows
             # Apply waypoints. The v2 form is {"a", "dx", "dy"} and binds
             # directly to the resolved port. The legacy v1 form is [x, y]
             # in scene coordinates and rebinds via the closest-port helper
@@ -529,11 +560,23 @@ def _serialize_junction(item) -> dict:
     return data
 
 
+def _serialize_arrow(a) -> dict:
+    """Serialize a WireArrow, omitting unset (use-default) style fields."""
+    d = {"t": a.t, "forward": a.forward}
+    if a.style is not None:
+        d["style"] = a.style
+    if a.size is not None:
+        d["size"] = a.size
+    if a.line_width is not None:
+        d["line_width"] = a.line_width
+    return d
+
+
 def _serialize_connection(item) -> dict:
     src_port = item.source_port
     tgt_port = item.target_port
 
-    return {
+    data = {
         "id": item.instance_id,
         "source": {
             "component_id": src_port.component.instance_id,
@@ -557,6 +600,10 @@ def _serialize_connection(item) -> dict:
         "z": item.zValue(),
         "group": getattr(item, '_group_ids', []) or [],
     }
+    # Direction arrows (2.4+) — additive optional field, only when present
+    if item._arrows:
+        data["arrows"] = [_serialize_arrow(a) for a in item._arrows]
+    return data
 
 
 def _serialize_shape(item, shape_type: str) -> dict:

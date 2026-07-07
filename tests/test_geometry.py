@@ -304,3 +304,97 @@ class TestBuildRoundedPathHops:
             pts, 5.0, closed=True, hops=[QPointF(50, 0)], hop_radius=6.0,
         )
         assert base == hopped
+
+
+# ---------------------------------------------------------------------------
+# Arclength parameterization (wire direction arrows)
+# ---------------------------------------------------------------------------
+
+
+class TestPolylineLength:
+    def test_l_shape(self):
+        from diagrammer.utils.geometry import polyline_length
+        pts = [QPointF(0, 0), QPointF(100, 0), QPointF(100, 50)]
+        assert polyline_length(pts) == pytest.approx(150.0)
+
+    def test_degenerate(self):
+        from diagrammer.utils.geometry import polyline_length
+        assert polyline_length([]) == 0.0
+        assert polyline_length([QPointF(5, 5)]) == 0.0
+
+
+class TestPointAtFraction:
+    L_SHAPE = [QPointF(0, 0), QPointF(100, 0), QPointF(100, 50)]
+
+    def test_endpoints(self):
+        from diagrammer.utils.geometry import point_at_fraction
+        pt0, _ = point_at_fraction(self.L_SHAPE, 0.0)
+        pt1, _ = point_at_fraction(self.L_SHAPE, 1.0)
+        assert (pt0.x(), pt0.y()) == (pytest.approx(0), pytest.approx(0))
+        assert (pt1.x(), pt1.y()) == (pytest.approx(100), pytest.approx(50))
+
+    def test_midpoint_on_first_segment(self):
+        from diagrammer.utils.geometry import point_at_fraction
+        # t=0.5 of a 150-long polyline is 75 along → on the H segment
+        pt, tang = point_at_fraction(self.L_SHAPE, 0.5)
+        assert pt.x() == pytest.approx(75)
+        assert pt.y() == pytest.approx(0)
+        assert (tang.x(), tang.y()) == (pytest.approx(1), pytest.approx(0))
+
+    def test_tangent_follows_segment(self):
+        from diagrammer.utils.geometry import point_at_fraction
+        # 125 along → 25 down the V segment
+        pt, tang = point_at_fraction(self.L_SHAPE, 125.0 / 150.0)
+        assert pt.x() == pytest.approx(100)
+        assert pt.y() == pytest.approx(25)
+        assert (tang.x(), tang.y()) == (pytest.approx(0), pytest.approx(1))
+
+    def test_clamping(self):
+        from diagrammer.utils.geometry import point_at_fraction
+        below, _ = point_at_fraction(self.L_SHAPE, -0.5)
+        above, _ = point_at_fraction(self.L_SHAPE, 1.5)
+        assert (below.x(), below.y()) == (pytest.approx(0), pytest.approx(0))
+        assert (above.x(), above.y()) == (pytest.approx(100), pytest.approx(50))
+
+    def test_degenerate_inputs(self):
+        from diagrammer.utils.geometry import point_at_fraction
+        pt, tang = point_at_fraction([], 0.5)
+        assert (tang.x(), tang.y()) == (1.0, 0.0)
+        pt, tang = point_at_fraction([QPointF(7, 8)], 0.5)
+        assert (pt.x(), pt.y()) == (7.0, 8.0)
+        # Zero-length polyline
+        pt, tang = point_at_fraction([QPointF(3, 3), QPointF(3, 3)], 0.5)
+        assert (pt.x(), pt.y()) == (3.0, 3.0)
+        assert (tang.x(), tang.y()) == (1.0, 0.0)
+
+
+class TestFractionAtPoint:
+    L_SHAPE = [QPointF(0, 0), QPointF(100, 0), QPointF(100, 50)]
+
+    def test_projection_onto_segment(self):
+        from diagrammer.utils.geometry import fraction_at_point
+        t, proj, dist = fraction_at_point(self.L_SHAPE, QPointF(40, 10))
+        assert t == pytest.approx(40.0 / 150.0)
+        assert (proj.x(), proj.y()) == (pytest.approx(40), pytest.approx(0))
+        assert dist == pytest.approx(10.0)
+
+    def test_projection_second_segment(self):
+        from diagrammer.utils.geometry import fraction_at_point
+        t, proj, dist = fraction_at_point(self.L_SHAPE, QPointF(110, 30))
+        assert t == pytest.approx(130.0 / 150.0)
+        assert (proj.x(), proj.y()) == (pytest.approx(100), pytest.approx(30))
+        assert dist == pytest.approx(10.0)
+
+    def test_round_trip(self):
+        from diagrammer.utils.geometry import fraction_at_point, point_at_fraction
+        for t in (0.0, 0.1, 0.4, 2.0 / 3.0, 0.9, 1.0):
+            pt, _ = point_at_fraction(self.L_SHAPE, t)
+            t2, _, dist = fraction_at_point(self.L_SHAPE, pt)
+            assert t2 == pytest.approx(t, abs=1e-9)
+            assert dist == pytest.approx(0.0, abs=1e-9)
+
+    def test_degenerate(self):
+        from diagrammer.utils.geometry import fraction_at_point
+        t, proj, dist = fraction_at_point([QPointF(5, 0)], QPointF(8, 4))
+        assert t == 0.0
+        assert dist == pytest.approx(5.0)

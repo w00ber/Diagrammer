@@ -15,6 +15,9 @@ wiring:
   corner_radius: 3.0         # pt
   crossover_style: "plain"   # "plain" | "hop" — unconnected wire crossings
   junction_dots: true        # draw a filled dot where >= 2 wires meet
+  arrow_style: "filled"      # "filled" | "open" — wire direction arrows
+  arrow_size: 14.0           # pt — direction arrow length
+  arrow_line_width: 2.0      # pt — outline width of open (hollow) arrows
 
 # --- Snap behavior ---
 snap:
