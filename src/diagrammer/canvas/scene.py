@@ -202,11 +202,14 @@ class DiagramScene(QGraphicsScene):
         """
         return bool(self._crossover_overrides) or self.default_crossover_style() == "hop"
 
-    def find_wire_at(self, scene_pos: QPointF, tolerance: float):
+    def find_wire_at(self, scene_pos: QPointF, tolerance: float,
+                     exclude_port=None):
         """Find the wire nearest *scene_pos* within *tolerance*.
 
         Returns ``(connection, projected_point)`` for the closest point
-        on the wire's expanded route, or None.
+        on the wire's expanded route, or None. Wires with an endpoint on
+        *exclude_port* are skipped (used while routing so a new wire
+        can't terminate on itself).
         """
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.utils.geometry import closest_point_on_segment
@@ -216,6 +219,10 @@ class DiagramScene(QGraphicsScene):
         best_dist = tolerance
         for item in self.items():
             if not isinstance(item, ConnectionItem):
+                continue
+            if exclude_port is not None and (
+                    item.source_port is exclude_port
+                    or item.target_port is exclude_port):
                 continue
             pts = item.all_points()
             n = len(pts)
@@ -236,27 +243,21 @@ class DiagramScene(QGraphicsScene):
 
         Returns ``(connection, arrow_index)`` or None. *tolerance* is a
         minimum pick radius in scene units; larger arrows are clickable
-        over their full extent.
+        over their full extent. Delegates the per-wire hit test to
+        ``ConnectionItem._nearest_arrow`` so scene- and item-level picks
+        share one tolerance model.
         """
         from diagrammer.items.connection_item import ConnectionItem
-        from diagrammer.utils.geometry import point_at_fraction, point_distance
 
         best = None
         best_dist = float("inf")
         for item in self.items():
             if not isinstance(item, ConnectionItem) or not item._arrows:
                 continue
-            pts = item.all_points()
-            if len(pts) < 2:
-                continue
-            for i, a in enumerate(item._arrows):
-                _style, size, _lw = item._resolved_arrow(a)
-                pt, _tang = point_at_fraction(pts, a.t)
-                tol = max(tolerance, size * 0.6)
-                dist = point_distance(scene_pos, pt)
-                if dist < tol and dist < best_dist:
-                    best_dist = dist
-                    best = (item, i)
+            hit = item._nearest_arrow(scene_pos, tolerance)
+            if hit is not None and hit[1] < best_dist:
+                best_dist = hit[1]
+                best = (item, hit[0])
         return best
 
     def find_crossing_at(self, scene_pos: QPointF, tolerance: float):
@@ -1178,31 +1179,14 @@ class DiagramScene(QGraphicsScene):
 
         Returns the junction's port, or None.
         """
-        from diagrammer.items.connection_item import ConnectionItem
-        from diagrammer.utils.geometry import closest_point_on_segment
-
         WIRE_SNAP_DIST = 15.0  # screen px
-        best_conn = None
-        best_proj = None
-        best_dist = self._pick_tolerance(WIRE_SNAP_DIST)
-
-        source = self._connecting_from_port
-        for item in self.items():
-            if not isinstance(item, ConnectionItem):
-                continue
-            # Don't terminate on a wire that starts from the same port
-            if item.source_port is source or item.target_port is source:
-                continue
-            pts = item.all_points()
-            for i in range(len(pts) - 1):
-                proj, dist = closest_point_on_segment(cursor_pos, pts[i], pts[i + 1])
-                if dist < best_dist:
-                    best_dist = dist
-                    best_proj = proj
-                    best_conn = item
-
-        if best_conn is None or best_proj is None:
+        # Don't terminate on a wire that starts from the same port
+        hit = self.find_wire_at(cursor_pos,
+                                self._pick_tolerance(WIRE_SNAP_DIST),
+                                exclude_port=self._connecting_from_port)
+        if hit is None:
             return None
+        best_conn, best_proj = hit
 
         # Snap the junction position to the nearest grid point if possible.
         # Grid snap takes priority — if a grid point is close to the wire

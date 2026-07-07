@@ -311,31 +311,51 @@ class ConnectionItem(QGraphicsPathItem):
             style = ARROW_STYLE_FILLED
         return style, size, lw
 
+    def _arrow_pick_radius(self, arrow: WireArrow) -> float:
+        """Grab/click radius of an arrow, from its resolved size.
+
+        The single source of truth shared by ``shape()``, the item hit
+        test, and the scene-level lookup, so the visual hit region and
+        the interaction hit tests can't drift apart.
+        """
+        _style, size, _lw = self._resolved_arrow(arrow)
+        return size * 0.6
+
     def _max_arrow_extent(self) -> float:
         """Largest half-extent any arrow adds beyond the wire centerline."""
         extent = 0.0
         for a in self._arrows:
-            _style, size, lw = self._resolved_arrow(a)
-            extent = max(extent, size * 0.6 + lw)
+            _style, _size, lw = self._resolved_arrow(a)
+            extent = max(extent, self._arrow_pick_radius(a) + lw)
         return extent
+
+    def _nearest_arrow(
+        self, scene_pos: QPointF, base_tolerance: float
+    ) -> tuple[int, float] | None:
+        """Nearest arrow within pick range of *scene_pos*.
+
+        Returns ``(index, distance)`` or None. Each arrow's pick radius
+        is at least *base_tolerance* (scene units) and grows with the
+        arrow size.
+        """
+        best: tuple[int, float] | None = None
+        for i, a in enumerate(self._arrows):
+            pt, _tang = point_at_fraction(self._expanded, a.t)
+            tol = max(base_tolerance, self._arrow_pick_radius(a))
+            dist = point_distance(scene_pos, pt)
+            if dist < tol and (best is None or dist < best[1]):
+                best = (i, dist)
+        return best
 
     def _find_arrow_at(self, scene_pos: QPointF) -> int | None:
         """Return the index of the direction arrow near *scene_pos*.
 
-        Tolerance is deliberately below the waypoint pick tolerance so an
-        arrow sitting near a waypoint handle doesn't steal its clicks.
+        The base tolerance stays below the waypoint pick tolerance; on a
+        selected wire ``mousePressEvent`` additionally gives waypoint
+        handles priority, since a large arrow's radius can exceed it.
         """
-        best_idx: int | None = None
-        best_dist = float("inf")
-        for i, a in enumerate(self._arrows):
-            _style, size, _lw = self._resolved_arrow(a)
-            pt, _tang = point_at_fraction(self._expanded, a.t)
-            tol = max(self._pick_tolerance(10.0), size * 0.6)
-            dist = point_distance(scene_pos, pt)
-            if dist < tol and dist < best_dist:
-                best_dist = dist
-                best_idx = i
-        return best_idx
+        hit = self._nearest_arrow(scene_pos, self._pick_tolerance(10.0))
+        return hit[0] if hit is not None else None
 
     def _push_arrows_change(self, old: list[WireArrow], new: list[WireArrow]) -> None:
         """Apply + record an arrows-list change (undoable when on a scene)."""
@@ -1000,9 +1020,8 @@ class ConnectionItem(QGraphicsPathItem):
         # arrow so they can be grabbed on unselected wires too.
         if self._arrows and len(self._expanded) >= 2:
             for a in self._arrows:
-                _style, size, _lw = self._resolved_arrow(a)
                 pt, _tang = point_at_fraction(self._expanded, a.t)
-                r = size * 0.6
+                r = self._arrow_pick_radius(a)
                 stroke.addEllipse(pt, r, r)
         return stroke
 
@@ -1251,13 +1270,18 @@ class ConnectionItem(QGraphicsPathItem):
             super().mousePressEvent(event)
             return
         # Direction arrows respond regardless of selection state (they are
-        # always visible, unlike waypoint handles).
+        # always visible, unlike waypoint handles). Waypoint handles win
+        # ties on a selected wire — a large arrow's pick radius can
+        # otherwise cover a handle and make it ungrabbable.
         if event.button() == Qt.MouseButton.LeftButton and self._arrows:
             mods = event.modifiers()
             shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
             ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
             alt = bool(mods & Qt.KeyboardModifier.AltModifier)
-            ai = self._find_arrow_at(event.scenePos())
+            pos = event.scenePos()
+            waypoint_wins = (self.isSelected()
+                             and self._find_waypoint_at(pos) is not None)
+            ai = None if waypoint_wins else self._find_arrow_at(pos)
             if ai is not None:
                 if ctrl and shift:
                     # Deletion parity with Ctrl+Shift+click on waypoints
@@ -1265,9 +1289,16 @@ class ConnectionItem(QGraphicsPathItem):
                     event.accept()
                     return
                 if not (ctrl or shift or alt):
-                    # Plain press → begin dragging the arrow along the wire
+                    # Plain press → begin dragging the arrow along the wire.
+                    # Keep the click-selects-the-wire invariant intact.
+                    if not self.isSelected():
+                        scene = self.scene()
+                        if scene is not None:
+                            scene.clearSelection()
+                        self.setSelected(True)
                     self._dragging_arrow = ai
                     self._drag_start_arrows = self.arrows
+                    self._drag_start_pos = QPointF(pos)
                     event.accept()
                     return
         if event.button() == Qt.MouseButton.LeftButton and self.isSelected():
@@ -1356,6 +1387,14 @@ class ConnectionItem(QGraphicsPathItem):
 
         # --- Direction-arrow drag (constrained to the wire path) ---
         if self._dragging_arrow is not None:
+            # Ignore sub-threshold jitter so a sloppy click (or the first
+            # click of a double-click) doesn't commit a spurious move.
+            if (self._drag_start_pos is not None
+                    and point_distance(pos, self._drag_start_pos)
+                    < self._pick_tolerance(4.0)
+                    and self.arrows == self._drag_start_arrows):
+                event.accept()
+                return
             if 0 <= self._dragging_arrow < len(self._arrows) and len(self._expanded) >= 2:
                 t, _proj, _dist = fraction_at_point(self._expanded, pos)
                 self._arrows[self._dragging_arrow].t = t
@@ -1464,7 +1503,11 @@ class ConnectionItem(QGraphicsPathItem):
         pos = event.scenePos()
         seg: int | None = None
         cursor = None
-        if self._arrows and self._find_arrow_at(pos) is not None:
+        # Same precedence as mousePressEvent: on a selected wire a
+        # waypoint handle under the cursor outranks an arrow.
+        waypoint_wins = (self.isSelected()
+                         and self._find_waypoint_at(pos) is not None)
+        if self._arrows and not waypoint_wins and self._find_arrow_at(pos) is not None:
             cursor = Qt.CursorShape.PointingHandCursor
         elif self.isSelected():
             # Segment drag / waypoint drag only work on a selected wire —
@@ -1506,6 +1549,7 @@ class ConnectionItem(QGraphicsPathItem):
             old = self._drag_start_arrows
             self._dragging_arrow = None
             self._drag_start_arrows = None
+            self._drag_start_pos = None
             new = self.arrows
             if old is not None and new != old:
                 # State is already live; record the change for undo/redo.
@@ -1675,15 +1719,9 @@ class ConnectionItem(QGraphicsPathItem):
         if self._group_id:
             super().mouseDoubleClickEvent(event)
             return
-        if event.button() == Qt.MouseButton.LeftButton and self._arrows:
-            ai = self._find_arrow_at(event.scenePos())
-            if ai is not None:
-                # Cancel the drag the first click of the double-click started
-                self._dragging_arrow = None
-                self._drag_start_arrows = None
-                self._flip_arrow(ai)
-                event.accept()
-                return
+        # (Double-click on a direction arrow is handled at the view level —
+        # DiagramView.mouseDoubleClickEvent flips it before items see the
+        # event, alongside the hop-cycle and trace-mode double-clicks.)
         if event.button() == Qt.MouseButton.LeftButton and self.isSelected():
             pos = event.scenePos()
             # Only select-all when double-clicking a segment, not a waypoint

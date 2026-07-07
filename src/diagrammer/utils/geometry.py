@@ -414,8 +414,9 @@ def point_at_fraction(
     """Point and unit tangent at arclength fraction *t* along a polyline.
 
     *t* is clamped to ``[0, 1]``. The tangent is the direction of the
-    segment containing the point (at a shared vertex, the following
-    segment). Degenerate polylines (< 2 points or zero length) return
+    segment containing the point; when the point lands exactly on a
+    shared vertex it is the incoming segment's direction. Degenerate
+    polylines (< 2 points or zero length) return
     ``(first_point_or_origin, QPointF(1, 0))``.
     """
     fallback_tangent = QPointF(1.0, 0.0)

@@ -957,6 +957,9 @@ class DiagramView(QGraphicsView):
             # -- Ctrl+Alt+click → place a direction arrow on a wire --
             # Must precede the Alt+click duplicate branch below: that
             # check is bitwise, so any Alt-containing combo matches it.
+            # On a miss the event falls through (the duplicate branch
+            # swallows any remaining Alt-combo on an item, so the wire's
+            # Alt-ignoring Ctrl+click waypoint-insert can't fire).
             if (event.modifiers() & Qt.KeyboardModifier.AltModifier
                     and event.modifiers() & Qt.KeyboardModifier.ControlModifier):
                 hit = self._diagram_scene.find_wire_at(
@@ -964,11 +967,8 @@ class DiagramView(QGraphicsView):
                 if hit is not None:
                     conn, proj = hit
                     conn.add_arrow_at(proj)
-                # Swallow the click even on a miss — the wire item's own
-                # Ctrl+click waypoint-insert ignores the Alt bit and
-                # would otherwise fire.
-                event.accept()
-                return
+                    event.accept()
+                    return
 
             # -- Option/Alt+click → duplicate and drag (selected items or single item) --
             from diagrammer.items.shape_item import (

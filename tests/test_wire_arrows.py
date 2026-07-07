@@ -63,6 +63,12 @@ class TestArrowPlacement:
         assert (proj.x(), proj.y()) == (pytest.approx(80), pytest.approx(0))
         assert scene.find_wire_at(QPointF(80, 100), tolerance=15.0) is None
 
+    def test_scene_find_wire_at_exclude_port(self, scene):
+        conn = _h_wire(scene)
+        hit = scene.find_wire_at(QPointF(80, 8), tolerance=15.0,
+                                 exclude_port=conn.source_port)
+        assert hit is None
+
     def test_scene_find_wire_arrow_at(self, scene):
         conn = _h_wire(scene)
         conn.add_arrow_at(QPointF(50, 0))
@@ -92,6 +98,21 @@ class TestArrowGeometry:
         conn.arrows = [WireArrow(t=0.5)]
         assert conn._find_arrow_at(QPointF(103, 4)) == 0
         assert conn._find_arrow_at(QPointF(140, 0)) is None
+
+    def test_large_arrow_pick_radius_grows(self, scene):
+        conn = _h_wire(scene)
+        conn.arrows = [WireArrow(t=0.5, size=50.0)]
+        # Pick radius follows size (50 * 0.6 = 30), same as the shape() disc
+        assert conn._find_arrow_at(QPointF(125, 0)) == 0
+        assert conn._find_arrow_at(QPointF(140, 0)) is None
+
+    def test_pick_radius_consistent_between_item_and_scene(self, scene):
+        conn = _h_wire(scene)
+        conn.arrows = [WireArrow(t=0.5, size=50.0)]
+        # Scene-level lookup shares the item's tolerance model
+        probe = QPointF(125, 0)
+        assert conn._find_arrow_at(probe) == 0
+        assert scene.find_wire_arrow_at(probe, tolerance=10.0) == (conn, 0)
 
     def test_arrow_tracks_reroute(self, scene):
         from diagrammer.utils.geometry import point_at_fraction
