@@ -259,18 +259,19 @@ class DiagramScene(QGraphicsScene):
         if best is None:
             return None
         conn_a, conn_b, hit = best
-        _style, owner_id = self.resolve_crossover(conn_a, conn_b)
+        _style, owner_id, _flip = self.resolve_crossover(conn_a, conn_b)
         if owner_id == conn_b.instance_id:
             conn_a, conn_b = conn_b, conn_a
         return conn_a, conn_b, hit
 
-    def resolve_crossover(self, conn_a, conn_b) -> tuple[str, str]:
-        """Return ``(style, owner_instance_id)`` for a pair of wires.
+    def resolve_crossover(self, conn_a, conn_b) -> tuple[str, str, bool]:
+        """Return ``(style, owner_instance_id, flip)`` for a pair of wires.
 
         Style: the pair's override, else the global default. Owner (the
         wire that arcs over the other): the override's owner if it still
         names one of the pair, else the wire with the higher zValue
-        (tie → larger instance_id).
+        (tie → larger instance_id). Flip: True mirrors the hop's bulge to
+        the opposite side (default False).
         """
         ov = self._crossover_overrides.get(
             self.crossover_key(conn_a.instance_id, conn_b.instance_id))
@@ -283,7 +284,8 @@ class DiagramScene(QGraphicsScene):
                          else conn_b.instance_id)
             else:
                 owner = max(conn_a.instance_id, conn_b.instance_id)
-        return style, owner
+        flip = bool((ov or {}).get("flip", False))
+        return style, owner, flip
 
     # -- Mode management --
 

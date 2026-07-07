@@ -2306,9 +2306,10 @@ class DiagramView(QGraphicsView):
             event.accept()
             return
 
-        # Double-click on a hop crossing → swap which wire hops.
-        # (Takes precedence over ConnectionItem's double-click select-all
-        # only within pick tolerance of an actual crossing point.)
+        # Double-click on a hop crossing → cycle its 4 orientations
+        # (owner x bulge side). Takes precedence over ConnectionItem's
+        # double-click select-all only within pick tolerance of an actual
+        # crossing point.
         if (event.button() == Qt.MouseButton.LeftButton
                 and not self._trace_routing):
             scene_pos = self.mapToScene(event.position().toPoint())
@@ -2316,9 +2317,10 @@ class DiagramView(QGraphicsView):
                 scene_pos, self.pick_tolerance(10.0))
             if crossing is not None:
                 conn_a, conn_b, _pt = crossing
-                style, _owner = self._diagram_scene.resolve_crossover(conn_a, conn_b)
+                style, _owner, _flip = self._diagram_scene.resolve_crossover(
+                    conn_a, conn_b)
                 if style == "hop":
-                    self._swap_crossing_owner(conn_a, conn_b)
+                    self._cycle_crossing_hop(conn_a, conn_b)
                     event.accept()
                     return
 
@@ -2419,17 +2421,48 @@ class DiagramView(QGraphicsView):
                     lambda _c=False, s=style, a=owner_conn, b=other_conn:
                     self._set_crossing_style(a, b, s))
             cross_menu.addSeparator()
-            resolved_style, _owner = self._diagram_scene.resolve_crossover(
+            resolved_style, _owner, _flip = self._diagram_scene.resolve_crossover(
                 owner_conn, other_conn)
-            swap_act = cross_menu.addAction("Swap Hop Direction")
+            swap_act = cross_menu.addAction("Swap Which Wire Hops")
             swap_act.setEnabled(resolved_style == "hop")
             swap_act.triggered.connect(
                 lambda _c=False, a=owner_conn, b=other_conn:
                 self._swap_crossing_owner(a, b))
+            flip_act = cross_menu.addAction("Flip Hop Side")
+            flip_act.setEnabled(resolved_style == "hop")
+            flip_act.triggered.connect(
+                lambda _c=False, a=owner_conn, b=other_conn:
+                self._flip_crossing_side(a, b))
             junc_act = cross_menu.addAction("Convert Crossing to Junction")
             junc_act.triggered.connect(
                 lambda _c=False, a=owner_conn, b=other_conn, pt=cross_pt:
                 self._diagram_scene.convert_crossing_to_junction(a, b, pt))
+
+        # Free wire end near the click → end-marker submenu
+        _end_conn, _end_name, end_port = self._find_wire_endpoint_for_extend(scene_pos)
+        if end_port is not None:
+            end_junction = end_port.component
+            is_free_end = (
+                isinstance(end_junction, JunctionItem)
+                and len(self._diagram_scene.connections_on_port(end_port)) == 1
+            )
+            if is_free_end:
+                from PySide6.QtGui import QActionGroup as _EndActionGroup
+                if menu.actions():
+                    menu.addSeparator()
+                end_menu = menu.addMenu("Wire End")
+                end_grp = _EndActionGroup(end_menu)
+                current = end_junction.end_marker
+                for label, marker in (("No Dot", "none"),
+                                      ("Filled Dot", "filled"),
+                                      ("Open Dot", "open")):
+                    act = end_menu.addAction(label)
+                    act.setCheckable(True)
+                    act.setChecked(current == marker)
+                    end_grp.addAction(act)
+                    act.triggered.connect(
+                        lambda _c=False, j=end_junction, m=marker:
+                        self._set_wire_end_marker(j, m))
 
         if isinstance(item, ConnectionItem):
             if menu.actions():
@@ -2497,6 +2530,14 @@ class DiagramView(QGraphicsView):
             menu.exec(event.globalPos())
         event.accept()
 
+    def _set_wire_end_marker(self, junction, marker: str) -> None:
+        """Set a free wire end's terminal marker (undoable)."""
+        from diagrammer.commands.style_command import ChangeStyleCommand
+        old = junction.end_marker
+        if marker != old:
+            self._diagram_scene.undo_stack.push(
+                ChangeStyleCommand(junction, 'end_marker', old, marker))
+
     def _set_crossing_style(self, conn_a, conn_b, style: str | None) -> None:
         """Set (or clear, when style is None) the pair's crossover override."""
         from diagrammer.commands.connect_command import SetCrossoverStyleCommand
@@ -2520,11 +2561,48 @@ class DiagramView(QGraphicsView):
         """Flip which wire of the pair arcs over the other."""
         from diagrammer.commands.connect_command import SetCrossoverStyleCommand
         scene = self._diagram_scene
-        _style, owner_id = scene.resolve_crossover(conn_a, conn_b)
+        _style, owner_id, _flip = scene.resolve_crossover(conn_a, conn_b)
         old = scene.get_crossover_override(conn_a.instance_id, conn_b.instance_id)
         new = dict(old or {})
         new["owner"] = (conn_b.instance_id if owner_id == conn_a.instance_id
                         else conn_a.instance_id)
+        scene.undo_stack.push(
+            SetCrossoverStyleCommand(scene, conn_a, conn_b, old, new))
+
+    def _flip_crossing_side(self, conn_a, conn_b) -> None:
+        """Mirror which side the hop semicircle bulges (undoable)."""
+        from diagrammer.commands.connect_command import SetCrossoverStyleCommand
+        scene = self._diagram_scene
+        old = scene.get_crossover_override(conn_a.instance_id, conn_b.instance_id)
+        new = dict(old or {})
+        if new.get("flip"):
+            new.pop("flip", None)      # back to default side; tidy the dict
+            if not new:
+                new = None
+        else:
+            new["flip"] = True
+        scene.undo_stack.push(
+            SetCrossoverStyleCommand(scene, conn_a, conn_b, old, new))
+
+    def _cycle_crossing_hop(self, conn_a, conn_b) -> None:
+        """Step a hop through its 4 orientations: owner x bulge side.
+
+        Order: (A, side0) -> (A, side1) -> (B, side0) -> (B, side1) -> ...
+        so four double-clicks return to the starting orientation.
+        """
+        from diagrammer.commands.connect_command import SetCrossoverStyleCommand
+        scene = self._diagram_scene
+        _style, owner_id, flip = scene.resolve_crossover(conn_a, conn_b)
+        owners = [conn_a.instance_id, conn_b.instance_id]
+        state = owners.index(owner_id) * 2 + (1 if flip else 0)
+        nxt = (state + 1) % 4
+        old = scene.get_crossover_override(conn_a.instance_id, conn_b.instance_id)
+        new = dict(old or {})
+        new["owner"] = owners[nxt // 2]
+        if nxt % 2:
+            new["flip"] = True
+        else:
+            new.pop("flip", None)
         scene.undo_stack.push(
             SetCrossoverStyleCommand(scene, conn_a, conn_b, old, new))
 

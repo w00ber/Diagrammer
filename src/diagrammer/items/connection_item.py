@@ -80,6 +80,13 @@ DEFAULT_LINE_COLOR = QColor(50, 50, 50)
 DEFAULT_LINE_WIDTH = 3.0  # match SVG component wiring stroke width
 DEFAULT_CORNER_RADIUS = 8.0
 SELECTION_COLOR = QColor(0, 120, 215)
+# Selection is shown as a soft halo drawn BENEATH the wire (so the wire
+# keeps its own color and stays fully visible) rather than by recoloring
+# the wire itself. Light alpha so it reads as a glow, not a slab.
+SELECTION_HALO_COLOR = QColor(0, 120, 215, 90)
+# Extra width of the halo beyond the wire, in scene units — enough to
+# show a ring of colour on each side even for thin wires.
+SELECTION_HALO_EXTRA = 8.0
 VERTEX_HANDLE_SIZE = 8.0
 VERTEX_HANDLE_COLOR = QColor(0, 120, 215)
 SEGMENT_HOVER_COLOR = QColor(0, 120, 215, 80)
@@ -602,13 +609,14 @@ class ConnectionItem(QGraphicsPathItem):
         """Radius of crossover hop semicircles for this wire."""
         return max(5.0, self._line_width * 2.5)
 
-    def _compute_hops(self) -> list[QPointF]:
+    def _compute_hops(self) -> list[tuple[QPointF, int]]:
         """Crossing points where THIS wire arcs over another wire.
 
-        Only the crossing's resolved hop owner returns points; the other
-        wire renders straight through. Closed polygons never own hops
-        (but their outline can be hopped over, including the closing
-        segment).
+        Returns ``(point, sign)`` pairs; ``sign=-1`` mirrors the hop's
+        bulge (per the pair's ``flip`` override), else ``+1``. Only the
+        crossing's resolved hop owner returns points; the other wire
+        renders straight through. Closed polygons never own hops (but
+        their outline can be hopped over, including the closing segment).
         """
         scene = self.scene()
         if scene is None or not hasattr(scene, 'resolve_crossover'):
@@ -619,13 +627,13 @@ class ConnectionItem(QGraphicsPathItem):
             return []
 
         from diagrammer.utils.geometry import segment_intersection
-        hops: list[QPointF] = []
+        hops: list[tuple[QPointF, int]] = []
         my_pts = self._expanded
         my_rect = self._expanded_rect
         for other in scene.items():
             if not isinstance(other, ConnectionItem) or other is self:
                 continue
-            style, owner_id = scene.resolve_crossover(self, other)
+            style, owner_id, flip = scene.resolve_crossover(self, other)
             if style != "hop" or owner_id != self._id:
                 continue
             other_rect = getattr(other, '_expanded_rect', None)
@@ -635,6 +643,7 @@ class ConnectionItem(QGraphicsPathItem):
             m = len(opts)
             if m < 2:
                 continue
+            sign = -1 if flip else 1
             num_other_segs = m if other._closed else m - 1
             for i in range(len(my_pts) - 1):
                 for j in range(num_other_segs):
@@ -644,7 +653,7 @@ class ConnectionItem(QGraphicsPathItem):
                         endpoint_exclusion=1.0,
                     )
                     if hit is not None:
-                        hops.append(hit)
+                        hops.append((hit, sign))
         return hops
 
     # =====================================================================
@@ -735,34 +744,36 @@ class ConnectionItem(QGraphicsPathItem):
         option: QStyleOptionGraphicsItem,
         widget: QWidget | None = None,
     ) -> None:
-        # Hover feedback: a soft halo on the whole wire signals it is
-        # interactive; when selected, the segment under the cursor gets a
-        # stronger highlight showing what a drag would move.
-        if self._hovered and not self._group_id:
-            halo = QPen(SEGMENT_HOVER_COLOR, self._line_width + HIT_TOLERANCE)
+        # Selection / hover are shown as a halo drawn BENEATH the wire, so
+        # the wire keeps its own colour and stays clearly visible on top.
+        selected = self.isSelected() and not self._group_id
+        hovered = self._hovered and not self._group_id
+        if selected or hovered:
+            halo_col = QColor(SELECTION_HALO_COLOR) if selected else QColor(SEGMENT_HOVER_COLOR)
+            halo = QPen(halo_col, self._line_width + SELECTION_HALO_EXTRA)
             halo.setCapStyle(Qt.PenCapStyle.RoundCap)
             halo.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
             painter.setPen(halo)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(self.path())
-        if (self._hover_segment is not None and self.isSelected()
-                and not self._group_id):
+        # When a selected wire is hovered, emphasise the segment a drag
+        # would move — also beneath the wire, a touch stronger than the halo.
+        if self._hover_segment is not None and selected:
             pts = self._expanded
             n = len(pts)
             num_segs = n if self._closed else n - 1
             if 0 <= self._hover_segment < num_segs:
-                seg_color = QColor(SEGMENT_HOVER_COLOR)
-                seg_color.setAlpha(200)
-                seg_pen = QPen(seg_color, self._line_width + HIT_TOLERANCE)
+                seg_color = QColor(SELECTION_COLOR)
+                seg_color.setAlpha(150)
+                seg_pen = QPen(seg_color, self._line_width + SELECTION_HALO_EXTRA)
                 seg_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
                 painter.setPen(seg_pen)
                 painter.drawLine(pts[self._hover_segment],
                                  pts[(self._hover_segment + 1) % n])
 
-        pen = QPen(
-            SELECTION_COLOR if (self.isSelected() and not self._group_id) else self._line_color,
-            self._line_width,
-        )
+        # The wire itself, always in its own colour — selection never
+        # hides it.
+        pen = QPen(self._line_color, self._line_width)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
@@ -1330,46 +1341,78 @@ class ConnectionItem(QGraphicsPathItem):
         super().contextMenuEvent(event)
 
     def _delete_waypoint(self, index: int) -> None:
-        """Remove the waypoint at the given index and rebuild the route.
+        """Remove the waypoint at the given index and rebuild the route (undoable).
 
         When the deleted waypoint is adjacent to a free-end JunctionItem,
         collapse the junction onto the next remaining waypoint (or the
-        opposite port) so the segment doesn't become orphaned.
+        opposite port) so the segment doesn't become orphaned. The edit
+        (and any junction move) is pushed onto the undo stack using the
+        same macro pattern as a waypoint drag, so Ctrl+Z restores it.
         """
         from diagrammer.items.junction_item import JunctionItem
 
         if not (0 <= index < len(self._waypoints)):
             return
 
-        n = len(self._waypoints)
+        old_wps = [QPointF(w) for w in self._waypoints]
+        new_wps = [QPointF(w) for i, w in enumerate(old_wps) if i != index]
+        n = len(old_wps)
 
-        # Deleting first waypoint — check source junction
+        # An adjacent free-end junction must follow the delete so its
+        # segment isn't left dangling.
+        junction = None
+        junction_new_pos = None
         if index == 0 and self._source_port:
             comp = self._source_port.component
             if isinstance(comp, JunctionItem):
-                # Snap junction to next waypoint, or target port if none remain
-                if n > 1:
-                    new_pos = QPointF(self._waypoints[1])
-                else:
-                    new_pos = self._target_port.scene_center()
-                comp._skip_snap = True
-                comp.setPos(new_pos)
-                comp._skip_snap = False
-
-        # Deleting last waypoint — check target junction
+                junction = comp
+                junction_new_pos = (QPointF(old_wps[1]) if n > 1
+                                    else self._target_port.scene_center())
         if index == n - 1 and self._target_port:
             comp = self._target_port.component
             if isinstance(comp, JunctionItem):
-                if n > 1:
-                    new_pos = QPointF(self._waypoints[n - 2])
-                else:
-                    new_pos = self._source_port.scene_center()
-                comp._skip_snap = True
-                comp.setPos(new_pos)
-                comp._skip_snap = False
+                junction = comp
+                junction_new_pos = (QPointF(old_wps[n - 2]) if n > 1
+                                    else self._source_port.scene_center())
 
-        self._waypoints.pop(index)
+        scene = self.scene()
+        undo_stack = getattr(scene, 'undo_stack', None) if scene else None
+
+        def _apply_junction_move():
+            if junction is not None:
+                junction._skip_snap = True
+                junction.setPos(junction_new_pos)
+                junction._skip_snap = False
+
+        if undo_stack is None:
+            # No undo stack (e.g. detached item) — mutate directly.
+            _apply_junction_move()
+            self._set_waypoints_from_scene(new_wps)
+            self.update_route()
+            return
+
+        from diagrammer.commands.add_command import MoveComponentCommand
+        from diagrammer.commands.connect_command import EditWaypointsCommand
+
+        junction_old_pos = QPointF(junction.pos()) if junction is not None else None
+        has_junction_move = (junction is not None
+                             and junction_new_pos != junction_old_pos)
+
+        # Apply the changes live, then record them. Same push order as the
+        # waypoint-drag release (EditWaypoints first, then the junction
+        # move) so undo/redo restore in the correct sequence.
+        _apply_junction_move()
+        self._set_waypoints_from_scene(new_wps)
         self.update_route()
+
+        if has_junction_move:
+            undo_stack.beginMacro("Delete waypoint")
+        undo_stack.push(EditWaypointsCommand(self, old_wps, new_wps))
+        if has_junction_move:
+            undo_stack.push(
+                MoveComponentCommand(junction, junction_old_pos,
+                                     QPointF(junction_new_pos)))
+            undo_stack.endMacro()
 
     def _insert_waypoint_at(self, pos: QPointF) -> None:
         """Insert a new waypoint at the closest point on the route to pos (Ctrl+Click)."""
