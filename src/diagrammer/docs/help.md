@@ -157,7 +157,11 @@ Add arrows to a wire to indicate signal flow:
 - **Drag** an arrow to slide it along its wire (it stays on the wire, and follows the wire through reroutes)
 - **Double-click** an arrow to flip its direction
 - **Ctrl+Shift+click** an arrow to delete it
-- **Right-click** an arrow for a menu: flip direction, filled/hollow style, per-arrow properties (size, outline width), and delete
+- **Right-click** an arrow for a **Direction Arrow** menu: **Flip Direction**; style (**Default Style / Filled / Hollow**); **Properties…** (direction, size, and outline width, each with a "use default" option); and **Delete Arrow**
+
+Placing, dragging, flipping, and deleting all work without first selecting the wire.
+
+**Direction is sticky.** When you flip an arrow (double-click or **Flip Direction**) or set Forward/Backward in its **Properties…** dialog, arrows you place afterward — on any wire — inherit that same direction, until you flip again or restart the app.
 
 New arrows use the default style from **Settings → Line Styles** (filled or hollow, size, outline width); arrows without per-arrow overrides update live when the default changes.
 
@@ -174,7 +178,7 @@ New arrows use the default style from **Settings → Line Styles** (filled or ho
 
 ### Wire properties
 
-Select a wire to edit in the Properties panel: width, color, corner radius, and routing mode (Ortho, Ortho+45°, Direct).
+Select a wire to edit in the Properties panel: width, color, corner radius, and routing mode (Ortho, Ortho+45°, Direct). When the wire carries direction arrows, the panel also shows a **Direction arrows: N** count and a **Remove All Arrows** button.
 
 ---
 
@@ -319,6 +323,7 @@ Unconnected ports become the new component's ports. Stretched and styled compone
 
 ### Line Styles
 - Default wire width, color, corner radius
+- Default direction-arrow style (filled or hollow), size, and outline width — arrows without per-arrow overrides update live when these change
 
 ### Snap Behavior
 - Snap to port, snap to angle, angle increment
