@@ -954,6 +954,22 @@ class DiagramView(QGraphicsView):
                         event.accept()
                         return
 
+            # -- Ctrl+Alt+click → place a direction arrow on a wire --
+            # Must precede the Alt+click duplicate branch below: that
+            # check is bitwise, so any Alt-containing combo matches it.
+            if (event.modifiers() & Qt.KeyboardModifier.AltModifier
+                    and event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+                hit = self._diagram_scene.find_wire_at(
+                    scene_pos, self.pick_tolerance(15.0))
+                if hit is not None:
+                    conn, proj = hit
+                    conn.add_arrow_at(proj)
+                # Swallow the click even on a miss — the wire item's own
+                # Ctrl+click waypoint-insert ignores the Alt bit and
+                # would otherwise fire.
+                event.accept()
+                return
+
             # -- Option/Alt+click → duplicate and drag (selected items or single item) --
             from diagrammer.items.shape_item import (
                 LineItem as _AltLineItem,
@@ -2077,6 +2093,7 @@ class DiagramView(QGraphicsView):
                             conn.corner_radius = si.corner_radius
                             conn.routing_mode = si.routing_mode
                             conn.closed = si.closed
+                            conn.arrows = si.arrows
                             if si.vertices:
                                 conn.vertices = [QPointF(w) for w in si.vertices]
                             # Preserve group membership on connection
@@ -2306,6 +2323,20 @@ class DiagramView(QGraphicsView):
             event.accept()
             return
 
+        # Double-click on a wire direction arrow → flip its direction.
+        # Checked before the hop-cycle branch so arrows placed near a
+        # crossing stay flippable.
+        if (event.button() == Qt.MouseButton.LeftButton
+                and not self._trace_routing):
+            scene_pos = self.mapToScene(event.position().toPoint())
+            hit = self._diagram_scene.find_wire_arrow_at(
+                scene_pos, self.pick_tolerance(12.0))
+            if hit is not None:
+                conn, ai = hit
+                conn._flip_arrow(ai)
+                event.accept()
+                return
+
         # Double-click on a hop crossing → cycle its 4 orientations
         # (owner x bulge side). Takes precedence over ConnectionItem's
         # double-click select-all only within pick tolerance of an actual
@@ -2397,6 +2428,41 @@ class DiagramView(QGraphicsView):
             delete_wp_act = menu.addAction(f"Delete Waypoint {wp_idx + 1}")
             delete_wp_act.triggered.connect(lambda: _wc._delete_waypoint(_wi))
 
+        # Wire direction arrow near the click → arrow submenu
+        arrow_hit = self._diagram_scene.find_wire_arrow_at(
+            scene_pos, self.pick_tolerance(12.0))
+        if arrow_hit is not None:
+            from PySide6.QtGui import QActionGroup as _ArrowActionGroup
+            arr_conn, arr_idx = arrow_hit
+            arrow = arr_conn.arrows[arr_idx]
+            if menu.actions():
+                menu.addSeparator()
+            arrow_menu = menu.addMenu("Direction Arrow")
+            flip_act = arrow_menu.addAction("Flip Direction")
+            flip_act.triggered.connect(
+                lambda _c=False, cn=arr_conn, i=arr_idx: cn._flip_arrow(i))
+            arrow_menu.addSeparator()
+            style_grp = _ArrowActionGroup(arrow_menu)
+            for label, style in (("Default Style", None),
+                                 ("Filled", "filled"),
+                                 ("Hollow", "open")):
+                act = arrow_menu.addAction(label)
+                act.setCheckable(True)
+                act.setChecked(arrow.style == style)
+                style_grp.addAction(act)
+                act.triggered.connect(
+                    lambda _c=False, cn=arr_conn, i=arr_idx, s=style:
+                    cn._set_arrow_fields(i, style=s))
+            arrow_menu.addSeparator()
+            props_act = arrow_menu.addAction("Properties...")
+            props_act.triggered.connect(
+                lambda _c=False, cn=arr_conn, i=arr_idx:
+                self._edit_wire_arrow(cn, i))
+            arrow_menu.addSeparator()
+            del_arrow_act = arrow_menu.addAction("Delete Arrow")
+            del_arrow_act.triggered.connect(
+                lambda _c=False, cn=arr_conn, i=arr_idx: cn._delete_arrow(i))
+
         # Wire crossing near the click → crossover style submenu
         crossing = self._diagram_scene.find_crossing_at(
             scene_pos, self.pick_tolerance(12.0))
@@ -2467,6 +2533,11 @@ class DiagramView(QGraphicsView):
         if isinstance(item, ConnectionItem):
             if menu.actions():
                 menu.addSeparator()
+            if arrow_hit is None:
+                add_arrow_act = menu.addAction("Add Direction Arrow Here")
+                add_arrow_act.triggered.connect(
+                    lambda _c=False, cn=item, p=QPointF(scene_pos):
+                    cn.add_arrow_at(p))
             adopt_act = menu.addAction("Use as Default Style")
             adopt_act.triggered.connect(lambda: self._adopt_connection_style(item))
         elif isinstance(item, (ShapeItem, LineItem)):
@@ -2537,6 +2608,16 @@ class DiagramView(QGraphicsView):
         if marker != old:
             self._diagram_scene.undo_stack.push(
                 ChangeStyleCommand(junction, 'end_marker', old, marker))
+
+    def _edit_wire_arrow(self, conn, index: int) -> None:
+        """Open the per-arrow properties dialog (one undo step on accept)."""
+        arrows = conn.arrows
+        if not (0 <= index < len(arrows)):
+            return
+        from diagrammer.panels.arrow_dialog import WireArrowPropertiesDialog
+        dlg = WireArrowPropertiesDialog(arrows[index], parent=self)
+        if dlg.exec():
+            conn._set_arrow_fields(index, **dlg.result_fields())
 
     def _set_crossing_style(self, conn_a, conn_b, style: str | None) -> None:
         """Set (or clear, when style is None) the pair's crossover override."""

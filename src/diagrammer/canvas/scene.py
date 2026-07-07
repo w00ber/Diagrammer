@@ -202,6 +202,63 @@ class DiagramScene(QGraphicsScene):
         """
         return bool(self._crossover_overrides) or self.default_crossover_style() == "hop"
 
+    def find_wire_at(self, scene_pos: QPointF, tolerance: float):
+        """Find the wire nearest *scene_pos* within *tolerance*.
+
+        Returns ``(connection, projected_point)`` for the closest point
+        on the wire's expanded route, or None.
+        """
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.utils.geometry import closest_point_on_segment
+
+        best_conn = None
+        best_proj = None
+        best_dist = tolerance
+        for item in self.items():
+            if not isinstance(item, ConnectionItem):
+                continue
+            pts = item.all_points()
+            n = len(pts)
+            num_segs = n if item.closed else n - 1
+            for i in range(num_segs):
+                proj, dist = closest_point_on_segment(
+                    scene_pos, pts[i], pts[(i + 1) % n])
+                if dist < best_dist:
+                    best_dist = dist
+                    best_proj = proj
+                    best_conn = item
+        if best_conn is None:
+            return None
+        return best_conn, best_proj
+
+    def find_wire_arrow_at(self, scene_pos: QPointF, tolerance: float):
+        """Find the wire direction arrow nearest *scene_pos*.
+
+        Returns ``(connection, arrow_index)`` or None. *tolerance* is a
+        minimum pick radius in scene units; larger arrows are clickable
+        over their full extent.
+        """
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.utils.geometry import point_at_fraction, point_distance
+
+        best = None
+        best_dist = float("inf")
+        for item in self.items():
+            if not isinstance(item, ConnectionItem) or not item._arrows:
+                continue
+            pts = item.all_points()
+            if len(pts) < 2:
+                continue
+            for i, a in enumerate(item._arrows):
+                _style, size, _lw = item._resolved_arrow(a)
+                pt, _tang = point_at_fraction(pts, a.t)
+                tol = max(tolerance, size * 0.6)
+                dist = point_distance(scene_pos, pt)
+                if dist < tol and dist < best_dist:
+                    best_dist = dist
+                    best = (item, i)
+        return best
+
     def find_crossing_at(self, scene_pos: QPointF, tolerance: float):
         """Find a wire-crossing near *scene_pos*.
 

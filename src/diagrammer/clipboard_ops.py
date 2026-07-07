@@ -242,6 +242,13 @@ class ClipboardMixin:
                     "routing_mode": conn.routing_mode,
                     "closed": conn.closed,
                     "group": list(conn._group_ids),
+                    # Direction arrows: t is route-relative, so arrows
+                    # follow the pasted wire with no offset handling.
+                    "arrows": [
+                        {"t": a.t, "forward": a.forward, "style": a.style,
+                         "size": a.size, "line_width": a.line_width}
+                        for a in conn._arrows
+                    ],
                 })
 
     # -------------------------------------------------------------- cut
@@ -536,6 +543,15 @@ class ClipboardMixin:
                         conn.vertices = [
                             QPointF(v[0] + PASTE_OFFSET, v[1] + PASTE_OFFSET)
                             for v in entry["vertices"]
+                        ]
+                    # Restore direction arrows (route-relative fractions)
+                    if entry.get("arrows"):
+                        from diagrammer.items.connection_item import WireArrow
+                        conn.arrows = [
+                            WireArrow(t=ad["t"], forward=ad["forward"],
+                                      style=ad["style"], size=ad["size"],
+                                      line_width=ad["line_width"])
+                            for ad in entry["arrows"]
                         ]
                     _remap_group(conn, entry)
 

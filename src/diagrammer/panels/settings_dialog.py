@@ -106,6 +106,11 @@ class AppSettings:
         self.default_routing_mode = _d("wiring", "routing_mode", "ortho")
         self.default_crossover_style = _d("wiring", "crossover_style", "plain")
         self.show_junction_dots = _d("wiring", "junction_dots", True)
+        # Wire direction-arrow defaults (per-arrow overrides live on the
+        # WireArrow itself; None fields resolve against these at paint time)
+        self.default_wire_arrow_style = _d("wiring", "arrow_style", "filled")
+        self.default_wire_arrow_size = _d("wiring", "arrow_size", 14.0)
+        self.default_wire_arrow_line_width = _d("wiring", "arrow_line_width", 2.0)
 
         # Snap behavior
         self.snap_to_port = _d("snap", "snap_to_port", True)
@@ -251,6 +256,9 @@ class AppSettings:
                 "default_routing_mode": self.default_routing_mode,
                 "default_crossover_style": self.default_crossover_style,
                 "show_junction_dots": self.show_junction_dots,
+                "default_wire_arrow_style": self.default_wire_arrow_style,
+                "default_wire_arrow_size": self.default_wire_arrow_size,
+                "default_wire_arrow_line_width": self.default_wire_arrow_line_width,
                 "snap_to_port": self.snap_to_port,
                 "snap_to_angle": self.snap_to_angle,
                 "snap_to_grid": self.snap_to_grid,
@@ -321,6 +329,9 @@ class AppSettings:
                 self.default_routing_mode = data.get("default_routing_mode", self.default_routing_mode)
                 self.default_crossover_style = data.get("default_crossover_style", self.default_crossover_style)
                 self.show_junction_dots = data.get("show_junction_dots", self.show_junction_dots)
+                self.default_wire_arrow_style = data.get("default_wire_arrow_style", self.default_wire_arrow_style)
+                self.default_wire_arrow_size = data.get("default_wire_arrow_size", self.default_wire_arrow_size)
+                self.default_wire_arrow_line_width = data.get("default_wire_arrow_line_width", self.default_wire_arrow_line_width)
                 self.snap_to_port = data.get("snap_to_port", self.snap_to_port)
                 self.snap_to_angle = data.get("snap_to_angle", self.snap_to_angle)
                 self.snap_to_grid = data.get("snap_to_grid", self.snap_to_grid)
@@ -545,6 +556,31 @@ class SettingsDialog(QDialog):
             "Draw a filled dot where two or more wires meet at a junction. "
             "Visual only — the wires stay electrically connected either way.")
         line_form.addRow("", self._junction_dots_cb)
+
+        self._wire_arrow_style_combo = QComboBox()
+        self._wire_arrow_style_combo.addItems(["filled", "open"])
+        self._wire_arrow_style_combo.setCurrentText(settings.default_wire_arrow_style)
+        self._wire_arrow_style_combo.setToolTip(
+            "Default style for wire direction arrows (Ctrl+Alt+click a "
+            "wire to place one). Arrows without an explicit per-arrow "
+            "style follow this setting.")
+        line_form.addRow("Direction arrows:", self._wire_arrow_style_combo)
+
+        self._wire_arrow_size_spin = QDoubleSpinBox()
+        self._wire_arrow_size_spin.setRange(4.0, 60.0)
+        self._wire_arrow_size_spin.setValue(settings.default_wire_arrow_size)
+        self._wire_arrow_size_spin.setSuffix(" pt")
+        self._wire_arrow_size_spin.setSingleStep(1.0)
+        line_form.addRow("Arrow size:", self._wire_arrow_size_spin)
+
+        self._wire_arrow_lw_spin = QDoubleSpinBox()
+        self._wire_arrow_lw_spin.setRange(0.5, 10.0)
+        self._wire_arrow_lw_spin.setValue(settings.default_wire_arrow_line_width)
+        self._wire_arrow_lw_spin.setSuffix(" pt")
+        self._wire_arrow_lw_spin.setSingleStep(0.5)
+        self._wire_arrow_lw_spin.setToolTip(
+            "Outline width of hollow (open) direction arrows.")
+        line_form.addRow("Arrow outline:", self._wire_arrow_lw_spin)
 
         line_group.setLayout(line_form)
         line_layout.addWidget(line_group)
@@ -1092,6 +1128,9 @@ class SettingsDialog(QDialog):
         self._routing_mode_combo.setCurrentText(ROUTE_ORTHO)
         self._crossover_combo.setCurrentText("plain")
         self._junction_dots_cb.setChecked(True)
+        self._wire_arrow_style_combo.setCurrentText("filled")
+        self._wire_arrow_size_spin.setValue(14.0)
+        self._wire_arrow_lw_spin.setValue(2.0)
 
     def _reset_snap_defaults(self) -> None:
         self._snap_to_port_cb.setChecked(True)
@@ -1475,6 +1514,9 @@ class SettingsDialog(QDialog):
         self._settings.default_routing_mode = self._routing_mode_combo.currentText()
         self._settings.default_crossover_style = self._crossover_combo.currentText()
         self._settings.show_junction_dots = self._junction_dots_cb.isChecked()
+        self._settings.default_wire_arrow_style = self._wire_arrow_style_combo.currentText()
+        self._settings.default_wire_arrow_size = self._wire_arrow_size_spin.value()
+        self._settings.default_wire_arrow_line_width = self._wire_arrow_lw_spin.value()
         self._settings.snap_to_port = self._snap_to_port_cb.isChecked()
         self._settings.snap_to_angle = self._snap_to_angle_cb.isChecked()
         self._settings.angle_snap_increment = self._angle_increment_spin.value()

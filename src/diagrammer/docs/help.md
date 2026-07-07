@@ -149,6 +149,18 @@ To tap into an existing wire:
 - While routing, click near an existing wire — a junction is created
 - Toggle junction dot visibility in Settings or via the Routing menu
 
+### Direction arrows (signal flow)
+
+Add arrows to a wire to indicate signal flow:
+
+- **Ctrl+Alt+click** (Cmd+Option+click on macOS) on a wire places an arrow at that point — no selection needed. You can also right-click a wire and choose **Add Direction Arrow Here**.
+- **Drag** an arrow to slide it along its wire (it stays on the wire, and follows the wire through reroutes)
+- **Double-click** an arrow to flip its direction
+- **Ctrl+Shift+click** an arrow to delete it
+- **Right-click** an arrow for a menu: flip direction, filled/hollow style, per-arrow properties (size, outline width), and delete
+
+New arrows use the default style from **Settings → Line Styles** (filled or hollow, size, outline width); arrows without per-arrow overrides update live when the default changes.
+
 ### Routing options (Routing menu)
 
 | Option | Description |
