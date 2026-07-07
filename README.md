@@ -91,7 +91,10 @@ diagrammer
 
 that you can execute directly from the command line.
 
-Press **Ctrl+?** in the app for the in-app help reference.
+Press **?** in the app to toggle a floating on-canvas cheat-sheet of the
+shortcuts relevant to your current selection, or **F1** for the full in-app
+help reference. The overlay's default visibility and corner can be set in
+**Settings → Appearance → Keyboard Shortcut Hints**.
 
 ## Keyboard Shortcuts
 
@@ -137,6 +140,9 @@ defaults:
 | Ctrl+C / X / V | Copy / Cut / Paste |
 | Ctrl+, | Settings |
 | Escape | Cancel current operation |
+| **Help** | |
+| ? | Toggle on-canvas shortcut hints |
+| F1 | Open full help reference |
 
 ## Creating Components
 

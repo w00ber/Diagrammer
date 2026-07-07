@@ -206,6 +206,7 @@ _reg("draw.text",      _ks("Ctrl+Shift+T"),                 description="Add Tex
 
 # ----- Help -----
 _reg("help.help",      QKeySequence.StandardKey.HelpContents, description="Help",           category="Help")
+_reg("overlay.toggle", _ks("?"),                            description="Toggle Shortcut Hints", category="Help")
 
 # ----- Canvas (bare keys handled in view.py, not menu actions) -----
 _reg("canvas.select_mode", _ks("V"),                       description="Select Mode",       category="Canvas")

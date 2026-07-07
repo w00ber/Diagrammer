@@ -419,6 +419,16 @@ class MenuMixin:
         tutorial_act.triggered.connect(self._show_tutorial)
         help_menu.addAction(tutorial_act)
 
+        # Toggle for the floating on-canvas shortcut cheat-sheet. Kept as a
+        # single-key ('?') menu action like the other single-key shortcuts, so
+        # Qt routes '?' to a focused text field instead of firing while typing.
+        hints_act = QAction("Keyboard Shortcut &Hints", self)
+        hints_act.setCheckable(True)
+        self._register_shortcut(hints_act, "overlay.toggle")
+        hints_act.triggered.connect(self._toggle_shortcut_overlay)
+        help_menu.addAction(hints_act)
+        self._shortcut_hints_act = hints_act
+
         help_menu.addSeparator()
 
         # On macOS Qt automatically relocates any action whose text matches

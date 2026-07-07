@@ -1,0 +1,201 @@
+"""Tests for the floating, context-sensitive keyboard-shortcut hint overlay.
+
+Requires a working Qt platform; skips where the GUI can't start (run under
+QT_QPA_PLATFORM=offscreen to include). The app settings file is redirected to a
+tmp path so a real user's ~/.diagrammer/settings.json is never touched.
+"""
+
+from __future__ import annotations
+
+import os
+from unittest import mock
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+
+@pytest.fixture()
+def main_window(tmp_path):
+    """A MainWindow with settings redirected to tmp; cleaned up after use."""
+    from diagrammer.panels import settings_dialog as sd
+
+    settings_file = tmp_path / "settings.json"
+    with mock.patch.object(sd, "_SETTINGS_FILE", settings_file):
+        from diagrammer.main_window import MainWindow
+
+        win = MainWindow()
+        win.resize(1000, 700)
+        # Reset the shared settings singleton so state doesn't leak between tests
+        sd.app_settings.show_shortcut_overlay = False
+        win._shortcut_overlay_on = False
+        win._update_shortcut_overlay()
+        try:
+            yield win
+        finally:
+            # Don't call win.close(): MainWindow.closeEvent prompts to save a
+            # dirty diagram, which would block forever under offscreen Qt. Just
+            # reset shared state and hide; the window is GC'd after the session.
+            sd.app_settings.show_shortcut_overlay = False
+            win.hide()
+
+
+def test_overlay_created_over_viewport_and_hidden_by_default(main_window):
+    ov = main_window._shortcut_overlay
+    assert ov is not None
+    # Parented to the view's viewport so it never lands in scene exports.
+    assert ov.parentWidget() is main_window._view.viewport()
+    assert ov not in main_window._scene.items()
+    assert main_window._shortcut_overlay_on is False
+    assert ov.isHidden()
+    assert main_window._shortcut_hints_act.isCheckable()
+    assert not main_window._shortcut_hints_act.isChecked()
+
+
+def test_toggle_shows_and_hides_session_only(main_window):
+    """'?' toggles for the session without changing the persistent default."""
+    from diagrammer.panels import settings_dialog as sd
+
+    assert sd.app_settings.show_shortcut_overlay is False
+
+    main_window._toggle_shortcut_overlay()
+    assert main_window._shortcut_overlay_on is True
+    # Own visibility flag (window isn't shown in the fixture, so isVisible()
+    # would be False regardless); the overlay called show() on itself.
+    assert not main_window._shortcut_overlay.isHidden()
+    assert main_window._shortcut_hints_act.isChecked()
+    # The session toggle must NOT mutate the persisted default.
+    assert sd.app_settings.show_shortcut_overlay is False
+
+    main_window._toggle_shortcut_overlay()
+    assert main_window._shortcut_overlay_on is False
+    assert main_window._shortcut_overlay.isHidden()
+
+
+def test_apply_settings_resyncs_to_default(main_window):
+    """Accepting Settings re-applies the persisted default visibility."""
+    from diagrammer.panels import settings_dialog as sd
+
+    # Simulate turning the default on in Settings, then applying.
+    sd.app_settings.show_shortcut_overlay = True
+    main_window._apply_shortcut_overlay_settings()
+    assert main_window._shortcut_overlay_on is True
+    assert main_window._shortcut_hints_act.isChecked()
+    assert not main_window._shortcut_overlay.isHidden()
+
+
+def test_discoverability_label_tracks_toggle_key(main_window):
+    """The persistent under-canvas hint shows the live overlay toggle key."""
+    from diagrammer import shortcuts
+
+    main_window._refresh_overlay_hint_label()
+    assert main_window._overlay_hint_label.text() == (
+        "? to toggle keyboard shortcut overlay")
+
+    shortcuts.get_shortcut("overlay.toggle").set_override("Ctrl+Shift+K")
+    try:
+        main_window._refresh_overlay_hint_label()
+        assert "Ctrl+Shift+K" in main_window._overlay_hint_label.text()
+    finally:
+        shortcuts.get_shortcut("overlay.toggle").reset()
+
+
+def test_toggle_shortcut_is_registered_as_question_mark():
+    from diagrammer import shortcuts
+
+    sc = shortcuts.get_shortcut("overlay.toggle")
+    assert sc.display_text == "?"
+    assert sc.category == "Help"
+
+
+def test_context_empty_selection(main_window):
+    main_window._scene.clearSelection()
+    assert main_window._shortcut_context() == "none"
+
+
+def test_context_tracks_selected_item_types(main_window):
+    from diagrammer.items.annotation_item import AnnotationItem
+    from diagrammer.items.shape_item import ShapeItem
+
+    main_window._add_shape("rectangle")
+    main_window._add_annotation()
+
+    shapes = [i for i in main_window._scene.items() if isinstance(i, ShapeItem)]
+    annots = [i for i in main_window._scene.items() if isinstance(i, AnnotationItem)]
+    assert shapes and annots
+
+    main_window._scene.clearSelection()
+    shapes[0].setSelected(True)
+    assert main_window._shortcut_context() == "component"
+
+    main_window._scene.clearSelection()
+    annots[0].setSelected(True)
+    assert main_window._shortcut_context() == "annotation"
+
+
+@pytest.mark.parametrize("context", ["none", "component", "wire", "annotation"])
+def test_every_context_yields_rows_with_nonempty_keys(main_window, context):
+    rows = main_window._shortcut_hint_rows(context)
+    assert rows, f"expected hint rows for context {context!r}"
+    assert all(keys for keys, _label in rows)
+
+
+def test_hint_keys_resolve_live_after_rebind(main_window):
+    from diagrammer import shortcuts
+
+    shortcuts.get_shortcut("edit.flip_h").set_override("Ctrl+Alt+M")
+    try:
+        rows = dict((label, keys) for keys, label in
+                    main_window._shortcut_hint_rows("component"))
+        # flip_h is paired with flip_v on one row: "keyH / keyV".
+        assert rows["Flip horizontal / vertical"] == "Ctrl+Alt+M / Shift+F"
+    finally:
+        shortcuts.get_shortcut("edit.flip_h").reset()
+
+
+def test_overlay_reexpands_after_parent_grows():
+    """Regression: an overlay sized while its parent was tiny (as happens
+    during window construction) must re-expand once the parent grows, instead
+    of staying cropped until the next toggle."""
+    from PySide6.QtCore import QSize
+    from PySide6.QtGui import QResizeEvent
+    from PySide6.QtWidgets import QApplication, QWidget
+
+    from diagrammer.panels.shortcut_overlay import ShortcutOverlay
+
+    host = QWidget()
+    host.resize(80, 40)  # tiny, like a not-yet-laid-out viewport
+    overlay = ShortcutOverlay(host)
+    overlay.set_rows("Shortcuts", [(f"Key{i}", f"Action {i}") for i in range(12)])
+    clamped_height = overlay.height()
+
+    # Grow the host and deliver the resize the way Qt would; the overlay's
+    # event filter should re-expand it.
+    host.resize(1000, 700)
+    QApplication.sendEvent(host, QResizeEvent(QSize(1000, 700), QSize(80, 40)))
+
+    assert overlay.height() > clamped_height
+    # And it should now fit all 12 rows (well above the tiny clamp).
+    assert overlay.height() >= overlay.sizeHint().height()
+
+
+def test_none_context_has_connect_mode_and_escape(main_window):
+    labels = {label for _keys, label in main_window._shortcut_hint_rows("none")}
+    assert "Connect / wire mode" in labels
+    assert "Exit to select mode" in labels
+    rows = dict((label, keys) for keys, label in
+                main_window._shortcut_hint_rows("none"))
+    assert rows["Connect / wire mode"] == "W"
+    assert rows["Exit to select mode"] == "Esc"
+
+
+def test_component_context_pairs_shift_variants_on_one_row(main_window):
+    rows = dict((label, keys) for keys, label in
+                main_window._shortcut_hint_rows("component"))
+    # Shift-variant pairs collapse to a single "keyA / keyB" row.
+    assert rows["Rotate CCW / CW 90°"] == "Space / Shift+Space"
+    assert rows["Fine rotate CCW / CW 15°"] == "R / Shift+R"
+    assert rows["Flip horizontal / vertical"] == "F / Shift+F"
+    # Align uses unrelated keys, so it stays on separate rows (no wide pair).
+    assert rows["Align horizontally"] == "Ctrl+Shift+H"
+    assert "Align horizontal / vertical" not in rows

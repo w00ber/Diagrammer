@@ -171,6 +171,11 @@ class AppSettings:
         # Keyboard shortcut user overrides: {action_id: portable_key_string}
         self.keyboard_shortcuts: dict[str, str] = {}
 
+        # Floating on-canvas keyboard-shortcut hint overlay. Off by default;
+        # toggled at runtime with '?' (or Help → Keyboard Shortcut Hints).
+        self.show_shortcut_overlay: bool = False
+        self.shortcut_overlay_corner: str = "top-right"
+
         # Library tab UI state: parent group names whose child list is expanded.
         # Default empty = everything collapsed on first run.
         self.library_tab_expanded: list[str] = []
@@ -269,6 +274,8 @@ class AppSettings:
                 "library_view_mode": self.library_view_mode,
                 "custom_library_paths": self.custom_library_paths,
                 "keyboard_shortcuts": self.keyboard_shortcuts,
+                "show_shortcut_overlay": self.show_shortcut_overlay,
+                "shortcut_overlay_corner": self.shortcut_overlay_corner,
                 "library_tab_expanded": self.library_tab_expanded,
                 "last_opened_file": self.last_opened_file,
                 "last_directory": self.last_directory,
@@ -353,6 +360,10 @@ class AppSettings:
                 self.custom_library_paths = migrated
                 # Keyboard shortcut overrides
                 self.keyboard_shortcuts = dict(data.get("keyboard_shortcuts", {}))
+                self.show_shortcut_overlay = data.get(
+                    "show_shortcut_overlay", self.show_shortcut_overlay)
+                self.shortcut_overlay_corner = data.get(
+                    "shortcut_overlay_corner", self.shortcut_overlay_corner)
                 self.library_tab_expanded = list(
                     data.get("library_tab_expanded", []))
                 from diagrammer import shortcuts as _sc
@@ -816,6 +827,28 @@ class SettingsDialog(QDialog):
         theme_v.addLayout(radio_row)
         theme_group.setLayout(theme_v)
         appearance_layout.addWidget(theme_group)
+
+        # Shortcut-hints overlay (the '?'-toggled on-canvas cheat-sheet)
+        hints_group = QGroupBox("Keyboard Shortcut Hints")
+        hints_form = QFormLayout()
+        self._overlay_default_cb = QCheckBox(
+            "Show shortcut hints overlay by default")
+        self._overlay_default_cb.setChecked(settings.show_shortcut_overlay)
+        hints_form.addRow(self._overlay_default_cb)
+        self._overlay_corner_combo = QComboBox()
+        for _label, _val in (
+            ("Top Left", "top-left"),
+            ("Top Right", "top-right"),
+            ("Bottom Left", "bottom-left"),
+            ("Bottom Right", "bottom-right"),
+        ):
+            self._overlay_corner_combo.addItem(_label, _val)
+        _ci = self._overlay_corner_combo.findData(settings.shortcut_overlay_corner)
+        if _ci >= 0:
+            self._overlay_corner_combo.setCurrentIndex(_ci)
+        hints_form.addRow("Overlay position:", self._overlay_corner_combo)
+        hints_group.setLayout(hints_form)
+        appearance_layout.addWidget(hints_group)
 
         # Working copy of theme_colors so Cancel discards edits
         import copy
@@ -1556,6 +1589,10 @@ class SettingsDialog(QDialog):
         self._settings.default_annotation_size = self._annot_size_spin.value()
         self._settings.default_annotation_color = QColor(self._annot_color)
         self._settings.annotation_text_as_outlines = self._annot_outlines_cb.isChecked()
+        # Shortcut-hints overlay defaults
+        self._settings.show_shortcut_overlay = self._overlay_default_cb.isChecked()
+        self._settings.shortcut_overlay_corner = (
+            self._overlay_corner_combo.currentData())
         # Keyboard shortcut overrides
         from diagrammer import shortcuts as _sc
         for aid, row in self._sc_rows.items():
