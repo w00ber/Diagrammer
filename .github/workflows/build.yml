@@ -5,6 +5,14 @@ on:
     tags:
       - "v*"          # Trigger on version tags (v0.1.0, v1.0.0, etc.)
   workflow_dispatch:   # Allow manual trigger from GitHub UI
+    inputs:
+      release_tag:
+        description: >-
+          Existing release tag to attach the built executables to
+          (e.g. v0.11.3). Leave blank to just build artifacts without
+          touching any release.
+        required: false
+        default: ""
 
 permissions:
   contents: write      # Needed to create releases
@@ -86,7 +94,7 @@ jobs:
         run: |
           Compress-Archive -Path "dist\Diagrammer" -DestinationPath "Diagrammer-Windows.zip"
 
-      # ── Upload artifact ──────────────────────────────────────────────
+      # ── Upload as a workflow artifact (the release job collects these) ─
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -96,13 +104,38 @@ jobs:
             Diagrammer-Windows.zip
           if-no-files-found: ignore
 
-      # ── Attach to release (tag builds only) ──────────────────────────
-      - name: Upload to release
-        if: startsWith(github.ref, 'refs/tags/')
+  # ── Single release writer ──────────────────────────────────────────
+  # All platforms upload their zips as artifacts above; this one job then
+  # attaches every zip to the release in a single action-gh-release call.
+  #
+  # Previously each matrix job ran action-gh-release itself, so macOS and
+  # Windows raced to mutate the same release concurrently — one upload could
+  # 404 during finalize and get silently dropped (that is how a macOS build
+  # went missing while the run still reported success). One writer removes
+  # the race entirely. `needs: build` also means a failure on any single
+  # platform blocks the whole release instead of shipping a partial one.
+  release:
+    name: Attach builds to release
+    needs: build
+    # Real tag pushes, or a manual dispatch that names an existing release tag
+    # (used to repair a release whose assets were lost to the old race).
+    if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: Diagrammer-*
+          merge-multiple: true
+
+      - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            Diagrammer-macOS.zip
-            Diagrammer-Windows.zip
-          fail_on_unmatched_files: false
-          generate_release_notes: true
+          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
+          files: artifacts/*.zip
+          fail_on_unmatched_files: true
+          # Only (re)generate notes for a genuine tagged release; never when
+          # re-attaching to an existing release via manual dispatch, so a
+          # hand-written release body is preserved.
+          generate_release_notes: ${{ startsWith(github.ref, 'refs/tags/') }}
