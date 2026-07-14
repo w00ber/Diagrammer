@@ -15,6 +15,21 @@ Diagrammer renders SVG components at **1:1 with the viewBox dimensions**. One vi
 
 **Artboard sizing in Illustrator:** Set your artboard to the exact size you want the component to appear in the diagram. The artboard dimensions become the SVG `viewBox`, which defines the component's display size. There is no automatic scaling.
 
+> ⚠️ **Export with "Use Artboards" — the `viewBox` must equal the artboard, not the artwork.**
+>
+> When you **Save As / Export → SVG**, make sure the **Use Artboards** option is checked (Export → Export As… → SVG shows it directly; it scopes the `viewBox` to the active artboard). Without it — and this became the *default behaviour in some Illustrator 30.6+ builds* — the exporter sizes the `viewBox` to the **bounding box of all artwork** instead of the artboard. Two things routinely sit *outside* the artboard and then inflate that box:
+>
+> - **Guide/grid layers** drawn past the artboard edges (e.g. a 120-wide alignment grid around a 40-wide component).
+> - **Edge ports:** a `port` circle centred on an edge (`cx=0`, `cy=0`, …) extends half its radius past the artboard, and edge artwork extends half a stroke width past it.
+>
+> The exporter also **re-bases** coordinates so nothing is negative, shifting the whole component inward. The symptoms:
+>
+> - The component renders with a **much larger bounding box** than the artboard would suggest.
+> - **Ports no longer land on the `viewBox` edges**, so edge/approach detection (2 pt tolerance) fails and wires attach from the wrong direction.
+> - **Stretch misbehaves** — the break line and ports are in the wrong place relative to the inflated frame.
+>
+> **How to catch it:** after export, confirm the `viewBox` numbers equal your artboard size. If the width/height are larger (often by the port radius, ~3 pt per edge, or by a whole guide grid), re-export with **Use Artboards** on. The generator comment near the top of the SVG records the Illustrator version, which helps when a tool upgrade silently changes the default.
+
 **Grid alignment tip:** Design port positions at multiples of the grid spacing (20 pt) for clean alignment. For example, place ports at x=0, x=20, x=40, x=60, x=80, x=100, and y values at multiples of 20.
 
 ## SVG Root Element
@@ -138,7 +153,7 @@ Instead of one `leads` group, split leads by the port they serve:
 | `leads-top`    | Stays anchored to the top edge — does not move               |
 | `leads-bottom` | Translates by the vertical stretch amount as a single unit   |
 
-Why prefer this over the legacy `leads` group? With direction-tagged groups Diagrammer applies a single `transform="translate(dx,0)"` (or `translate(0,dy)`) to the whole group, so every path, polygon, and shape inside rides together. The legacy `leads` group is shifted **per coordinate** based on whether each value lies past the stretch break — which is fragile when an Adobe-exported path begins with one absolute moveto followed by relative segments and the moveto rounds to just shy of the break (the path stays put while the arrowhead next to it slides).
+Why prefer this over the legacy `leads` group? With direction-tagged groups Diagrammer applies a single `transform="translate(dx,0)"` (or `translate(0,dy)`) to the whole group, so every path, polygon, and shape inside rides together — its intent is unambiguous. The legacy `leads` group (and `artwork`) is shifted **per coordinate**. Diagrammer normalizes each path to absolute coordinates before shifting, so an Adobe-exported path (one absolute moveto + relative segments) is handled correctly rather than sliding apart — but the *per-coordinate* rule still has to infer, from the geometry alone, whether a subpath should stretch across the break or ride past it as a unit. Direction-tagged groups state that intent explicitly, so reach for them whenever a lead's role could be ambiguous.
 
 ```xml
 <g id="leads-left">
@@ -262,7 +277,7 @@ When to keep an explicit `<g id="stretch">`:
 - Port positions beyond the break also shift accordingly.
 - The SVG content at the break line is extended to fill the gap (vector stretch, not raster).
 
-> **Tip:** Direction-tagged lead groups (`leads-right`, `leads-bottom`) are *not* per-coordinate-shifted — they translate as a unit by the stretch amount, regardless of where their inner coordinates fall relative to the break. The break line still applies to the legacy `leads` group and to `artwork`. Use direction-tagged groups whenever a lead path uses Adobe-style `M` + relative-curves authoring (the moveto can land just shy of the break and detach the rest of the path).
+> **Tip:** Direction-tagged lead groups (`leads-right`, `leads-bottom`) translate as a unit by the stretch amount, regardless of where their inner coordinates fall relative to the break — the clearest option when a lead should ride past the break intact. The break line still applies per-coordinate to the legacy `leads` group and to `artwork`; Diagrammer normalizes those paths to absolute coordinates first, so Adobe-style `M` + relative-curves authoring is handled correctly (a subpath that straddles the break stretches; one lying entirely past it translates as a unit). Direction-tagged groups are still preferable when you want that intent stated explicitly rather than inferred.
 
 **Repeating stretch (two break lines):**
 

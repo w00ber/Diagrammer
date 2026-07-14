@@ -1089,10 +1089,12 @@ class ComponentItem(QGraphicsItem):
                 total_dx = total_growth
                 # Snapshot ORIGINAL artwork children BEFORE shift (for clean tile cloning)
                 orig_artwork = [copy.deepcopy(c) for c in artwork] if artwork is not None else None
-                # Shift elements past break2 to make room for tiles (both layers)
+                # Shift elements past break2 to make room for tiles (both
+                # layers).  Repeat stretch must not deform artwork, so translate
+                # far-side subpaths as rigid units (rigid=True).
                 for layer in (artwork, leads):
                     if layer is not None:
-                        self._shift_svg_element(layer, v_repeat[1], None, total_growth, 0)
+                        self._shift_svg_element(layer, v_repeat[1], None, total_growth, 0, rigid=True)
                 # Tile only the artwork layer; leads are connection paths and
                 # should translate as a whole, not be cloned per slot.
                 if artwork is not None:
@@ -1116,7 +1118,7 @@ class ComponentItem(QGraphicsItem):
                 orig_artwork = [copy.deepcopy(c) for c in artwork] if artwork is not None else None
                 for layer in (artwork, leads):
                     if layer is not None:
-                        self._shift_svg_element(layer, None, h_repeat[1], 0, total_growth)
+                        self._shift_svg_element(layer, None, h_repeat[1], 0, total_growth, rigid=True)
                 if artwork is not None:
                     self._tile_layer_elements(root, artwork, "y",
                                               h_repeat[0], h_repeat[1],
@@ -1253,8 +1255,15 @@ class ComponentItem(QGraphicsItem):
                     wrapper.append(clone)
 
     @classmethod
-    def _shift_svg_element(cls, elem, bx, by, dx, dy) -> None:
-        """Recursively shift SVG element coordinates past the break lines."""
+    def _shift_svg_element(cls, elem, bx, by, dx, dy, rigid: bool = False) -> None:
+        """Recursively shift SVG element coordinates past the break lines.
+
+        ``rigid`` selects the path-shift mode: ``False`` deforms geometry that
+        straddles the break (gap stretch); ``True`` translates each subpath as a
+        whole when it starts past the break (repeat/tile stretch — see
+        :meth:`_shift_path_coords`).  Only ``path``/``polyline``/``polygon``
+        honour ``rigid``; simple primitives shift per coordinate either way.
+        """
         import re
 
         tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
@@ -1292,15 +1301,15 @@ class ComponentItem(QGraphicsItem):
             d = elem.get("d") or elem.get("points")
             if d and bx is not None and dx != 0:
                 elem.set("d" if tag == "path" else "points",
-                         cls._shift_path_coords(d, bx, dx, axis="x"))
+                         cls._shift_path_coords(d, bx, dx, axis="x", rigid=rigid))
             d2 = elem.get("d") or elem.get("points")
             if d2 and by is not None and dy != 0:
                 elem.set("d" if tag == "path" else "points",
-                         cls._shift_path_coords(d2, by, dy, axis="y"))
+                         cls._shift_path_coords(d2, by, dy, axis="y", rigid=rigid))
 
         # Recurse into child elements (g, etc.)
         for child in elem:
-            cls._shift_svg_element(child, bx, by, dx, dy)
+            cls._shift_svg_element(child, bx, by, dx, dy, rigid)
 
     @staticmethod
     def _prepend_transform(elem, transform_str: str) -> None:
@@ -1329,72 +1338,171 @@ class ComponentItem(QGraphicsItem):
             pass
 
     @staticmethod
-    def _shift_path_coords(d: str, break_pos: float, delta: float, axis: str = "x") -> str:
-        """Shift coordinates in an SVG path data string that exceed break_pos.
+    def _shift_path_coords(d: str, break_pos: float, delta: float,
+                           axis: str = "x", rigid: bool = False) -> str:
+        """Shift path coordinates relative to ``break_pos`` along ``axis``.
 
-        For axis='x', shifts X coordinates (1st, 3rd, 5th... numbers in each command).
-        For axis='y', shifts Y coordinates (2nd, 4th, 6th... numbers).
-        Handles M, L, H, V, C, Q, S, T, A commands (uppercase = absolute only).
+        The path is first **normalized to absolute coordinates** (Illustrator
+        exports one absolute ``moveto`` + *relative* commands, so raw shifting
+        would only move the lone moveto).  The shift then depends on ``rigid``:
+
+        * ``rigid=False`` — **gap stretch**.  Every absolute coordinate past
+          ``break_pos`` moves; coordinates before it stay.  A subpath that
+          straddles the break therefore *deforms* to fill the opening gap, which
+          is exactly what a single-break stretch wants.
+        * ``rigid=True`` — **repeat (tile) stretch**.  A repeat stretch never
+          deforms artwork: the tile region is cloned and everything beyond the
+          far break must ride out *intact*.  So each subpath is treated as a
+          unit — translated whole iff it *starts* (its ``moveto``) past the
+          break, otherwise left alone.  This mirrors the original working
+          behaviour (which relied on the moveto being the only absolute coord)
+          without being fooled by control points that overshoot the break.
+
+        The decision is made **per subpath**, so a single ``d`` with several
+        ``M`` segments handles each independently.  Handles M, L, H, V, C, S, Q,
+        T, A and Z (both cases).  Output is always absolute, so re-running is
+        idempotent for coordinates no longer crossing the break.
         """
         import re
 
-        # Tokenize: split into commands and numbers
         tokens = re.findall(r'[A-Za-z]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?', d)
 
-        # If there are NO command letters, this is a polyline/polygon points
-        # attribute (bare "x1 y1 x2 y2 ..." pairs).  Handle directly.
+        def fmt(v: float) -> str:
+            v = round(v, 4)
+            return str(int(v)) if v == int(v) else str(v)
+
+        # No command letters => polyline/polygon "points": bare "x y x y ..."
+        # pairs, already absolute.  (Points lists have no subpaths/movetos, so
+        # rigid mode falls back to per-coordinate — a polyline that needs to
+        # ride a tile boundary would be authored as a path.)
         has_commands = any(t.isalpha() for t in tokens)
         if not has_commands:
-            result = []
+            want_x = (axis == "x")
+            out = []
             for i, token in enumerate(tokens):
                 val = float(token)
-                is_x = (i % 2 == 0)
-                if (axis == "x" and is_x and val > break_pos):
+                if (i % 2 == 0) == want_x and val > break_pos:
                     val += delta
-                elif (axis == "y" and not is_x and val > break_pos):
-                    val += delta
-                result.append(str(round(val, 4) if val != int(val) else int(val)))
-            return " ".join(result)
+                out.append(fmt(val))
+            return " ".join(out)
 
-        result = []
+        cmd_args = {'M': 2, 'L': 2, 'H': 1, 'V': 1, 'C': 6, 'S': 4,
+                    'Q': 4, 'T': 2, 'A': 7, 'Z': 0}
+        # Argument indices holding X / Y coords for each (absolute) command.
+        # For A (elliptical arc) only the final endpoint (indices 5, 6) is a
+        # coordinate; rx/ry/rotation/flags must never be shifted.
+        x_indices = {'M': {0}, 'L': {0}, 'H': {0}, 'V': set(), 'C': {0, 2, 4},
+                     'S': {0, 2}, 'Q': {0, 2}, 'T': {0}, 'A': {5}}
+        y_indices = {'M': {1}, 'L': {1}, 'H': set(), 'V': {0}, 'C': {1, 3, 5},
+                     'S': {1, 3}, 'Q': {1, 3}, 'T': {1}, 'A': {6}}
+        idx_map = x_indices if axis == "x" else y_indices
+
+        # Pass 1: normalize to absolute, building a flat command list of
+        # (letter, args).  Track, per subpath, the (command, arg) references to
+        # its target-axis coords and the subpath's starting moveto coord.
+        commands: list[tuple[str, list[float]]] = []
+        subpaths: list[tuple[float, list[tuple[int, int]]]] = []
+        cur_refs: list[tuple[int, int]] = []
+        cur_start = 0.0
+
+        cx = cy = sx = sy = 0.0   # current point; subpath start (for Z)
+        i = 0
+        n = len(tokens)
         cmd = ""
-        coord_idx = 0  # tracks which coordinate we're on within a command
 
-        # Commands and how many numbers they consume per repetition
-        cmd_args = {
-            'M': 2, 'L': 2, 'H': 1, 'V': 1, 'C': 6, 'S': 4, 'Q': 4, 'T': 2, 'A': 7, 'Z': 0,
-            'm': 2, 'l': 2, 'h': 1, 'v': 1, 'c': 6, 's': 4, 'q': 4, 't': 2, 'a': 7, 'z': 0,
-        }
-        # Which argument indices are X coords vs Y coords for each command
-        x_indices = {
-            'M': {0}, 'L': {0}, 'H': {0}, 'V': set(), 'C': {0, 2, 4}, 'S': {0, 2}, 'Q': {0, 2}, 'T': {0},
-        }
-        y_indices = {
-            'M': {1}, 'L': {1}, 'H': set(), 'V': {0}, 'C': {1, 3, 5}, 'S': {1, 3}, 'Q': {1, 3}, 'T': {1},
-        }
+        def close_subpath() -> None:
+            nonlocal cur_refs
+            if cur_refs:
+                subpaths.append((cur_start, cur_refs))
+                cur_refs = []
 
-        for token in tokens:
-            if token.upper() in cmd_args or token.lower() in cmd_args:
-                cmd = token
-                coord_idx = 0
-                result.append(token)
+        while i < n:
+            tok = tokens[i]
+            if tok.isalpha():
+                cmd = tok
+                i += 1
+                if cmd in ("Z", "z"):
+                    commands.append(("Z", []))
+                    cx, cy = sx, sy
+                continue
+            if not cmd:
+                i += 1
+                continue
+
+            U = cmd.upper()
+            rel = cmd.islower()
+            k = cmd_args.get(U, 0)
+            if k == 0 or i + k > n:
+                i += 1
+                continue
+            args = [float(tokens[i + j]) for j in range(k)]
+            i += k
+
+            # Convert this command's args to absolute; record the endpoint
+            # (used to keep relative conversion of later commands anchored to
+            # the original geometry).
+            if U in ("M", "L", "T"):
+                if rel:
+                    args[0] += cx
+                    args[1] += cy
+                nx, ny = args[0], args[1]
+            elif U == "H":
+                if rel:
+                    args[0] += cx
+                nx, ny = args[0], cy
+            elif U == "V":
+                if rel:
+                    args[0] += cy
+                nx, ny = cx, args[0]
+            elif U in ("C", "S", "Q"):
+                if rel:
+                    for j in range(0, k, 2):
+                        args[j] += cx
+                        args[j + 1] += cy
+                nx, ny = args[k - 2], args[k - 1]
+            elif U == "A":
+                if rel:
+                    args[5] += cx
+                    args[6] += cy
+                nx, ny = args[5], args[6]
             else:
-                # It's a number
-                val = float(token)
-                upper_cmd = cmd.upper()
-                n_args = cmd_args.get(upper_cmd, 0)
-                idx_in_group = coord_idx % n_args if n_args > 0 else 0
+                nx, ny = cx, cy
 
-                # Only shift absolute commands (uppercase)
-                if cmd == upper_cmd and upper_cmd != 'A':
-                    target_indices = x_indices.get(upper_cmd, set()) if axis == "x" else y_indices.get(upper_cmd, set())
-                    if idx_in_group in target_indices and val > break_pos:
-                        val += delta
+            if U == "M":
+                close_subpath()
+                sx, sy = nx, ny
+                cur_start = nx if axis == "x" else ny
 
-                result.append(str(round(val, 4) if val != int(val) else int(val)))
-                coord_idx += 1
+            ci = len(commands)
+            commands.append((U, args))
+            for j in idx_map.get(U, set()):
+                cur_refs.append((ci, j))
 
-        return " ".join(result)
+            cx, cy = nx, ny
+            if U == "M":
+                # Implicit coordinate pairs after a moveto are lineto's.
+                cmd = "l" if rel else "L"
+        close_subpath()
+
+        # Pass 2: apply the shift per subpath.
+        if delta != 0:
+            for start, refs in subpaths:
+                if rigid:
+                    # Whole-unit translate iff the subpath starts past the break.
+                    if start > break_pos:
+                        for (ci, j) in refs:
+                            commands[ci][1][j] += delta
+                else:
+                    # Gap stretch: move only coordinates past the break.
+                    for (ci, j) in refs:
+                        if commands[ci][1][j] > break_pos:
+                            commands[ci][1][j] += delta
+
+        out: list[str] = []
+        for letter, args in commands:
+            out.append(letter)
+            out.extend(fmt(a) for a in args)
+        return " ".join(out)
 
     def _paint_stretch_handles(self, painter: QPainter) -> None:
         """Draw stretch handles on both ends when selected and stretchable."""
