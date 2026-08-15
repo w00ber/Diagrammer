@@ -33,6 +33,10 @@ dependencies = [
     "ziamath>=0.9",
     "markdown>=3.4",
     "pyyaml>=6.0",
+    # Shared framework: Diagrammer's theming now lives in sciappkit
+    # (sciappkit.app.theming), re-exported from diagrammer.app. Pinned to
+    # the M3 dogfood branch until sciappkit is published (then: sciappkit>=0.1).
+    "sciappkit @ git+https://github.com/w00ber/scikit-app@claude/sciapp-kit-m0-scaffold-smfv17",
 ]
 
 [project.optional-dependencies]
