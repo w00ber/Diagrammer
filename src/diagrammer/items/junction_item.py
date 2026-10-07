@@ -2,8 +2,9 @@
 
 Holds a single port so that wires can terminate on another wire
 (T-junction) or at a free point in space (double-click wire terminator).
-It is never selectable or movable by itself. A junction where two or
-more wires actually meet paints the standard schematic filled dot;
+It is never selectable or movable by itself. A junction where three or
+more wires actually meet paints the standard schematic filled dot (two
+wires are just a bend or a straight run, which takes no dot);
 single-wire endpoint anchors stay invisible unless the user assigns an
 explicit end marker (filled or open terminal dot) via right-click.
 """
@@ -20,8 +21,12 @@ from PySide6.QtWidgets import QGraphicsItem
 from diagrammer.items.port_item import PortItem
 from diagrammer.models.component_def import PortDef
 
-# Minimum radius of the filled dot drawn where >= 2 wires meet
+# Minimum radius of the filled dot drawn where >= 3 wires meet
 JUNCTION_DOT_RADIUS = 3.5
+# Wires that must meet at a junction for the automatic dot. Two wires are
+# a bend or a straight run (e.g. what's left of a tee after deleting its
+# branch), which takes no dot by schematic convention.
+JUNCTION_DOT_MIN_WIRES = 3
 
 
 class JunctionItem(QGraphicsItem):
@@ -78,7 +83,7 @@ class JunctionItem(QGraphicsItem):
 
         A deliberate per-junction annotation (typically on a free wire
         end), independent of the global "Show junction dots" setting,
-        which governs only the automatic dots where >= 2 wires meet.
+        which governs only the automatic dots where >= 3 wires meet.
         """
         return self._end_marker
 
@@ -118,7 +123,7 @@ class JunctionItem(QGraphicsItem):
 
         Empty when the "Show junction dots" setting is off (the dot is a
         purely visual convention — connectivity is unaffected) or when
-        fewer than two wires meet at this port.
+        fewer than ``JUNCTION_DOT_MIN_WIRES`` wires meet at this port.
         """
         from diagrammer.panels.settings_dialog import app_settings
         if not getattr(app_settings, "show_junction_dots", True):
@@ -127,7 +132,7 @@ class JunctionItem(QGraphicsItem):
         if scene is None or not hasattr(scene, 'connections_on_port'):
             return []
         conns = scene.connections_on_port(self._port)
-        return conns if len(conns) >= 2 else []
+        return conns if len(conns) >= JUNCTION_DOT_MIN_WIRES else []
 
     def _should_draw_dot(self) -> bool:
         return bool(self._dot_connections())
@@ -136,7 +141,7 @@ class JunctionItem(QGraphicsItem):
         """Paint the explicit end marker, or the automatic junction dot.
 
         Explicit markers ("filled"/"open") always draw. The automatic
-        dot appears when >= 2 wires meet here — without it a
+        dot appears when >= 3 wires meet here — without it a
         T-connection is indistinguishable from two unconnected crossing
         wires — and is suppressed by the "Show junction dots" setting.
         """

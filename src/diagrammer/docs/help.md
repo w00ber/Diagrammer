@@ -140,7 +140,7 @@ Wires terminated in empty space (free ends) have draggable anchor points at both
 
 ### Wire end dots
 
-A free end can carry a terminal marker: **No Dot** (the default), **Filled Dot**, or **Open Dot** (a hollow circle). This is separate from the automatic dot drawn where two or more wires meet, which is controlled by the junction-dot setting.
+A free end can carry a terminal marker: **No Dot** (the default), **Filled Dot**, or **Open Dot** (a hollow circle). This is separate from the automatic dot drawn where three or more wires meet, which is controlled by the junction-dot setting.
 
 - **D** cycles the dot No Dot → Filled → Open → No Dot; **Shift+D** cycles the other way. With the mouse over a free end, it changes that end. Otherwise it changes every free end of the selected wires, and they all switch to the same style.
 - **Ctrl+Alt+click** (Cmd+Option+click on macOS) on a free end cycles its dot. Within about 10 screen pixels of a free end, this gesture changes the dot; farther along the wire it places a direction arrow (see below).
@@ -158,6 +158,8 @@ Each change is one undo step. Ends where a wire meets a component port, or where
 To tap into an existing wire:
 - While routing, click near an existing wire — a junction is created
 - Toggle junction dot visibility in Settings or via the Routing menu
+
+A junction gets the automatic dot only where three or more wires meet. Two wires meeting at a junction are just a bend or a straight run, so no dot is drawn there — for example, after you delete the branch of a tee.
 
 Wires that only *look* connected can be joined after the fact:
 - **Crossing:** right-click where two wires cross and choose **Wire Crossing → Convert Crossing to Junction**. Both wires are split so four legs meet at one dotted junction.
