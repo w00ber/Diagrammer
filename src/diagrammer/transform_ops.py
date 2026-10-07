@@ -73,33 +73,29 @@ def _mirror_map(center: QPointF, horizontal: bool):
 def _route_interior(wire) -> list[QPointF]:
     """Interior vertices of *wire*'s visible route, in scene coords.
 
-    ``all_points()`` can carry render-only stubs past each endpoint
-    (``_add_lead_approach`` / ``_add_wire_junction_approach``). Taking
-    ``[1:-1]`` of that list would capture the port positions themselves
-    as waypoints: zero-length segments that flatten the rounded corner
-    at the port, and that pile up by two more on every transform. Trim
-    back to the actual endpoint positions and drop coincident points.
+    Uses ``routed_points()``, not ``all_points()[1:-1]``: the latter
+    keeps the render-only stubs' inner ends, i.e. the port positions
+    themselves, as waypoints — zero-length segments that flatten the
+    rounded corner at the port and pile up by two more on every
+    transform. Coincident points are dropped too.
     """
-    expanded = wire.all_points()
+    route = wire.routed_points()
     if wire._closed:
         # Closed polygons: the expanded route IS the polygon geometry
         # (source and target ports are the same junction port; there
         # is no port-endpoint pair to strip). Capture every vertex.
-        return [QPointF(p) for p in expanded]
+        return [QPointF(p) for p in route]
+    if len(route) < 2:
+        return []
 
     def near(a: QPointF, b: QPointF) -> bool:
         return abs(a.x() - b.x()) + abs(a.y() - b.y()) < 1e-3
 
-    src = wire._source_port.scene_center()
-    tgt = wire._target_port.scene_center()
-    first = next((i for i, p in enumerate(expanded) if near(p, src)), 0)
-    last = next((i for i in range(len(expanded) - 1, -1, -1)
-                 if near(expanded[i], tgt)), len(expanded) - 1)
     interior: list[QPointF] = []
-    for p in expanded[first + 1:last]:
-        if not near(p, interior[-1] if interior else src):
+    for p in route[1:-1]:
+        if not near(p, interior[-1] if interior else route[0]):
             interior.append(QPointF(p))
-    if interior and near(interior[-1], tgt):
+    if interior and near(interior[-1], route[-1]):
         interior.pop()
     return interior
 

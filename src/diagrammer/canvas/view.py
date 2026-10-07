@@ -2517,6 +2517,17 @@ class DiagramView(QGraphicsView):
                 lambda _c=False, a=owner_conn, b=other_conn, pt=cross_pt:
                 self._diagram_scene.convert_crossing_to_junction(a, b, pt))
 
+        # Unconnected tee (a wire end or component lead touching the middle
+        # of another wire) near the click → offer to make it a junction
+        tee = self._diagram_scene.find_tee_at(scene_pos, self.pick_tolerance(12.0))
+        if tee is not None:
+            if menu.actions():
+                menu.addSeparator()
+            tee_act = menu.addAction("Convert Tee to Junction")
+            tee_act.triggered.connect(
+                lambda _c=False, h=tee[0], pt_port=tee[1], pt=tee[2]:
+                self._diagram_scene.convert_tee_to_junction(h, pt_port, pt))
+
         # Free wire end near the click → end-marker submenu
         _end_conn, _end_name, end_port = self._find_wire_endpoint_for_extend(scene_pos)
         if end_port is not None:

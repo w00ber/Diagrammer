@@ -159,6 +159,12 @@ To tap into an existing wire:
 - While routing, click near an existing wire — a junction is created
 - Toggle junction dot visibility in Settings or via the Routing menu
 
+Wires that only *look* connected can be joined after the fact:
+- **Crossing:** right-click where two wires cross and choose **Wire Crossing → Convert Crossing to Junction**. Both wires are split so four legs meet at one dotted junction.
+- **Tee:** right-click where a wire end or a component's lead touches the middle of another wire without being connected, and choose **Convert Tee to Junction**. The wire is split at a dotted junction. A component lead is joined through a zero-length connector that draws nothing; if you later move the component, it becomes an ordinary wire that keeps the part connected. An element running *along* the wire, or touching its end, is not a tee.
+
+Each conversion is one undo step.
+
 ### Direction arrows (signal flow)
 
 Add arrows to a wire to indicate signal flow:
