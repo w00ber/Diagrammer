@@ -43,6 +43,40 @@ class TestCompoundExportRoundtrip:
         # Must parse — duplicate xmlns regression would raise ParseError.
         ET.parse(out)
 
+    def test_junction_dots_follow_canvas_rule(self, scene, tmp_path: Path):
+        """Only junctions the canvas dots (>= 3 wires) or that carry an
+        end marker are exported as circles; a two-wire bend is not."""
+        from diagrammer.commands.connect_command import CreateConnectionCommand
+        from diagrammer.items.junction_item import JunctionItem
+
+        def junction(x, y):
+            j = JunctionItem()
+            j.setPos(QPointF(x, y))
+            scene.addItem(j)
+            return j
+
+        def wire(a, b):
+            scene.undo_stack.push(CreateConnectionCommand(scene, a.port, b.port))
+
+        rect = RectangleItem(width=20, height=20)
+        scene.addItem(rect)
+        bend = junction(100, 0)
+        wire(junction(0, 0), bend)
+        wire(bend, junction(100, 100))
+        tee = junction(300, 0)
+        for x, y in ((200, 0), (400, 0), (300, 100)):
+            wire(tee, junction(x, y))
+        marked = junction(500, 0)
+        wire(junction(600, 0), marked)
+        marked.end_marker = "filled"
+
+        out = tmp_path / "dots.svg"
+        assert export_compound_component(
+            scene, [rect, bend, tee, marked], out, component_name="dots")
+        circles = [el for el in ET.parse(out).iter()
+                   if el.tag.endswith("circle") and el.get("fill") == "#323232"]
+        assert len(circles) == 2  # the tee and the marked end, not the bend
+
     def test_exported_component_is_well_formed_xml(
         self, scene, library, tmp_path: Path,
     ):

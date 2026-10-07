@@ -55,11 +55,11 @@ class Waypoint:
     reconstructed on demand via ``anchor.mapToScene((dx, dy))``.
 
     Because the port inherits its parent component's transform,
-    port-local offsets rotate / flip with the parent automatically —
-    so when the user transforms the parent (or a group containing it),
-    the wire shape follows as a rigid body without any special-case
-    transform code at the call site. This is what lets the group-rotate
-    code drop the pre-capture / ROUTE_DIRECT hack.
+    port-local offsets rotate / flip with the parent automatically.
+    Junction ports are the exception: junctions only ever translate,
+    so a waypoint anchored to one keeps its scene-axis offset through
+    a rotation or flip. Group transforms therefore re-capture internal
+    wires explicitly (see ``transform_ops._apply_internal_wire_shapes``).
     """
 
     __slots__ = ("anchor", "dx", "dy")
@@ -636,7 +636,12 @@ class ConnectionItem(QGraphicsPathItem):
         else:
             return
 
-        seg_len = max((seg_dx ** 2 + seg_dy ** 2) ** 0.5, 1e-9)
+        seg_len = (seg_dx ** 2 + seg_dy ** 2) ** 0.5
+        if seg_len < 1e-6:
+            # Zero-length terminal segment (e.g. a tee connector from a
+            # port to a junction at the same spot): no direction, so no
+            # bend. Must match ComponentItem._compute_lead_shortening.
+            return
         dot = abs(adx * (seg_dx / seg_len) + ady * (seg_dy / seg_len))
         if dot > 0.5:
             return  # already aligned with lead — no bend needed
@@ -752,6 +757,28 @@ class ConnectionItem(QGraphicsPathItem):
         This is the cached expanded route (rebuilt by :meth:`update_route`).
         """
         return list(self._expanded)
+
+    def routed_points(self) -> list[QPointF]:
+        """The rendered route trimmed to run from source port to target port.
+
+        ``all_points()`` can extend past either end with render-only stubs
+        (``_add_lead_approach`` / ``_add_wire_junction_approach``) that
+        overlap a component lead or the neighbouring wire. Closed polygons
+        are returned whole.
+        """
+        pts = list(self._expanded)
+        if self._closed or len(pts) < 2:
+            return pts
+
+        def near(a: QPointF, b: QPointF) -> bool:
+            return abs(a.x() - b.x()) + abs(a.y() - b.y()) < 1e-3
+
+        src = self._source_port.scene_center()
+        tgt = self._target_port.scene_center()
+        first = next((i for i, p in enumerate(pts) if near(p, src)), 0)
+        last = next((i for i in range(len(pts) - 1, -1, -1)
+                     if near(pts[i], tgt)), len(pts) - 1)
+        return pts[first:last + 1] if last > first else pts
 
     def rebuild_expanded(self) -> None:
         """Recompute the expanded route (without touching the painted path).

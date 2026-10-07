@@ -37,72 +37,108 @@ def _internal_wires(scene, items) -> list:
     return out
 
 
+def _rotation_map(center: QPointF, degrees: float):
+    """Return ``f(p)`` rotating scene point *p* by *degrees* about *center*.
+
+    This is the same orbit every item's anchor follows during a group
+    rotation, so applying it to wire geometry keeps the two congruent.
+    Right angles use exact cos/sin so repeated 90-degree turns don't
+    accumulate float drift (four of them are an exact identity).
+    """
+    import math
+    quarter = degrees / 90.0
+    if quarter == int(quarter):
+        cos_a, sin_a = ((1, 0), (0, 1), (-1, 0), (0, -1))[int(quarter) % 4]
+    else:
+        rad = math.radians(degrees)
+        cos_a, sin_a = math.cos(rad), math.sin(rad)
+    cx, cy = center.x(), center.y()
+
+    def apply(p: QPointF) -> QPointF:
+        dx, dy = p.x() - cx, p.y() - cy
+        return QPointF(cx + dx * cos_a - dy * sin_a,
+                       cy + dx * sin_a + dy * cos_a)
+    return apply
+
+
+def _mirror_map(center: QPointF, horizontal: bool):
+    """Return ``f(p)`` mirroring scene point *p* through *center*
+    (across the vertical axis if *horizontal*, else the horizontal one)."""
+    cx, cy = center.x(), center.y()
+    if horizontal:
+        return lambda p: QPointF(2 * cx - p.x(), p.y())
+    return lambda p: QPointF(p.x(), 2 * cy - p.y())
+
+
+def _route_interior(wire) -> list[QPointF]:
+    """Interior vertices of *wire*'s visible route, in scene coords.
+
+    Uses ``routed_points()``, not ``all_points()[1:-1]``: the latter
+    keeps the render-only stubs' inner ends, i.e. the port positions
+    themselves, as waypoints — zero-length segments that flatten the
+    rounded corner at the port and pile up by two more on every
+    transform. Coincident points are dropped too.
+    """
+    route = wire.routed_points()
+    if wire._closed:
+        # Closed polygons: the expanded route IS the polygon geometry
+        # (source and target ports are the same junction port; there
+        # is no port-endpoint pair to strip). Capture every vertex.
+        return [QPointF(p) for p in route]
+    if len(route) < 2:
+        return []
+
+    def near(a: QPointF, b: QPointF) -> bool:
+        return abs(a.x() - b.x()) + abs(a.y() - b.y()) < 1e-3
+
+    interior: list[QPointF] = []
+    for p in route[1:-1]:
+        if not near(p, interior[-1] if interior else route[0]):
+            interior.append(QPointF(p))
+    if interior and near(interior[-1], route[-1]):
+        interior.pop()
+    return interior
+
+
 def _capture_internal_wire_shapes(wires) -> list:
-    """Snapshot each internal wire's full expanded route as a list of
-    *port-local* offsets, plus the routing mode and the
-    pre-transform anchor list (for undo).
+    """Snapshot each internal wire's visible route (scene coords), plus
+    the routing mode and the pre-transform anchor list (for undo).
 
     Auto-routed bends and closed-polygon vertices aren't stored as
     user waypoints, so a transform on the parent components would let
     the orthogonal router re-derive a different shape from the
-    transformed key-points. Capturing every interior point as a
-    port-local ``(anchor_port, dx, dy)`` triple makes the shape ride
-    along with whichever port it was closest to — when the components
-    rotate/flip, the port frames carry the offsets and the wire stays
-    rigid-body congruent.
+    transformed key-points. Capturing every interior point lets
+    ``_apply_internal_wire_shapes`` replay the route as a rigid body.
 
-    Returns ``[(wire, [Waypoint, ...], pre_anchors, orig_routing_mode), ...]``.
+    Returns ``[(wire, [QPointF, ...], pre_anchors, orig_routing_mode), ...]``.
     """
     from diagrammer.items.connection_item import Waypoint
 
     snapshots = []
     for wire in wires:
-        expanded = wire.all_points()
-        if wire._closed:
-            # Closed polygons: the expanded route IS the polygon geometry
-            # (source and target ports are the same junction port; there
-            # is no port-endpoint pair to strip). Capture every vertex.
-            interior = list(expanded)
-        elif len(expanded) > 2:
-            interior = list(expanded[1:-1])
-        elif expanded:
-            interior = [QPointF(
-                (expanded[0].x() + expanded[-1].x()) / 2,
-                (expanded[0].y() + expanded[-1].y()) / 2,
-            )]
-        else:
-            interior = []
-
-        # Convert each interior scene point to a port-local offset on
-        # the closest endpoint port — using the pre-transform port
-        # frames, which is the whole point: those offsets are then
-        # invariant under the upcoming parent transform.
-        new_anchors = []
-        for p in interior:
-            sc_src = wire._source_port.scene_center()
-            sc_tgt = wire._target_port.scene_center()
-            d_src = abs(p.x() - sc_src.x()) + abs(p.y() - sc_src.y())
-            d_tgt = abs(p.x() - sc_tgt.x()) + abs(p.y() - sc_tgt.y())
-            anchor_port = wire._source_port if d_src <= d_tgt else wire._target_port
-            local = anchor_port.mapFromScene(QPointF(p))
-            new_anchors.append(Waypoint(anchor_port, local.x(), local.y()))
-
         # Snapshot the pre-transform anchor list so undo can restore
         # exactly (Waypoint is a small dataclass-like; copy by hand).
         pre_anchors = [Waypoint(a.anchor, a.dx, a.dy) for a in wire._anchors]
-        snapshots.append((wire, new_anchors, pre_anchors, wire.routing_mode))
+        snapshots.append(
+            (wire, _route_interior(wire), pre_anchors, wire.routing_mode))
     return snapshots
 
 
-def _apply_internal_wire_shapes(undo_stack, snapshots) -> None:
-    """Install the captured port-local offsets onto each wire and pin
-    routing to ROUTE_DIRECT, all wrapped in undoable commands.
+def _apply_internal_wire_shapes(undo_stack, snapshots, transform) -> None:
+    """Map each captured route through *transform*, install it as the
+    wire's anchors, and pin routing to ROUTE_DIRECT — all undoable.
 
-    The offsets were computed in the pre-transform port frames, so
-    after the parent components have rotated/flipped, the same offsets
-    resolve (via ``Waypoint.to_scene`` → ``port.mapToScene``) to the
-    correctly-transformed scene points — wire shape preserved as a
-    rigid body congruent with the new component transforms.
+    Call this AFTER the items have been transformed. *transform* must
+    be the same rigid map the items followed (``_rotation_map`` /
+    ``_mirror_map``); the mapped points are then bound to ports in
+    their post-transform frames, so the wire lands congruent with the
+    components regardless of which port each point binds to.
+
+    Relying on the port frames to carry the transform instead (binding
+    before, resolving after) breaks for junction ports: junctions only
+    translate during a group transform, never rotate or flip, so any
+    point anchored to one — e.g. the midpoint of a lead drawn from a
+    free end toward a component — kept its unrotated offset (issue #34).
     """
     from diagrammer.commands.connect_command import SetRoutingModeCommand
     from diagrammer.items.connection_item import ROUTE_DIRECT
@@ -112,8 +148,9 @@ def _apply_internal_wire_shapes(undo_stack, snapshots) -> None:
         """Atomic install/restore of a wire's port-local anchors.
 
         EditWaypointsCommand goes scene→port-local on each redo, which
-        loses the captured port-local meaning when the post-transform
-        port frame differs. This installs the anchors verbatim.
+        re-binds against whatever the port frames are at that moment.
+        Installing verbatim is exact: the macro's redo replays the item
+        transforms first, so the frames match the ones bound here.
         """
 
         def __init__(self, wire, new_anchors, old_anchors):
@@ -135,7 +172,8 @@ def _apply_internal_wire_shapes(undo_stack, snapshots) -> None:
         def undo(self):
             self._install(self._old)
 
-    for wire, new_anchors, pre_anchors, orig_mode in snapshots:
+    for wire, interior, pre_anchors, orig_mode in snapshots:
+        new_anchors = [wire._make_anchor(transform(p)) for p in interior]
         undo_stack.push(_SetAnchorsCommand(wire, new_anchors, pre_anchors))
         if orig_mode != ROUTE_DIRECT:
             undo_stack.push(SetRoutingModeCommand(wire, ROUTE_DIRECT))
@@ -204,7 +242,6 @@ class TransformMixin:
         key-points and pick a different L-shape than the rotated
         original.
         """
-        import math
         from diagrammer.commands.add_command import MoveComponentCommand
         from diagrammer.commands.transform_command import (
             RotateComponentCommand,
@@ -265,16 +302,8 @@ class TransformMixin:
             scene_centers = [_scene_center(item) for item in movable]
             gcx = sum(p.x() for p in scene_centers) / len(scene_centers)
             gcy = sum(p.y() for p in scene_centers) / len(scene_centers)
-            rad = math.radians(degrees)
-            cos_a, sin_a = math.cos(rad), math.sin(rad)
-
-            target_centers = []
-            for sc in scene_centers:
-                dx, dy = sc.x() - gcx, sc.y() - gcy
-                target_centers.append(QPointF(
-                    gcx + dx * cos_a - dy * sin_a,
-                    gcy + dx * sin_a + dy * cos_a,
-                ))
+            orbit = _rotation_map(QPointF(gcx, gcy), degrees)
+            target_centers = [orbit(sc) for sc in scene_centers]
 
             # Capture internal-wire shapes BEFORE rotating components,
             # so the snapshot reflects the user-visible route as drawn.
@@ -296,13 +325,11 @@ class TransformMixin:
                 if hasattr(item, '_skip_snap'):
                     item._skip_snap = False
 
-            # Install the captured port-local offsets onto the wires
-            # and pin ROUTE_DIRECT. Offsets were computed in the
-            # pre-rotation port frames, so once the parent components
-            # finish rotating they resolve (via Waypoint.to_scene) to
-            # the rotated scene points automatically.
+            # Rotate the captured routes through the same orbit the
+            # items followed, bind them to the now-rotated ports, and
+            # pin ROUTE_DIRECT.
             _apply_internal_wire_shapes(
-                self._scene.undo_stack, wire_snapshots,
+                self._scene.undo_stack, wire_snapshots, orbit,
             )
 
         self._scene.undo_stack.endMacro()
@@ -317,11 +344,9 @@ class TransformMixin:
         For non-90° rotations the orthogonal router can't represent the
         rotated wire shape, so internal wires (both endpoints in the
         rotated set) switch to ROUTE_DIRECT — wrapped in
-        ``SetRoutingModeCommand`` so undo restores the previous mode.
-        Wire SHAPE follows automatically via Phase B's port-local
-        waypoints; no pre-capture needed.
+        ``SetRoutingModeCommand`` so undo restores the previous mode —
+        and their captured routes are rotated around the same pivot.
         """
-        import math
         from diagrammer.commands.add_command import MoveComponentCommand
         from diagrammer.commands.transform_command import (
             RotateComponentCommand,
@@ -386,9 +411,7 @@ class TransformMixin:
                 sum(p.y() for p in scene_centers) / len(scene_centers),
             )
 
-        rad = math.radians(degrees)
-        cos_a, sin_a = math.cos(rad), math.sin(rad)
-        px, py = pivot_scene.x(), pivot_scene.y()
+        orbit = _rotation_map(pivot_scene, degrees)
 
         # Capture internal-wire shapes BEFORE moving anything so the
         # snapshot reflects the user-visible route (including
@@ -404,10 +427,7 @@ class TransformMixin:
                 self._scene.undo_stack.push(RotateItemCommand(item, degrees))
 
             cur_sc = _scene_center(item)
-            dx, dy = cur_sc.x() - px, cur_sc.y() - py
-            new_sc = QPointF(px + dx * cos_a - dy * sin_a,
-                             py + dx * sin_a + dy * cos_a)
-            offset = new_sc - cur_sc
+            offset = orbit(cur_sc) - cur_sc
             new_pos = item.pos() + offset
             if hasattr(item, '_skip_snap'):
                 item._skip_snap = True
@@ -418,10 +438,9 @@ class TransformMixin:
         # Replay the captured wire shapes through the rotation around
         # the pivot, rebound to port-local offsets and pinned to
         # ROUTE_DIRECT so the orthogonal router doesn't re-derive
-        # bends. Offsets were captured in the pre-rotation port
-        # frames; the rotated frames carry them automatically.
+        # bends.
         _apply_internal_wire_shapes(
-            self._scene.undo_stack, wire_snapshots,
+            self._scene.undo_stack, wire_snapshots, orbit,
         )
 
         self._scene.undo_stack.endMacro()
@@ -487,7 +506,7 @@ class TransformMixin:
         # whose own transform doesn't carry the flip). Replaying the
         # mirrored snapshot through ``_apply_internal_wire_shapes``
         # rebinds each point to a port-local offset under the now-
-        # flipped component transform and pins ROUTE_DIRECT.
+        # flipped transforms and pins ROUTE_DIRECT.
         wire_snapshots = _capture_internal_wire_shapes(
             _internal_wires(self._scene, all_movable),
         )
@@ -538,12 +557,11 @@ class TransformMixin:
             if hasattr(item, '_skip_snap'):
                 item._skip_snap = False
 
-        # Install the captured port-local offsets onto the wires.
-        # Offsets were computed in the pre-flip port frames; the
-        # now-flipped frames carry them so the wire shape mirrors
-        # rigidly along with the components.
+        # Mirror the captured routes through the same axis the items
+        # used, so the wire shape flips rigidly along with them.
         _apply_internal_wire_shapes(
             self._scene.undo_stack, wire_snapshots,
+            _mirror_map(QPointF(group_cx, group_cy), horizontal),
         )
 
         self._scene.undo_stack.endMacro()
