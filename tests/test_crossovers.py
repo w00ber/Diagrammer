@@ -358,6 +358,7 @@ class TestJunctionDotSetting:
     def _t_junction(self, scene):
         hub = _add_junction(scene, 100, 50)
         _connect(scene, _add_junction(scene, 0, 50).port, hub.port)
+        _connect(scene, hub.port, _add_junction(scene, 200, 50).port)
         _connect(scene, hub.port, _add_junction(scene, 100, 130).port)
         return hub
 
@@ -373,6 +374,22 @@ class TestJunctionDotSetting:
         hub = _add_junction(scene, 100, 50)
         _connect(scene, _add_junction(scene, 0, 50).port, hub.port)
         assert not hub._should_draw_dot()
+
+    def test_two_wire_junction_is_a_bend_not_a_dot(self, scene):
+        hub = _add_junction(scene, 100, 50)
+        _connect(scene, _add_junction(scene, 0, 50).port, hub.port)
+        _connect(scene, hub.port, _add_junction(scene, 100, 130).port)
+        assert not hub._should_draw_dot()
+
+    def test_deleting_tee_branch_removes_dot(self, scene):
+        hub = self._t_junction(scene)
+        branch = next(c for c in scene.connections_on_port(hub.port)
+                      if c.target_port.scene_center().y() == pytest.approx(130))
+        scene.delete_items_with_dependents([branch])
+        assert len(scene.connections_on_port(hub.port)) == 2
+        assert not hub._should_draw_dot()
+        scene.undo_stack.undo()
+        assert hub._should_draw_dot()
 
 
 class TestWireEndMarkers:

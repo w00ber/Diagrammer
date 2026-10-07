@@ -32,6 +32,21 @@ from diagrammer.transform_ops import TransformMixin
 logger = logging.getLogger(__name__)
 
 
+def _native_mouse_hint(text: str) -> str:
+    """Render a ``"Mod+Mod+click"`` hint with the platform's modifier names
+    (Qt's native text, so it matches the keyboard rows: ``⌥⌘-click`` on
+    macOS). Text without a modifier prefix, e.g. ``"Double-click"``, passes
+    through unchanged."""
+    mods, sep, rest = text.rpartition("+")
+    if not sep:
+        return text
+    native = QKeySequence(f"{mods}+X").toString(
+        QKeySequence.SequenceFormat.NativeText)[:-1]
+    if not native:
+        return text
+    return native + rest if native.endswith("+") else f"{native}-{rest}"
+
+
 def _find_builtin_components() -> Path:
     """Locate the built-in components directory shipped with the package.
 
@@ -609,6 +624,13 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         cmd = UngroupCommand(all_members, top_gids.pop())
         self._scene.undo_stack.push(cmd)
 
+    def _cycle_end_dots(self, step: int) -> None:
+        """Cycle the free-end dot under the cursor, else on the selected
+        wires' free ends (D / Shift+D)."""
+        v = self._active_view()
+        if hasattr(v, 'cycle_end_dots'):
+            v.cycle_end_dots(step)
+
     def _join_wires(self) -> None:
         """Join two or more selected wires that share overlapping endpoints (Ctrl+J)."""
         from diagrammer.items.connection_item import ConnectionItem
@@ -740,6 +762,11 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             ("overlay.toggle", "Hide hints"),
         ],
         "wire": [
+            (None, "Ctrl+Alt+click", "Add arrow (at a free end: dot)"),
+            (None, "Double-click", "Flip arrow"),
+            (None, "Ctrl+Shift+click", "Delete arrow"),
+            (("edit.cycle_end_dot", "edit.cycle_end_dot_back"),
+             "Cycle end dot / reverse"),
             ("edit.join_wires", "Join wires"),
             ("edit.bring_fwd", "Bring forward"),
             ("edit.send_bwd", "Send backward"),
@@ -807,13 +834,14 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         - ``(action_id, label)`` — a single shortcut.
         - ``((action_id_a, action_id_b), label)`` — a pair of related
           shortcuts (e.g. CCW/CW) collapsed onto one row as ``"keyA / keyB"``.
-        - ``(None, keys, label)`` — a verbatim hint (e.g. a mouse gesture).
+        - ``(None, keys, label)`` — a verbatim hint (e.g. a mouse gesture);
+          a ``"Mod+click"`` prefix is shown with the platform's modifier names.
         """
         rows = []
         for entry in self._SHORTCUT_HINTS.get(context, []):
             first = entry[0]
             if first is None:
-                rows.append((entry[1], entry[2]))
+                rows.append((_native_mouse_hint(entry[1]), entry[2]))
                 continue
             if isinstance(first, tuple):
                 parts = [get_shortcut(aid).display_text for aid in first]

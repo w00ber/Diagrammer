@@ -108,7 +108,10 @@ def export_compound_component(
         elif isinstance(item, ConnectionItem):
             _render_connection(artwork, item, ox, oy)
         elif isinstance(item, JunctionItem):
-            if item.isVisible():
+            # Same rule as the canvas: an explicit end marker, or the
+            # automatic dot (>= 3 wires, junction-dot setting on).
+            if item.isVisible() and (item.end_marker != "none"
+                                     or item._should_draw_dot()):
                 sc = item.mapToScene(QPointF(0, 0))
                 circle = ET.SubElement(artwork, "circle")
                 circle.set("cx", f"{sc.x() - ox:.1f}")

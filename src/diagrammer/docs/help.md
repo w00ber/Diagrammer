@@ -138,6 +138,16 @@ For precise routing with waypoints:
 
 Wires terminated in empty space (free ends) have draggable anchor points at both ends. Dragging an endpoint anchor moves the wire's end. Free wires can be copied (Ctrl+C/V) and duplicated (Option/Alt+drag).
 
+### Wire end dots
+
+A free end can carry a terminal marker: **No Dot** (the default), **Filled Dot**, or **Open Dot** (a hollow circle). This is separate from the automatic dot drawn where three or more wires meet, which is controlled by the junction-dot setting.
+
+- **D** cycles the dot No Dot → Filled → Open → No Dot; **Shift+D** cycles the other way. With the mouse over a free end, it changes that end. Otherwise it changes every free end of the selected wires, and they all switch to the same style.
+- **Ctrl+Alt+click** (Cmd+Option+click on macOS) on a free end cycles its dot. Within about 10 screen pixels of a free end, this gesture changes the dot; farther along the wire it places a direction arrow (see below).
+- **Right-click** a free end and choose **Wire End** → **No Dot / Filled Dot / Open Dot**.
+
+Each change is one undo step. Ends where a wire meets a component port, or where two or more wires meet, have no end dot.
+
 ### Wire joining
 
 - **Automatic**: When routing a new wire to an existing wire's endpoint, the wires are merged automatically with corner rounding at the join
@@ -149,15 +159,24 @@ To tap into an existing wire:
 - While routing, click near an existing wire — a junction is created
 - Toggle junction dot visibility in Settings or via the Routing menu
 
+A junction gets the automatic dot only where three or more wires meet. Two wires meeting at a junction are just a bend or a straight run, so no dot is drawn there — for example, after you delete the branch of a tee.
+
+Wires that only *look* connected can be joined after the fact:
+- **Crossing:** right-click where two wires cross and choose **Wire Crossing → Convert Crossing to Junction**. Both wires are split so four legs meet at one dotted junction.
+- **Tee:** right-click where a wire end or a component's lead touches the middle of another wire without being connected, and choose **Convert Tee to Junction**. The wire is split at a dotted junction. A component lead is joined through a zero-length connector that draws nothing; if you later move the component, it becomes an ordinary wire that keeps the part connected. An element running *along* the wire, or touching its end, is not a tee.
+
+Each conversion is one undo step.
+
 ### Direction arrows (signal flow)
 
 Add arrows to a wire to indicate signal flow:
 
-- **Ctrl+Alt+click** (Cmd+Option+click on macOS) on a wire places an arrow at that point — no selection needed. You can also right-click a wire and choose **Add Direction Arrow Here**.
+- **Ctrl+Alt+click** (Cmd+Option+click on macOS) on a wire places an arrow at that point — no selection needed. You can also right-click a wire and choose **Add Direction Arrow Here**. Very close to a free wire end the same gesture changes the end dot instead (see **Wire end dots**).
 - **Drag** an arrow to slide it along its wire (it stays on the wire, and follows the wire through reroutes)
 - **Double-click** an arrow to flip its direction
 - **Ctrl+Shift+click** an arrow to delete it
 - **Right-click** an arrow for a **Direction Arrow** menu: **Flip Direction**; style (**Default Style / Filled / Hollow**); **Properties…** (direction, size, and outline width, each with a "use default" option); and **Delete Arrow**
+- **Remove All Arrows** in the Properties panel clears every arrow on the selected wire
 
 Placing, dragging, flipping, and deleting all work without first selecting the wire.
 

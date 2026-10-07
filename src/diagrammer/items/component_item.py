@@ -916,7 +916,12 @@ class ComponentItem(QGraphicsItem):
                     seg_dx = kps[-1].x() - kps[-2].x()
                     seg_dy = kps[-1].y() - kps[-2].y()
 
-                seg_len = max((seg_dx ** 2 + seg_dy ** 2) ** 0.5, 1e-9)
+                seg_len = (seg_dx ** 2 + seg_dy ** 2) ** 0.5
+                if seg_len < 1e-6:
+                    # Zero-length wire end has no direction: leave the
+                    # lead whole (ConnectionItem._add_lead_approach adds
+                    # no stub to fill a gap either).
+                    continue
                 seg_nx = seg_dx / seg_len
                 seg_ny = seg_dy / seg_len
 

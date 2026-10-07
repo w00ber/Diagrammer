@@ -268,6 +268,16 @@ class MenuMixin:
         join_wires_act.triggered.connect(self._join_wires)
         edit_menu.addAction(join_wires_act)
 
+        end_dot_act = QAction("Cycle Wire End Dot", self)
+        self._register_shortcut(end_dot_act, "edit.cycle_end_dot")
+        end_dot_act.triggered.connect(lambda: self._cycle_end_dots(1))
+        edit_menu.addAction(end_dot_act)
+
+        end_dot_back_act = QAction("Cycle Wire End Dot (Reverse)", self)
+        self._register_shortcut(end_dot_back_act, "edit.cycle_end_dot_back")
+        end_dot_back_act.triggered.connect(lambda: self._cycle_end_dots(-1))
+        edit_menu.addAction(end_dot_back_act)
+
         edit_menu.addSeparator()
 
         settings_act = QAction("Se&ttings\u2026", self)

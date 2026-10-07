@@ -185,6 +185,8 @@ _reg("edit.send_back",    _ks("Ctrl+Shift+["),             description="Send to 
 _reg("edit.group",     _ks("Ctrl+G"),                      description="Group",             category="Edit")
 _reg("edit.ungroup",   _ks("Ctrl+Shift+G"),                description="Ungroup",           category="Edit")
 _reg("edit.join_wires", _ks("Ctrl+J"),                      description="Join Wires",        category="Edit")
+_reg("edit.cycle_end_dot",      _ks("D"),             description="Cycle Wire End Dot", category="Edit")
+_reg("edit.cycle_end_dot_back", _ks("Shift+D"),       description="Cycle Wire End Dot (Reverse)", category="Edit")
 
 _reg("edit.copy_as_image", _ks("Ctrl+Shift+C"),              description="Copy Selection as Image", category="Edit")
 _reg("edit.settings",  _ks("Ctrl+,"),                      description="Settings",          category="Edit")

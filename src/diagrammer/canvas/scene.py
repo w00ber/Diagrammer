@@ -1541,6 +1541,138 @@ class DiagramScene(QGraphicsScene):
         finally:
             self._undo_stack.endMacro()
 
+    def _tee_directions(self, port) -> list[tuple[float, float]] | None:
+        """Unit directions in which the element at *port* leaves it.
+
+        A component port gives its lead direction; a junction port gives
+        each attached wire's direction away from it. ``[]`` means unknown
+        (a port with no lead direction); None means nothing is attached.
+        """
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.junction_item import JunctionItem
+
+        if not isinstance(port.component, JunctionItem):
+            adx, ady = ConnectionItem._get_scene_approach(port)
+            return [(adx, ady)] if abs(adx) + abs(ady) > 0 else []
+        dirs = []
+        for conn in self.connections_on_port(port):
+            pts = conn.routed_points()
+            if len(pts) < 2:
+                continue
+            a, b = (pts[0], pts[1]) if conn.source_port is port else (pts[-1], pts[-2])
+            length = ((b.x() - a.x()) ** 2 + (b.y() - a.y()) ** 2) ** 0.5
+            if length > 1e-6:
+                dirs.append(((b.x() - a.x()) / length, (b.y() - a.y()) / length))
+        return dirs or None
+
+    def find_tee_at(self, scene_pos: QPointF, tolerance: float):
+        """Find an unconnected tee near *scene_pos*.
+
+        A tee is a port — a wire end or a component lead — lying on the
+        interior of another wire's route without being connected to it,
+        and meeting it at an angle (an element running along the wire is
+        an overlap, not a tee). Ports up to 1 scene unit off the route
+        count, which absorbs the small port offsets in hand-made SVGs.
+
+        Returns ``(host_conn, port, point)`` for the tee nearest
+        *scene_pos* within *tolerance*, where *point* is the port's
+        projection onto the host route, or None.
+        """
+        from diagrammer.items.component_item import ComponentItem
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.utils.geometry import closest_point_on_segment, point_distance
+
+        ON_WIRE = 1.0
+        wires, ports = [], []
+        for item in self.items():
+            if isinstance(item, ConnectionItem):
+                if not item.closed:
+                    wires.append(item)
+            elif isinstance(item, (ComponentItem, JunctionItem)):
+                for port in item.ports:
+                    pos = port.scene_center()
+                    if point_distance(pos, scene_pos) <= tolerance + ON_WIRE:
+                        ports.append((port, pos))
+
+        best, best_dist = None, tolerance
+        for port, pos in ports:
+            dirs = self._tee_directions(port)
+            if dirs is None:
+                continue
+            for wire in wires:
+                if port is wire.source_port or port is wire.target_port:
+                    continue
+                pts = wire.routed_points()
+                for i in range(len(pts) - 1):
+                    a, b = pts[i], pts[i + 1]
+                    seg_len = point_distance(a, b)
+                    if seg_len < 1e-6:
+                        continue
+                    proj, dist = closest_point_on_segment(pos, a, b)
+                    if dist > ON_WIRE:
+                        continue
+                    # Touching the host's own end is a join, not a tee.
+                    if (point_distance(proj, pts[0]) < 1.0
+                            or point_distance(proj, pts[-1]) < 1.0):
+                        continue
+                    ux, uy = (b.x() - a.x()) / seg_len, (b.y() - a.y()) / seg_len
+                    if dirs and all(abs(dx * ux + dy * uy) > 0.5 for dx, dy in dirs):
+                        continue  # runs along the wire
+                    d = point_distance(proj, scene_pos)
+                    if d <= best_dist:
+                        best_dist = d
+                        best = (wire, port, proj)
+        return best
+
+    def convert_tee_to_junction(self, host, port, point: QPointF) -> None:
+        """Turn an unconnected tee (see ``find_tee_at``) into a real junction.
+
+        Splits *host* at a JunctionItem on *point*, so the wires meeting
+        there are real topology and the junction paints its dot. A wire
+        end's own junction is split into directly (nudged onto *point* if
+        it sits slightly off the route). A component port gets a new
+        junction plus a zero-length connector wire from the port; the
+        connector draws nothing until the part is moved, when it becomes
+        an ordinary wire that keeps the part connected. One undo restores
+        everything.
+        """
+        from diagrammer.commands.add_command import MoveComponentCommand
+        from diagrammer.commands.connect_command import (
+            AddJunctionCommand,
+            CreateConnectionCommand,
+        )
+        from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.utils.geometry import point_distance
+
+        if host.scene() is not self or port.scene() is not self:
+            return
+        self._undo_stack.beginMacro("Convert tee to junction")
+        try:
+            if isinstance(port.component, JunctionItem):
+                junction = port.component
+                if point_distance(junction.pos(), point) > 1e-6:
+                    self._undo_stack.push(MoveComponentCommand(
+                        junction, QPointF(junction.pos()), QPointF(point)))
+                self.split_connection_at_junction(host, junction)
+            else:
+                junction = JunctionItem()
+                junction.setPos(point)
+                self.assign_active_layer(junction)
+                self._undo_stack.push(AddJunctionCommand(self, junction))
+                self.split_connection_at_junction(host, junction)
+                cmd = CreateConnectionCommand(self, port, junction.port)
+                self._undo_stack.push(cmd)
+                connector = cmd.connection
+                if connector is not None:
+                    connector.routing_mode = host.routing_mode
+                    connector.corner_radius = host.corner_radius
+                    connector.line_width = host.line_width
+                    connector.line_color = host.line_color
+                    connector._layer_index = getattr(host, '_layer_index', 0)
+        finally:
+            self._undo_stack.endMacro()
+
     # -- Deletion with dependents --
 
     def delete_items_with_dependents(self, items: list) -> None:
