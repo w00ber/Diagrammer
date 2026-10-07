@@ -138,6 +138,16 @@ For precise routing with waypoints:
 
 Wires terminated in empty space (free ends) have draggable anchor points at both ends. Dragging an endpoint anchor moves the wire's end. Free wires can be copied (Ctrl+C/V) and duplicated (Option/Alt+drag).
 
+### Wire end dots
+
+A free end can carry a terminal marker: **No Dot** (the default), **Filled Dot**, or **Open Dot** (a hollow circle). This is separate from the automatic dot drawn where two or more wires meet, which is controlled by the junction-dot setting.
+
+- **D** cycles the dot No Dot → Filled → Open → No Dot; **Shift+D** cycles the other way. With the mouse over a free end, it changes that end. Otherwise it changes every free end of the selected wires, and they all switch to the same style.
+- **Ctrl+Alt+click** (Cmd+Option+click on macOS) on a free end cycles its dot. Within about 10 screen pixels of a free end, this gesture changes the dot; farther along the wire it places a direction arrow (see below).
+- **Right-click** a free end and choose **Wire End** → **No Dot / Filled Dot / Open Dot**.
+
+Each change is one undo step. Ends where a wire meets a component port, or where two or more wires meet, have no end dot.
+
 ### Wire joining
 
 - **Automatic**: When routing a new wire to an existing wire's endpoint, the wires are merged automatically with corner rounding at the join
@@ -153,11 +163,12 @@ To tap into an existing wire:
 
 Add arrows to a wire to indicate signal flow:
 
-- **Ctrl+Alt+click** (Cmd+Option+click on macOS) on a wire places an arrow at that point — no selection needed. You can also right-click a wire and choose **Add Direction Arrow Here**.
+- **Ctrl+Alt+click** (Cmd+Option+click on macOS) on a wire places an arrow at that point — no selection needed. You can also right-click a wire and choose **Add Direction Arrow Here**. Very close to a free wire end the same gesture changes the end dot instead (see **Wire end dots**).
 - **Drag** an arrow to slide it along its wire (it stays on the wire, and follows the wire through reroutes)
 - **Double-click** an arrow to flip its direction
 - **Ctrl+Shift+click** an arrow to delete it
 - **Right-click** an arrow for a **Direction Arrow** menu: **Flip Direction**; style (**Default Style / Filled / Hollow**); **Properties…** (direction, size, and outline width, each with a "use default" option); and **Delete Arrow**
+- **Remove All Arrows** in the Properties panel clears every arrow on the selected wire
 
 Placing, dragging, flipping, and deleting all work without first selecting the wire.
 

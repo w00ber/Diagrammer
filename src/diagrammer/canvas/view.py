@@ -73,6 +73,13 @@ ZOOM_MIN = 0.05
 ZOOM_MAX = 20.0
 ZOOM_FACTOR = 1.15
 
+# Free wire end markers, in the order the end-dot key / gesture cycles them.
+END_DOT_CYCLE = ("none", "filled", "open")
+# Ctrl+Alt+click (or the end-dot key) within this many screen pixels of a
+# free wire end acts on that end's dot; farther along the wire,
+# Ctrl+Alt+click places a direction arrow instead.
+FREE_END_PICK_PX = 10.0
+
 
 class DiagramView(QGraphicsView):
     """Zoomable, pannable view with background grid, drop support, and rubber-band selection."""
@@ -954,7 +961,8 @@ class DiagramView(QGraphicsView):
                         event.accept()
                         return
 
-            # -- Ctrl+Alt+click → place a direction arrow on a wire --
+            # -- Ctrl+Alt+click → cycle a free end's dot, or place a
+            # direction arrow on a wire --
             # Must precede the Alt+click duplicate branch below: that
             # check is bitwise, so any Alt-containing combo matches it.
             # On a miss the event falls through (the duplicate branch
@@ -962,6 +970,11 @@ class DiagramView(QGraphicsView):
             # Alt-ignoring Ctrl+click waypoint-insert can't fire).
             if (event.modifiers() & Qt.KeyboardModifier.AltModifier
                     and event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+                end_junc = self._free_end_at(scene_pos)
+                if end_junc is not None:
+                    self._cycle_end_dots([end_junc], 1)
+                    event.accept()
+                    return
                 hit = self._diagram_scene.find_wire_at(
                     scene_pos, self.pick_tolerance(15.0))
                 if hit is not None:
@@ -2508,11 +2521,7 @@ class DiagramView(QGraphicsView):
         _end_conn, _end_name, end_port = self._find_wire_endpoint_for_extend(scene_pos)
         if end_port is not None:
             end_junction = end_port.component
-            is_free_end = (
-                isinstance(end_junction, JunctionItem)
-                and len(self._diagram_scene.connections_on_port(end_port)) == 1
-            )
-            if is_free_end:
+            if self._is_free_end(end_port):
                 from PySide6.QtGui import QActionGroup as _EndActionGroup
                 if menu.actions():
                     menu.addSeparator()
@@ -2608,6 +2617,67 @@ class DiagramView(QGraphicsView):
         if marker != old:
             self._diagram_scene.undo_stack.push(
                 ChangeStyleCommand(junction, 'end_marker', old, marker))
+
+    def _is_free_end(self, port) -> bool:
+        """True if *port* is a wire end in empty space: a junction
+        carrying exactly one wire (two or more make it a real junction)."""
+        return (isinstance(port.component, JunctionItem)
+                and len(self._diagram_scene.connections_on_port(port)) == 1)
+
+    def _free_end_at(self, scene_pos: QPointF):
+        """Return the free-end junction nearest *scene_pos* within
+        ``FREE_END_PICK_PX`` on screen, or None."""
+        from diagrammer.utils.geometry import point_distance
+        best, best_dist = None, self.pick_tolerance(FREE_END_PICK_PX)
+        for item in self._diagram_scene.items():
+            if not isinstance(item, JunctionItem) or not self._is_free_end(item.port):
+                continue
+            d = point_distance(scene_pos, item.port.scene_center())
+            if d < best_dist:
+                best, best_dist = item, d
+        return best
+
+    def cycle_end_dots(self, step: int = 1) -> None:
+        """End-dot key: cycle the dot on the free end under the cursor,
+        or failing that, on every free end of the selected wires.
+
+        *step* is +1 (none → filled → open) or -1 (reverse).
+        """
+        cursor = self._cursor_scene_pos()
+        junc = self._free_end_at(cursor) if cursor is not None else None
+        if junc is not None:
+            self._cycle_end_dots([junc], step)
+            return
+        juncs = []
+        for conn in self._diagram_scene.selectedItems():
+            if not isinstance(conn, ConnectionItem):
+                continue
+            for port in (conn.source_port, conn.target_port):
+                if self._is_free_end(port) and port.component not in juncs:
+                    juncs.append(port.component)
+        self._cycle_end_dots(juncs, step)
+
+    def _cursor_scene_pos(self) -> QPointF | None:
+        """The mouse cursor in scene coords, or None when it's off the canvas."""
+        from PySide6.QtGui import QCursor
+        cursor = self.viewport().mapFromGlobal(QCursor.pos())
+        if not self.viewport().rect().contains(cursor):
+            return None
+        return self.mapToScene(cursor)
+
+    def _cycle_end_dots(self, junctions: list, step: int) -> None:
+        """Advance every junction in *junctions* to the marker after the
+        first one's, so mixed ends land on a common style (one undo step)."""
+        if not junctions:
+            return
+        current = junctions[0].end_marker
+        idx = END_DOT_CYCLE.index(current) if current in END_DOT_CYCLE else 0
+        marker = END_DOT_CYCLE[(idx + step) % len(END_DOT_CYCLE)]
+        stack = self._diagram_scene.undo_stack
+        stack.beginMacro("Change wire end dot")
+        for junc in junctions:
+            self._set_wire_end_marker(junc, marker)
+        stack.endMacro()
 
     def _edit_wire_arrow(self, conn, index: int) -> None:
         """Open the per-arrow properties dialog (one undo step on accept)."""
