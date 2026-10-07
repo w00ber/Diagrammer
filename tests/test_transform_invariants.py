@@ -829,6 +829,142 @@ class TestGroupTransform:
         assert_snapshots_equal(before, scene_snapshot(scene))
 
 
+class TestGroupTransformJunctionWires:
+    """Issue #34: a shunted junction (JJ in parallel with a resistor)
+    with in/out leads to free ends, rotated as a group, left a hook at
+    each free end. The leads were drawn *from* the free end toward the
+    JJ, so the junction was the wire's source; the captured midpoint
+    tied on distance and bound to the junction port, and junctions
+    only translate during a group transform — the midpoint kept its
+    unrotated offset from the free end.
+
+    Invariant: every wire's rendered route after the transform equals
+    the original route mapped through the same rigid transform, point
+    for point (so no hooks, no extra zero-length vertices).
+    """
+
+    @staticmethod
+    def _build(scene, library):
+        jj_def = library.get("PAPER_2pt/circuits/quantum/JJ1")
+        res_def = library.get("PAPER_2pt/circuits/LCR/RES1")
+        if jj_def is None or res_def is None:
+            pytest.skip("JJ1 / RES1 not in bundled library")
+        jj = _place_component(scene, jj_def, QPointF(100, 100))
+        res = _place_component(scene, res_def, QPointF(0, 80))
+        wires = [
+            # Parallel loop: auto-routed L-shapes.
+            _connect(scene, jj, "bot", res, "left"),
+            _connect(scene, jj, "top", res, "right"),
+        ]
+
+        def junction(pos):
+            j = JunctionItem()
+            j.setPos(pos)
+            scene.addItem(j)
+            return j
+
+        def wire(src_port, tgt_port, waypoints=None):
+            cmd = CreateConnectionCommand(scene, src_port, tgt_port)
+            scene.undo_stack.push(cmd)
+            if waypoints:
+                cmd.connection.vertices = waypoints
+            return cmd.connection
+
+        bot = jj.port_by_name("bot").scene_center()
+        top = jj.port_by_name("top").scene_center()
+        # In lead: straight, drawn from the free end toward the JJ.
+        j_in = junction(bot + QPointF(0, -60))
+        wires.append(wire(j_in.port, jj.port_by_name("bot")))
+        # Out lead: free end -> T-junction -> JJ, with a user bend on the
+        # junction-to-junction segment (neither end can rotate).
+        j_tee = junction(top + QPointF(0, 40))
+        j_out = junction(top + QPointF(60, 80))
+        wires.append(wire(j_tee.port, jj.port_by_name("top")))
+        wires.append(wire(j_out.port, j_tee.port,
+                          waypoints=[top + QPointF(60, 40)]))
+        # Refresh every route, as the app does after an edit: the tee's
+        # first wire only gains its junction-approach stub once the
+        # second wire attaches.
+        scene.update_connections()
+        for item in (jj, res, *wires):
+            item.setSelected(True)
+        return [jj, res, j_in, j_tee, j_out], wires
+
+    @staticmethod
+    def _rotation(center, degrees):
+        import math as _math
+        rad = _math.radians(degrees)
+        cos_a, sin_a = _math.cos(rad), _math.sin(rad)
+        cx, cy = center.x(), center.y()
+        return lambda p: QPointF(
+            cx + (p.x() - cx) * cos_a - (p.y() - cy) * sin_a,
+            cy + (p.x() - cx) * sin_a + (p.y() - cy) * cos_a)
+
+    @staticmethod
+    def _mirror(center, horizontal):
+        if horizontal:
+            return lambda p: QPointF(2 * center.x() - p.x(), p.y())
+        return lambda p: QPointF(p.x(), 2 * center.y() - p.y())
+
+    @staticmethod
+    def _group_center(items):
+        from diagrammer.transform_ops import _scene_center
+        centers = [_scene_center(i) for i in items]
+        return QPointF(sum(p.x() for p in centers) / len(centers),
+                       sum(p.y() for p in centers) / len(centers))
+
+    @staticmethod
+    def _assert_routes(wires, before, transform):
+        for i, (wire, pts) in enumerate(zip(wires, before)):
+            expected = [transform(p) for p in pts]
+            actual = wire.all_points()
+            assert len(actual) == len(expected), (
+                f"wire {i}: {len(expected)} route points became {len(actual)}"
+            )
+            for got, want in zip(actual, expected):
+                assert got.x() == pytest.approx(want.x(), abs=1e-3), f"wire {i}"
+                assert got.y() == pytest.approx(want.y(), abs=1e-3), f"wire {i}"
+
+    @pytest.mark.parametrize("degrees", [90, 180, -90])
+    def test_group_rotate(self, scene, library, degrees):
+        items, wires = self._build(scene, library)
+        center = self._group_center(items)
+        before = [w.all_points() for w in wires]
+        _make_transform_host(scene, library)._rotate_selected(degrees)
+        self._assert_routes(wires, before, self._rotation(center, degrees))
+
+    def test_group_fine_rotate(self, scene, library):
+        items, wires = self._build(scene, library)
+        center = self._group_center(items)
+        before = [w.all_points() for w in wires]
+        _make_transform_host(scene, library)._fine_rotate_selected(15)
+        self._assert_routes(wires, before, self._rotation(center, 15))
+
+    @pytest.mark.parametrize("horizontal", [True, False])
+    def test_group_flip(self, scene, library, horizontal):
+        items, wires = self._build(scene, library)
+        center = self._group_center(items)
+        before = [w.all_points() for w in wires]
+        _make_transform_host(scene, library)._flip_selected(horizontal)
+        self._assert_routes(wires, before, self._mirror(center, horizontal))
+
+    def test_four_quarter_turns_restore_routes(self, scene, library):
+        """Each group rotation used to capture the port positions as
+        extra zero-length waypoints (via the render-only lead-approach
+        stubs), flattening rounded corners and growing the waypoint
+        list by two per turn. Four turns must now be an identity."""
+        items, wires = self._build(scene, library)
+        for w in wires:
+            w.corner_radius = 5.0
+        before = [w.all_points() for w in wires]
+        host = _make_transform_host(scene, library)
+        for _ in range(4):
+            for item in (*items[:2], *wires):
+                item.setSelected(True)
+            host._rotate_selected(90)
+        self._assert_routes(wires, before, QPointF)
+
+
 class TestClipboardRoundtrip:
     def test_clipboard_preserves_rotated_rectangle(self, scene, library):
         """A rotated shape copied and pasted must keep its rotation.

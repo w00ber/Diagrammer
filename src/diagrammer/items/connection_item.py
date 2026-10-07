@@ -55,11 +55,11 @@ class Waypoint:
     reconstructed on demand via ``anchor.mapToScene((dx, dy))``.
 
     Because the port inherits its parent component's transform,
-    port-local offsets rotate / flip with the parent automatically —
-    so when the user transforms the parent (or a group containing it),
-    the wire shape follows as a rigid body without any special-case
-    transform code at the call site. This is what lets the group-rotate
-    code drop the pre-capture / ROUTE_DIRECT hack.
+    port-local offsets rotate / flip with the parent automatically.
+    Junction ports are the exception: junctions only ever translate,
+    so a waypoint anchored to one keeps its scene-axis offset through
+    a rotation or flip. Group transforms therefore re-capture internal
+    wires explicitly (see ``transform_ops._apply_internal_wire_shapes``).
     """
 
     __slots__ = ("anchor", "dx", "dy")
