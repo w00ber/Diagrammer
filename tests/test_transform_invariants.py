@@ -621,8 +621,10 @@ class TestGroupTransform:
         included. The orthogonal router can pick a different L-shape
         from rotated key-points than the rotated original would have,
         so transform_ops snapshots the full expanded route, rotates the
-        snapshot, and pins routing to ROUTE_DIRECT to keep auto-routing
-        from second-guessing.
+        snapshot, and installs a waypoint at every bend. A quarter turn
+        keeps the route orthogonal, so the wire keeps its routing mode
+        (later edits still route orthogonally) and the router redraws
+        the same shape.
         """
         import math as _math
         cdef = _two_port_def(library)
@@ -634,6 +636,7 @@ class TestGroupTransform:
                         comp_b, tgt_port.port_name)
         # Capture the visible interior (auto-routed bends) before rotation.
         before_interior = [QPointF(p) for p in conn.all_points()[1:-1]]
+        before_mode = conn.routing_mode
         gcx = (comp_a.intrinsic_anchor().x() + comp_b.pos().x() + comp_b.intrinsic_anchor().x()) / 2
         # Use the same group-center formula transform_ops uses.
         from diagrammer.transform_ops import _scene_center
@@ -646,10 +649,10 @@ class TestGroupTransform:
         host = _make_transform_host(scene, library)
         host._rotate_selected(90)
 
-        # Routing mode pinned to direct so the rotated shape isn't
-        # re-derived by the orthogonal router.
+        # Routing mode kept: the rotated route is still orthogonal.
         from diagrammer.items.connection_item import ROUTE_DIRECT
-        assert conn.routing_mode == ROUTE_DIRECT
+        assert before_mode != ROUTE_DIRECT
+        assert conn.routing_mode == before_mode
         # Visible interior matches the rotated original (within float tol).
         rad = _math.radians(90)
         cos_a, sin_a = _math.cos(rad), _math.sin(rad)

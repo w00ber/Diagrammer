@@ -70,6 +70,73 @@ def _mirror_map(center: QPointF, horizontal: bool):
     return lambda p: QPointF(p.x(), 2 * cy - p.y())
 
 
+def _snap_spacing(scene, items) -> float | None:
+    """Grid spacing that a quarter turn or flip of *items* should keep.
+
+    None when no view shows the scene, grid snapping is off, or nothing
+    in *items* has ports (text and shapes keep their exact pivot).
+    """
+    from diagrammer.items.component_item import ComponentItem
+    from diagrammer.items.junction_item import JunctionItem
+
+    if not any(isinstance(i, (ComponentItem, JunctionItem)) for i in items):
+        return None
+    for view in scene.views():
+        if hasattr(view, "grid_spacing"):
+            if not getattr(view, "_snap_enabled", True):
+                return None
+            return view.grid_spacing or None
+    return None
+
+
+def _grid_pivot_candidates(center: QPointF, spacing: float, degrees=None,
+                           horizontal=None) -> list[QPointF]:
+    """Pivots near *center* about which the transform maps the grid onto
+    itself, so ports on grid points stay on grid points.
+
+    With grid spacing g: a 90 or 270 degree turn about c does this iff c
+    is a grid point or the centre of a grid cell; a 180 degree turn iff
+    c lies on the half grid (multiples of g/2); a flip iff its mirror
+    line lies on a half-grid line. Returns [] for turns that cannot keep
+    the grid (fine rotation).
+    """
+    import math
+    g, h = spacing, spacing / 2
+    cx, cy = center.x(), center.y()
+    if horizontal is not None:
+        if horizontal:
+            k = math.floor(cx / h)
+            return [QPointF(i * h, cy) for i in (k, k + 1)]
+        k = math.floor(cy / h)
+        return [QPointF(cx, i * h) for i in (k, k + 1)]
+    quarter = degrees / 90.0
+    if quarter != int(quarter) or int(quarter) % 4 == 0:
+        return []
+    if int(quarter) % 2 == 0:
+        i, j = math.floor(cx / h), math.floor(cy / h)
+        return [QPointF(a * h, b * h) for a in (i, i + 1) for b in (j, j + 1)]
+    i, j = math.floor(cx / g), math.floor(cy / g)
+    corners = [QPointF(a * g, b * g) for a in (i, i + 1) for b in (j, j + 1)]
+    centres = [QPointF((a + 0.5) * g, (b + 0.5) * g)
+               for a in (i - 1, i, i + 1) for b in (j - 1, j, j + 1)]
+    return corners + centres
+
+
+def _router_redraws(wire, points: list[QPointF]) -> bool:
+    """True if *wire*'s router, in its current mode, draws each pair of
+    consecutive *points* as one straight segment — so with a waypoint at
+    every bend, re-routing reproduces this exact polyline.
+
+    Holds for an orthogonal route through any quarter turn or flip
+    (H/V segments stay H/V, 45-degree ones stay 45-degree), and fails
+    once a fine rotation tilts a segment.
+    """
+    pairs = list(zip(points, points[1:]))
+    if wire.closed and points:
+        pairs.append((points[-1], points[0]))
+    return all(len(wire._expand_route(a, b)) == 2 for a, b in pairs)
+
+
 def _route_interior(wire) -> list[QPointF]:
     """Interior vertices of *wire*'s visible route, in scene coords.
 
@@ -125,8 +192,14 @@ def _capture_internal_wire_shapes(wires) -> list:
 
 
 def _apply_internal_wire_shapes(undo_stack, snapshots, transform) -> None:
-    """Map each captured route through *transform*, install it as the
-    wire's anchors, and pin routing to ROUTE_DIRECT — all undoable.
+    """Map each captured route through *transform* and install it as the
+    wire's anchors — all undoable.
+
+    The wire keeps its routing mode when its router redraws the mapped
+    route unchanged (an orthogonal route through a quarter turn or a
+    flip), so later edits still route orthogonally. Otherwise (a fine
+    rotation tilts the segments) it is pinned to ROUTE_DIRECT, which
+    draws the waypoints as given.
 
     Call this AFTER the items have been transformed. *transform* must
     be the same rigid map the items followed (``_rotation_map`` /
@@ -173,9 +246,14 @@ def _apply_internal_wire_shapes(undo_stack, snapshots, transform) -> None:
             self._install(self._old)
 
     for wire, interior, pre_anchors, orig_mode in snapshots:
-        new_anchors = [wire._make_anchor(transform(p)) for p in interior]
+        mapped = [transform(p) for p in interior]
+        new_anchors = [wire._make_anchor(p) for p in mapped]
         undo_stack.push(_SetAnchorsCommand(wire, new_anchors, pre_anchors))
-        if orig_mode != ROUTE_DIRECT:
+        # Ports have already moved, so these are the transformed ends.
+        route = mapped if wire.closed else [
+            wire.source_port.scene_center(), *mapped,
+            wire.target_port.scene_center()]
+        if orig_mode != ROUTE_DIRECT and not _router_redraws(wire, route):
             undo_stack.push(SetRoutingModeCommand(wire, ROUTE_DIRECT))
 
 
@@ -185,6 +263,52 @@ class TransformMixin:
     Expects the host class to have ``_scene`` and ``_gather_connected_junctions()``
     (provided by :class:`ClipboardMixin`).
     """
+
+    # ------------------------------------------------------- grid pivot
+
+    def _grid_pivot(self, items, center: QPointF, *, degrees=None,
+                    horizontal=None) -> QPointF:
+        """Pivot for a quarter/half turn (*degrees*) or a flip
+        (*horizontal*) of *items* that keeps on-grid ports on the grid:
+        the allowed pivot nearest *center* (see _grid_pivot_candidates).
+        Unchanged when snapping is off or the turn can't keep the grid.
+
+        Ties are common — a symmetric part's centre often sits exactly
+        between allowed pivots — and go to the previous pivot of the same
+        kind when it is among the nearest. After a turn about p, p is
+        still among the nearest pivots, so a run of ±90 turns (and their
+        undos) keeps one pivot: +90 then -90, or four +90s, restore the
+        original placement exactly.
+        """
+        spacing = _snap_spacing(self._scene, items)
+        if spacing is None:
+            return center
+        cands = _grid_pivot_candidates(center, spacing, degrees, horizontal)
+        if not cands:
+            return center
+
+        def d2(p: QPointF) -> float:
+            return (p.x() - center.x()) ** 2 + (p.y() - center.y()) ** 2
+
+        def key(p: QPointF) -> tuple:
+            # A flip only fixes its mirror coordinate; a turn the point.
+            if horizontal is None:
+                return (round(p.x(), 6), round(p.y(), 6))
+            return (round(p.x() if horizontal else p.y(), 6),)
+
+        best = min(d2(p) for p in cands)
+        nearest = [p for p in cands if d2(p) <= best + 1e-9 * spacing * spacing]
+        if horizontal is not None:
+            kind = "flip_h" if horizontal else "flip_v"
+        else:
+            kind = "half" if int(degrees / 90.0) % 2 == 0 else "quarter"
+        memory = getattr(self, "_grid_pivot_memory", None)
+        if memory is None:
+            memory = self._grid_pivot_memory = {}
+        last = memory.get(kind)
+        pick = next((p for p in nearest if key(p) == last), nearest[0])
+        memory[kind] = key(pick)
+        return pick
 
     # ------------------------------------------------- closed-polygon helper
 
@@ -237,10 +361,13 @@ class TransformMixin:
         snapshot the full expanded route — including auto-routed bends
         that aren't stored as user waypoints — rotate the snapshot
         around the group center, and replay it as new port-local
-        waypoints with ROUTE_DIRECT. Without that snapshot, the
-        orthogonal router would re-derive its bends from the rotated
-        key-points and pick a different L-shape than the rotated
-        original.
+        waypoints. Without that snapshot, the orthogonal router would
+        re-derive its bends from the rotated key-points and pick a
+        different L-shape than the rotated original.
+
+        With grid snapping on, the pivot is moved to the nearest point
+        that maps grid points onto grid points (see ``_grid_pivot``), so
+        ports that were on the grid stay on it.
         """
         from diagrammer.commands.add_command import MoveComponentCommand
         from diagrammer.commands.transform_command import (
@@ -291,18 +418,21 @@ class TransformMixin:
 
         self._scene.undo_stack.beginMacro(f"Rotate {len(movable)} items")
 
-        if len(movable) == 1 and len(comp_targets) == 1:
-            self._scene.undo_stack.push(RotateComponentCommand(comp_targets[0], degrees))
-        elif len(movable) == 1 and isinstance(movable[0], (AnnotationItem, ShapeItem)):
+        if len(movable) == 1 and isinstance(movable[0], (AnnotationItem, ShapeItem)):
             self._scene.undo_stack.push(RotateItemCommand(movable[0], degrees))
         else:
-            # Group rotation: each item rotates internally AND orbits
-            # around the group center. One scene-center formula across
-            # every item type via _scene_center.
+            # Each item rotates internally AND orbits the pivot: the
+            # group centre (a lone component's own centre), moved to the
+            # nearest point that keeps on-grid ports on the grid. One
+            # scene-center formula across every item type via
+            # _scene_center.
             scene_centers = [_scene_center(item) for item in movable]
-            gcx = sum(p.x() for p in scene_centers) / len(scene_centers)
-            gcy = sum(p.y() for p in scene_centers) / len(scene_centers)
-            orbit = _rotation_map(QPointF(gcx, gcy), degrees)
+            centroid = QPointF(
+                sum(p.x() for p in scene_centers) / len(scene_centers),
+                sum(p.y() for p in scene_centers) / len(scene_centers),
+            )
+            pivot = self._grid_pivot(movable, centroid, degrees=degrees)
+            orbit = _rotation_map(pivot, degrees)
             target_centers = [orbit(sc) for sc in scene_centers]
 
             # Capture internal-wire shapes BEFORE rotating components,
@@ -318,6 +448,8 @@ class TransformMixin:
                     self._scene.undo_stack.push(RotateItemCommand(item, degrees))
                 cur_sc = _scene_center(item)
                 offset = target_centers[i] - cur_sc
+                if offset.manhattanLength() < 1e-9:
+                    continue  # a lone component turning about its centre
                 new_pos = item.pos() + offset
                 if hasattr(item, '_skip_snap'):
                     item._skip_snap = True
@@ -326,8 +458,7 @@ class TransformMixin:
                     item._skip_snap = False
 
             # Rotate the captured routes through the same orbit the
-            # items followed, bind them to the now-rotated ports, and
-            # pin ROUTE_DIRECT.
+            # items followed and bind them to the now-rotated ports.
             _apply_internal_wire_shapes(
                 self._scene.undo_stack, wire_snapshots, orbit,
             )
@@ -479,10 +610,9 @@ class TransformMixin:
         axis = "H" if horizontal else "V"
         self._scene.undo_stack.beginMacro(f"Flip {axis} {len(all_movable)} items")
 
-        if len(all_movable) <= 1:
-            for item in selected_comps:
-                cmd = FlipComponentCommand(item, horizontal)
-                self._scene.undo_stack.push(cmd)
+        # A lone annotation or shape flips in place; a lone component goes
+        # through the group path so its mirror axis can keep the grid.
+        if len(all_movable) <= 1 and not selected_comps:
             from diagrammer.commands.transform_command import FlipItemCommand
             for item in selected_annots + selected_shapes:
                 cmd = FlipItemCommand(item, horizontal)
@@ -495,8 +625,13 @@ class TransformMixin:
         # transforms. After Phase C every item exposes intrinsic_anchor,
         # so the module-level _scene_center handles all types.
         centers = [_scene_center(item) for item in all_movable]
-        group_cx = sum(p.x() for p in centers) / len(centers)
-        group_cy = sum(p.y() for p in centers) / len(centers)
+        mirror = self._grid_pivot(
+            all_movable,
+            QPointF(sum(p.x() for p in centers) / len(centers),
+                    sum(p.y() for p in centers) / len(centers)),
+            horizontal=horizontal,
+        )
+        group_cx, group_cy = mirror.x(), mirror.y()
 
         # Capture internal-wire shapes BEFORE any per-item flip so the
         # snapshot reflects the user-visible route. Auto-routed bends
