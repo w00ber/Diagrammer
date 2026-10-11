@@ -166,22 +166,61 @@ class TestGesture:
         assert b.end_marker == "filled" and len(conn.arrows) == 1
 
 
+class TestNotFreeEnds:
+    """Regressions from the automated review of PR #35."""
+
+    def test_closed_outline_anchor_is_not_a_free_end(self, wired, scene, monkeypatch):
+        view, _conn, _a, _b = wired
+        anchor = _add_junction(scene, 300, 0)
+        loop = _connect(scene, anchor.port, anchor.port)
+        loop.closed = True
+        loop.vertices = [QPointF(300, 0), QPointF(360, 0), QPointF(360, 60)]
+        scene.update_connections()
+        assert len(scene.connections_on_port(anchor.port)) == 1  # indexed once
+        assert not view._is_free_end(anchor.port)
+        assert view._free_end_at(QPointF(300, 0)) is None
+        scene.clearSelection()
+        loop.setSelected(True)
+        _put_cursor(monkeypatch, view, None)
+        view.cycle_end_dots(1)
+        assert anchor.end_marker == "none"
+
+    def test_wire_on_hidden_layer_is_not_targeted(self, wired):
+        view, conn, a, _b = wired
+        conn.setVisible(False)
+        assert view._free_end_at(QPointF(0, 0)) is None
+        _ctrl_alt_press(view, QPointF(2, 1))
+        _ctrl_alt_press(view, QPointF(100, 0))
+        assert a.end_marker == "none" and conn.arrows == []
+
+
 class TestRegistryAndOverlay:
+    # Key text is Qt's NativeText (symbols such as ⇧ ⌥ ⌘ on macOS), so
+    # expectations are built the same way rather than hard-coded.
+    @staticmethod
+    def _native(keys: str) -> str:
+        from PySide6.QtGui import QKeySequence
+        return QKeySequence(keys).toString(QKeySequence.SequenceFormat.NativeText)
+
     def test_default_bindings_without_conflicts(self):
+        from PySide6.QtGui import QKeySequence
         from diagrammer import shortcuts
 
-        assert shortcuts.get_shortcut("edit.cycle_end_dot").display_text == "D"
+        assert shortcuts.get_shortcut("edit.cycle_end_dot").key_sequence == QKeySequence("D")
         assert shortcuts.get_shortcut(
-            "edit.cycle_end_dot_back").display_text == "Shift+D"
+            "edit.cycle_end_dot_back").key_sequence == QKeySequence("Shift+D")
         assert shortcuts.find_conflicts() == {}
 
     def test_wire_hints_cover_arrows_and_end_dots(self, main_window):
         rows = dict((label, keys) for keys, label in
                     main_window._shortcut_hint_rows("wire"))
-        assert rows["Cycle end dot / reverse"] == "D / Shift+D"
-        assert rows["Add arrow (at a free end: dot)"] == "Ctrl+Alt+click"
+        assert rows["Cycle end dot / reverse"] == (
+            f"{self._native('D')} / {self._native('Shift+D')}")
         assert rows["Flip arrow"] == "Double-click"
-        assert rows["Delete arrow"] == "Ctrl+Shift+click"
+        for label, mods in (("Add arrow (at a free end: dot)", "Ctrl+Alt"),
+                            ("Delete arrow", "Ctrl+Shift")):
+            prefix = self._native(f"{mods}+X")[:-1]  # e.g. "Ctrl+Alt+" / "⌥⌘"
+            assert rows[label].startswith(prefix) and rows[label].endswith("click")
 
     def test_menu_action_cycles_selected_wire(self, main_window, monkeypatch):
         from PySide6.QtGui import QAction, QKeySequence
