@@ -275,3 +275,19 @@ class TestReviewFindings:
         scene.update_connections()
         scene.convert_crossing_to_junction(*scene.find_crossing_at(QPointF(100, 0), 12.0))
         assert sum(len(c.arrows) for c in _wires(scene)) == 2
+
+    def test_hidden_wire_arrow_and_crossing_are_not_hit(self, scene):
+        from diagrammer.items.connection_item import WireArrow
+
+        horiz = _connect(scene, _junction(scene, 0, 0).port, _junction(scene, 200, 0).port)
+        vert = _connect(scene, _junction(scene, 100, -100).port, _junction(scene, 100, 100).port)
+        horiz.arrows = [WireArrow(t=0.25)]
+        scene.update_connections()
+        assert scene.find_wire_arrow_at(QPointF(50, 0), 12.0) is not None
+        assert scene.find_crossing_at(QPointF(100, 0), 12.0) is not None
+        horiz.setVisible(False)
+        assert scene.find_wire_arrow_at(QPointF(50, 0), 12.0) is None
+        assert scene.find_crossing_at(QPointF(100, 0), 12.0) is None
+        vert.setVisible(False)
+        horiz.setVisible(True)
+        assert scene.find_crossing_at(QPointF(100, 0), 12.0) is None

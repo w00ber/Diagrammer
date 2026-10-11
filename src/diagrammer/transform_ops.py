@@ -318,11 +318,12 @@ class TransformMixin:
         memory = getattr(self, "_grid_pivot_memory", None)
         if memory is None:
             memory = self._grid_pivot_memory = {}
-        last = memory.pop(slot, None)
+        last = memory.get(slot)
         pick = next((p for p in nearest if key(p) == last), nearest[0])
+        # Kept for the whole session: evicting a selection's entry would
+        # let its next inverse turn pick a different tied pivot. Each
+        # entry is a few bytes.
         memory[slot] = key(pick)
-        while len(memory) > 64:  # most recently used selections only
-            memory.pop(next(iter(memory)))
         return pick
 
     # ------------------------------------------------- closed-polygon helper

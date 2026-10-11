@@ -338,3 +338,22 @@ class TestReviewFindingsPR36:
             part.setSelected(True)
             host._rotate_selected(degrees)
         assert_snapshots_equal(before, _geometry(scene))
+
+    def test_tie_memory_outlives_many_other_selections(self, scene, view, library):
+        """No eviction: a selection's tie-break survives any number of
+        other selections being transformed in between."""
+        cdef = library.get("PAPER_2pt/circuits/quantum/JJ1")
+        if cdef is None:
+            pytest.skip("JJ1 not in bundled library")
+        part = _place(scene, cdef, QPointF(200, 100))
+        before = _geometry(scene)
+        host = _make_transform_host(scene, library)
+        scene.clearSelection()
+        part.setSelected(True)
+        host._rotate_selected(90)
+        for i in range(200):  # 200 other, distinct selections
+            host._grid_pivot([JunctionItem()], QPointF(10 + 20 * i, 10), degrees=90)
+        scene.clearSelection()
+        part.setSelected(True)
+        host._rotate_selected(-90)
+        assert_snapshots_equal(before, _geometry(scene))

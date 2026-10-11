@@ -245,14 +245,15 @@ class DiagramScene(QGraphicsScene):
         minimum pick radius in scene units; larger arrows are clickable
         over their full extent. Delegates the per-wire hit test to
         ``ConnectionItem._nearest_arrow`` so scene- and item-level picks
-        share one tolerance model.
+        share one tolerance model. Wires on hidden layers are skipped.
         """
         from diagrammer.items.connection_item import ConnectionItem
 
         best = None
         best_dist = float("inf")
         for item in self.items():
-            if not isinstance(item, ConnectionItem) or not item._arrows:
+            if (not isinstance(item, ConnectionItem) or not item._arrows
+                    or not item.isVisible()):
                 continue
             hit = item._nearest_arrow(scene_pos, tolerance)
             if hit is not None and hit[1] < best_dist:
@@ -266,7 +267,8 @@ class DiagramScene(QGraphicsScene):
         Returns ``(owner_conn, other_conn, point)`` for the geometric
         crossing nearest the position within *tolerance*, or None. Works
         regardless of the crossing's resolved style, so a plain crossing
-        can be right-clicked to restyle or convert it.
+        can be right-clicked to restyle or convert it. Wires on hidden
+        layers are skipped.
         """
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.utils.geometry import (
@@ -277,7 +279,7 @@ class DiagramScene(QGraphicsScene):
 
         candidates = []
         for item in self.items():
-            if not isinstance(item, ConnectionItem):
+            if not isinstance(item, ConnectionItem) or not item.isVisible():
                 continue
             rect = getattr(item, '_expanded_rect', None)
             if rect is None:
