@@ -147,16 +147,26 @@ def _route_interior(wire) -> list[QPointF]:
     transform. Coincident points are dropped too.
     """
     route = wire.routed_points()
-    if wire._closed:
-        # Closed polygons: the expanded route IS the polygon geometry
-        # (source and target ports are the same junction port; there
-        # is no port-endpoint pair to strip). Capture every vertex.
-        return [QPointF(p) for p in route]
-    if len(route) < 2:
-        return []
 
     def near(a: QPointF, b: QPointF) -> bool:
         return abs(a.x() - b.x()) + abs(a.y() - b.y()) < 1e-3
+
+    if wire._closed:
+        # Closed polygons: the expanded route IS the polygon geometry
+        # (source and target ports are the same junction port; there
+        # is no port-endpoint pair to strip). Capture every vertex once:
+        # a routed (non-direct) loop wraps round and ends on its first
+        # vertex, and keeping that copy as a waypoint would add another
+        # duplicate on every transform.
+        verts: list[QPointF] = []
+        for p in route:
+            if not verts or not near(p, verts[-1]):
+                verts.append(QPointF(p))
+        if len(verts) > 1 and near(verts[-1], verts[0]):
+            verts.pop()
+        return verts
+    if len(route) < 2:
+        return []
 
     interior: list[QPointF] = []
     for p in route[1:-1]:
@@ -274,11 +284,12 @@ class TransformMixin:
         Unchanged when snapping is off or the turn can't keep the grid.
 
         Ties are common — a symmetric part's centre often sits exactly
-        between allowed pivots — and go to the previous pivot of the same
-        kind when it is among the nearest. After a turn about p, p is
-        still among the nearest pivots, so a run of ±90 turns (and their
-        undos) keeps one pivot: +90 then -90, or four +90s, restore the
-        original placement exactly.
+        between allowed pivots — and go to the pivot this same selection
+        last used for this kind of transform, when it is among the
+        nearest. After a turn about p, p is still among the nearest
+        pivots, so a run of ±90 turns (and their undos) keeps one pivot:
+        +90 then -90, or four +90s, restore the original placement
+        exactly, even with other selections transformed in between.
         """
         spacing = _snap_spacing(self._scene, items)
         if spacing is None:
@@ -302,12 +313,16 @@ class TransformMixin:
             kind = "flip_h" if horizontal else "flip_v"
         else:
             kind = "half" if int(degrees / 90.0) % 2 == 0 else "quarter"
+        slot = (kind, spacing, frozenset(
+            getattr(i, "instance_id", None) or id(i) for i in items))
         memory = getattr(self, "_grid_pivot_memory", None)
         if memory is None:
             memory = self._grid_pivot_memory = {}
-        last = memory.get(kind)
+        last = memory.pop(slot, None)
         pick = next((p for p in nearest if key(p) == last), nearest[0])
-        memory[kind] = key(pick)
+        memory[slot] = key(pick)
+        while len(memory) > 64:  # most recently used selections only
+            memory.pop(next(iter(memory)))
         return pick
 
     # ------------------------------------------------- closed-polygon helper

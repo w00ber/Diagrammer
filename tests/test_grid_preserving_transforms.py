@@ -289,3 +289,52 @@ class TestRoutingModeKept:
         _select_all(scene)
         _make_transform_host(scene, library)._rotate_selected(90)
         assert conn.routing_mode == ROUTE_ORTHO_45
+
+
+class TestReviewFindingsPR36:
+    """Regressions from the automated review of PR #36."""
+
+    def test_closed_ortho_loop_does_not_grow_waypoints(self, scene, view, library):
+        """A routed closed loop wraps round to its first vertex; that copy
+        must not be re-installed as a waypoint on every turn."""
+        from diagrammer.items.connection_item import ROUTE_ORTHO
+
+        cdef = library.get("PAPER_2pt/circuits/quantum/JJ1")
+        if cdef is None:
+            pytest.skip("JJ1 not in bundled library")
+        _place(scene, cdef, QPointF(200, 100))
+        anchor = JunctionItem()
+        anchor.setPos(QPointF(400, 100))
+        scene.addItem(anchor)
+        loop = _connect(scene, anchor.port, anchor.port)
+        loop.closed = True
+        loop.routing_mode = ROUTE_ORTHO
+        loop.vertices = [QPointF(400, 100), QPointF(480, 100),
+                         QPointF(480, 160), QPointF(400, 160)]
+        scene.update_connections()
+        before = _geometry(scene)
+        count = len(loop._anchors)
+        host = _make_transform_host(scene, library)
+        for _ in range(4):
+            _select_all(scene)
+            host._rotate_selected(90)
+            assert len(loop._anchors) == count
+        assert loop.routing_mode == ROUTE_ORTHO
+        assert_snapshots_equal(before, _geometry(scene))
+
+    def test_interleaved_selections_each_undo_their_turn(self, scene, view, library):
+        """Each selection remembers its own tie-break pivot, so turning
+        another selection in between doesn't shift the first on its way
+        back."""
+        cdef = library.get("PAPER_2pt/circuits/quantum/JJ1")
+        if cdef is None:
+            pytest.skip("JJ1 not in bundled library")
+        a = _place(scene, cdef, QPointF(200, 100))
+        b = _place(scene, cdef, QPointF(600, 300))
+        before = _geometry(scene)
+        host = _make_transform_host(scene, library)
+        for part, degrees in ((a, 90), (b, 90), (a, -90), (b, -90)):
+            scene.clearSelection()
+            part.setSelected(True)
+            host._rotate_selected(degrees)
+        assert_snapshots_equal(before, _geometry(scene))
