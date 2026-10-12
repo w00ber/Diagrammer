@@ -14,6 +14,12 @@ from PySide6.QtGui import QPainterPath
 
 _COLLINEAR_TOL = 1e-3  # pixels -- treat points this close as aligned
 
+# ortho_route_45 draws a single diagonal when the longer side of the span is
+# at most this many times the shorter (aspect ratio 0.8 to 1.25). Bounding
+# max/min keeps the window symmetric under swapping dx and dy (ratio r ->
+# 1/r), so a quarter turn never changes how a span is routed.
+_DIAGONAL_RATIO = 1.25
+
 
 # ---------------------------------------------------------------------------
 # Orthogonal routing
@@ -84,9 +90,11 @@ def ortho_route_45(start: QPointF, end: QPointF) -> list[QPointF]:
     if adx < _COLLINEAR_TOL or ady < _COLLINEAR_TOL:
         return ortho_route(start, end)
 
-    # If aspect ratio is close to 1:1, use a direct diagonal.
-    ratio = adx / ady if ady > _COLLINEAR_TOL else 999.0
-    if 0.8 <= ratio <= 1.2:
+    # If aspect ratio is close to 1:1 (either way round), use a direct
+    # diagonal. The old 0.8 <= dx/dy <= 1.2 window wasn't symmetric:
+    # 1/0.8 = 1.25, so a span at ratio 0.8 drew straight while its
+    # quarter-turned twin at 1.25 didn't.
+    if max(adx, ady) <= _DIAGONAL_RATIO * min(adx, ady):
         # Nearly 45 degrees -- use a single diagonal segment.
         return [QPointF(start), QPointF(end)]
 

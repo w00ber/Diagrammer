@@ -83,6 +83,8 @@ When moving a component, the port nearest to your grab point snaps to the grid.
 | **F** | Flip horizontal |
 | **Shift+F** | Flip vertical |
 
+With grid snapping on, 90° rotations and flips keep parts on the grid: the selection turns about the grid point (or grid-cell centre) nearest its centre, so ports that were on the grid stay on it. A single part may shift slightly — up to about half a grid cell — to make this work. Wires inside the selection keep their shape and their routing mode, so they still route orthogonally when you move a part afterwards. Fine rotation can't keep the grid, and wires inside the selection switch to Direct routing.
+
 ### Rotation pivot
 
 By default, fine rotation (R key) pivots around the component's first port. To choose a different pivot:

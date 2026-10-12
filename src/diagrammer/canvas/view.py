@@ -2631,9 +2631,13 @@ class DiagramView(QGraphicsView):
 
     def _is_free_end(self, port) -> bool:
         """True if *port* is a wire end in empty space: a junction
-        carrying exactly one wire (two or more make it a real junction)."""
-        return (isinstance(port.component, JunctionItem)
-                and len(self._diagram_scene.connections_on_port(port)) == 1)
+        carrying exactly one visible, open wire. Two or more wires make
+        it a real junction; a closed outline's anchor is indexed once
+        but is not an end; a wire on a hidden layer isn't targetable."""
+        if not isinstance(port.component, JunctionItem):
+            return False
+        conns = self._diagram_scene.connections_on_port(port)
+        return len(conns) == 1 and not conns[0].closed and conns[0].isVisible()
 
     def _free_end_at(self, scene_pos: QPointF):
         """Return the free-end junction nearest *scene_pos* within

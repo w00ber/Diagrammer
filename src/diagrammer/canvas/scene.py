@@ -135,8 +135,8 @@ class DiagramScene(QGraphicsScene):
                     bucket.append(conn)
                 comp = port.component
                 if isinstance(comp, JunctionItem):
-                    # A junction where wires actually meet paints a dot —
-                    # make sure hidden endpoint anchors become visible.
+                    # Once wires meet here the junction may paint its dot
+                    # (three or more) — make hidden endpoint anchors visible.
                     if len(bucket) >= 2 and not comp.isVisible():
                         comp.setVisible(True)
                     comp.update()
@@ -209,7 +209,7 @@ class DiagramScene(QGraphicsScene):
         Returns ``(connection, projected_point)`` for the closest point
         on the wire's expanded route, or None. Wires with an endpoint on
         *exclude_port* are skipped (used while routing so a new wire
-        can't terminate on itself).
+        can't terminate on itself), as are wires on hidden layers.
         """
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.utils.geometry import closest_point_on_segment
@@ -218,7 +218,7 @@ class DiagramScene(QGraphicsScene):
         best_proj = None
         best_dist = tolerance
         for item in self.items():
-            if not isinstance(item, ConnectionItem):
+            if not isinstance(item, ConnectionItem) or not item.isVisible():
                 continue
             if exclude_port is not None and (
                     item.source_port is exclude_port
@@ -245,14 +245,15 @@ class DiagramScene(QGraphicsScene):
         minimum pick radius in scene units; larger arrows are clickable
         over their full extent. Delegates the per-wire hit test to
         ``ConnectionItem._nearest_arrow`` so scene- and item-level picks
-        share one tolerance model.
+        share one tolerance model. Wires on hidden layers are skipped.
         """
         from diagrammer.items.connection_item import ConnectionItem
 
         best = None
         best_dist = float("inf")
         for item in self.items():
-            if not isinstance(item, ConnectionItem) or not item._arrows:
+            if (not isinstance(item, ConnectionItem) or not item._arrows
+                    or not item.isVisible()):
                 continue
             hit = item._nearest_arrow(scene_pos, tolerance)
             if hit is not None and hit[1] < best_dist:
@@ -266,7 +267,8 @@ class DiagramScene(QGraphicsScene):
         Returns ``(owner_conn, other_conn, point)`` for the geometric
         crossing nearest the position within *tolerance*, or None. Works
         regardless of the crossing's resolved style, so a plain crossing
-        can be right-clicked to restyle or convert it.
+        can be right-clicked to restyle or convert it. Wires on hidden
+        layers are skipped.
         """
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.utils.geometry import (
@@ -277,7 +279,7 @@ class DiagramScene(QGraphicsScene):
 
         candidates = []
         for item in self.items():
-            if not isinstance(item, ConnectionItem):
+            if not isinstance(item, ConnectionItem) or not item.isVisible():
                 continue
             rect = getattr(item, '_expanded_rect', None)
             if rect is None:
@@ -1312,6 +1314,28 @@ class DiagramScene(QGraphicsScene):
             half.vertices = wps
             halves.append(half)
 
+        # Direction arrows ride to whichever half now carries their spot,
+        # keeping their scene position, direction and style. The halves
+        # are re-added (not rebuilt) on redo, so they keep these too.
+        host_arrows = host.arrows
+        if host_arrows and halves:
+            from diagrammer.utils.geometry import fraction_at_point, point_at_fraction
+            # The first half was routed while the junction held one wire
+            # fewer (and may carry a junction-approach stub); measure
+            # against the routes as they stand with both halves attached.
+            for half in halves:
+                half.update_route()
+            per_half: dict[int, list] = {id(h): [] for h in halves}
+            for arrow in host_arrows:
+                spot, _tangent = point_at_fraction(pts, arrow.t)
+                fits = [(fraction_at_point(h.all_points(), spot), h) for h in halves]
+                (t, _proj, _dist), half = min(fits, key=lambda f: f[0][2])
+                arrow.t = t
+                per_half[id(half)].append(arrow)
+            for half in halves:
+                if per_half[id(half)]:
+                    half.arrows = per_half[id(half)]
+
         if moved_overrides and halves:
             from diagrammer.items.connection_item import ConnectionItem
             conn_by_id = {
@@ -1545,8 +1569,9 @@ class DiagramScene(QGraphicsScene):
         """Unit directions in which the element at *port* leaves it.
 
         A component port gives its lead direction; a junction port gives
-        each attached wire's direction away from it. ``[]`` means unknown
-        (a port with no lead direction); None means nothing is attached.
+        each attached visible wire's direction away from it. ``[]`` means
+        unknown (a port with no lead direction); None means nothing
+        visible is attached.
         """
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.items.junction_item import JunctionItem
@@ -1556,13 +1581,20 @@ class DiagramScene(QGraphicsScene):
             return [(adx, ady)] if abs(adx) + abs(ady) > 0 else []
         dirs = []
         for conn in self.connections_on_port(port):
-            pts = conn.routed_points()
-            if len(pts) < 2:
+            if not conn.isVisible():
                 continue
-            a, b = (pts[0], pts[1]) if conn.source_port is port else (pts[-1], pts[-2])
+            pts = conn.routed_points()
+            if conn.target_port is port and conn.source_port is not port:
+                pts = pts[::-1]
+            # Traced wires keep a waypoint on their junction end, so step
+            # past points coincident with the port to find the direction.
+            a = pts[0] if pts else None
+            b = next((q for q in pts[1:]
+                      if abs(q.x() - a.x()) + abs(q.y() - a.y()) > 1e-6), None)
+            if b is None:
+                continue
             length = ((b.x() - a.x()) ** 2 + (b.y() - a.y()) ** 2) ** 0.5
-            if length > 1e-6:
-                dirs.append(((b.x() - a.x()) / length, (b.y() - a.y()) / length))
+            dirs.append(((b.x() - a.x()) / length, (b.y() - a.y()) / length))
         return dirs or None
 
     def find_tee_at(self, scene_pos: QPointF, tolerance: float):
@@ -1570,9 +1602,10 @@ class DiagramScene(QGraphicsScene):
 
         A tee is a port — a wire end or a component lead — lying on the
         interior of another wire's route without being connected to it,
-        and meeting it at an angle (an element running along the wire is
-        an overlap, not a tee). Ports up to 1 scene unit off the route
-        count, which absorbs the small port offsets in hand-made SVGs.
+        and not running parallel to it (that is an overlap, not a tee).
+        Ports up to 1 scene unit off the route count, which absorbs the
+        small port offsets in hand-made SVGs. Items on hidden layers are
+        ignored.
 
         Returns ``(host_conn, port, point)`` for the tee nearest
         *scene_pos* within *tolerance*, where *point* is the port's
@@ -1587,9 +1620,13 @@ class DiagramScene(QGraphicsScene):
         wires, ports = [], []
         for item in self.items():
             if isinstance(item, ConnectionItem):
-                if not item.closed:
+                if not item.closed and item.isVisible():
                     wires.append(item)
             elif isinstance(item, (ComponentItem, JunctionItem)):
+                # Free-end junctions are always hidden; their wires'
+                # visibility is checked in _tee_directions instead.
+                if isinstance(item, ComponentItem) and not item.isVisible():
+                    continue
                 for port in item.ports:
                     pos = port.scene_center()
                     if point_distance(pos, scene_pos) <= tolerance + ON_WIRE:
@@ -1617,8 +1654,8 @@ class DiagramScene(QGraphicsScene):
                             or point_distance(proj, pts[-1]) < 1.0):
                         continue
                     ux, uy = (b.x() - a.x()) / seg_len, (b.y() - a.y()) / seg_len
-                    if dirs and all(abs(dx * ux + dy * uy) > 0.5 for dx, dy in dirs):
-                        continue  # runs along the wire
+                    if dirs and all(abs(dx * ux + dy * uy) > 0.999 for dx, dy in dirs):
+                        continue  # runs along the wire (a 45° branch is fine)
                     d = point_distance(proj, scene_pos)
                     if d <= best_dist:
                         best_dist = d
@@ -1651,6 +1688,12 @@ class DiagramScene(QGraphicsScene):
         try:
             if isinstance(port.component, JunctionItem):
                 junction = port.component
+                if junction.end_marker != "none":
+                    # An explicit marker would paint over the junction dot,
+                    # and with three wires it can no longer be changed.
+                    from diagrammer.commands.style_command import ChangeStyleCommand
+                    self._undo_stack.push(ChangeStyleCommand(
+                        junction, 'end_marker', junction.end_marker, "none"))
                 if point_distance(junction.pos(), point) > 1e-6:
                     self._undo_stack.push(MoveComponentCommand(
                         junction, QPointF(junction.pos()), QPointF(point)))
