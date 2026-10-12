@@ -73,8 +73,11 @@ def _mirror_map(center: QPointF, horizontal: bool):
 def _snap_spacing(scene, items) -> float | None:
     """Grid spacing that a quarter turn or flip of *items* should keep.
 
-    None when no view shows the scene, grid snapping is off, or nothing
-    in *items* has ports (text and shapes keep their exact pivot).
+    Components and junctions sit on the grid: dragging snaps a component's
+    first port, or for a decorative part without ports its centre (or the
+    SVG's snap point), and junctions snap their single port. None when no
+    view shows the scene, grid snapping is off, or *items* holds neither
+    (text and shapes keep their exact pivot).
     """
     from diagrammer.items.component_item import ComponentItem
     from diagrammer.items.junction_item import JunctionItem

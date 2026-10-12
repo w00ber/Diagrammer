@@ -378,3 +378,27 @@ class TestReviewFindingsPR36:
         _make_transform_host(scene, library)._rotate_selected(90)
         assert conn.routing_mode == ROUTE_ORTHO_45
         assert len(conn.all_points()) == 2
+
+    def test_decorative_parts_keep_their_grid_anchor(self, scene, view, library):
+        """Port-less parts are grid-anchored too: dragging snaps their
+        centre. Two of them centred on grid points 20 apart have their
+        centroid between grid points; turning about that exact centroid
+        would put both centres half a cell off."""
+        from tests.test_transform_invariants import _decorative_def
+        from diagrammer.transform_ops import _scene_center
+
+        cdef = _decorative_def(library)
+        parts = []
+        for x in (200, 220):
+            comp = ComponentItem(cdef)
+            scene.addItem(comp)
+            comp._skip_snap = True
+            comp.setPos(QPointF(x, 200) - (_scene_center(comp) - comp.pos()))
+            comp._skip_snap = False
+            parts.append(comp)
+        _select_all(scene)
+        _make_transform_host(scene, library)._rotate_selected(90)
+        for comp in parts:
+            c = _scene_center(comp)
+            assert c.x() % GRID == pytest.approx(0, abs=1e-6) or c.x() % GRID == pytest.approx(GRID)
+            assert c.y() % GRID == pytest.approx(0, abs=1e-6) or c.y() % GRID == pytest.approx(GRID)
