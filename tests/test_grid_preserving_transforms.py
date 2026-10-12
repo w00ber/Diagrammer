@@ -357,3 +357,24 @@ class TestReviewFindingsPR36:
         part.setSelected(True)
         host._rotate_selected(-90)
         assert_snapshots_equal(before, _geometry(scene))
+
+    def test_ortho_45_diagonal_at_window_edge_keeps_mode(self, scene, library):
+        """Copilot's example on #36: an (80, 100) span is one ortho-45
+        diagonal; after a quarter turn it is (100, 80), which the old,
+        asymmetric router window split into segments, demoting the wire
+        to Direct."""
+        ends = []
+        for pos in (QPointF(0, 0), QPointF(80, 100)):
+            end = JunctionItem()
+            end.setPos(pos)
+            scene.addItem(end)
+            ends.append(end)
+        conn = _connect(scene, ends[0].port, ends[1].port)
+        conn.routing_mode = ROUTE_ORTHO_45
+        scene.update_connections()
+        before = conn.all_points()
+        assert len(before) == 2, "fixture needs a single diagonal"
+        _select_all(scene)
+        _make_transform_host(scene, library)._rotate_selected(90)
+        assert conn.routing_mode == ROUTE_ORTHO_45
+        assert len(conn.all_points()) == 2

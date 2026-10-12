@@ -75,8 +75,24 @@ class TestOrthoRoute45:
 
     def test_near_diagonal(self):
         pts = ortho_route_45(QPointF(0, 0), QPointF(100, 90))
-        # Aspect ratio ~1.11, within 0.8-1.2 range → direct
+        # Aspect ratio ~1.11, within 0.8-1.25 range → direct
         assert len(pts) == 2
+
+    @pytest.mark.parametrize("dx, dy", [
+        (80, 100), (100, 120), (100, 121), (100, 124), (100, 125),
+        (100, 126), (100, 130), (60, 100), (100, 100), (200, 50),
+    ])
+    def test_symmetric_under_swapping_axes(self, dx, dy):
+        """A quarter turn swaps |dx| and |dy|; the route must turn with it.
+        The old 0.8 <= dx/dy <= 1.2 window drew (80, 100) as one diagonal
+        but (100, 80) as three segments."""
+        assert (len(ortho_route_45(QPointF(0, 0), QPointF(dx, dy)))
+                == len(ortho_route_45(QPointF(0, 0), QPointF(dy, dx))))
+
+    def test_diagonal_window_boundaries(self):
+        straight = lambda dx, dy: len(ortho_route_45(QPointF(0, 0), QPointF(dx, dy))) == 2  # noqa: E731
+        assert straight(80, 100) and straight(100, 80)    # ratio 0.8 / 1.25
+        assert not straight(79, 100) and not straight(100, 79)
 
     def test_non_diagonal(self):
         pts = ortho_route_45(QPointF(0, 0), QPointF(200, 50))
