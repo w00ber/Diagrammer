@@ -103,7 +103,13 @@ class ComponentItem(QGraphicsItem):
 
         # SVG renderer — hide non-rendered groups (NO lead shortening at init;
         # leads are shortened dynamically based on actual connections)
-        self._renderer = QSvgRenderer(self._prepare_svg_bytes(component_def.svg_path))
+        # Lettering must stay readable when the item is flipped or rotated; see
+        # _apply_upright. Only re-render for that when the component carries an
+        # upright layer (it is a top-level group, not part of artwork, so that
+        # it paints after the leads).
+        _svg_bytes = self._prepare_svg_bytes(component_def.svg_path)
+        self._has_upright = b'id="upright"' in _svg_bytes
+        self._renderer = QSvgRenderer(_svg_bytes)
         # Cache for dynamic lead shortening: maps port_name -> shorten_amount
         self._cached_lead_shortening: dict[str, float] = {}
         self._lead_renderer: QSvgRenderer | None = None  # rebuilt when shortening changes
@@ -184,7 +190,9 @@ class ComponentItem(QGraphicsItem):
         """Force all cached renderers to be rebuilt with current style overrides."""
         self._renderer = QSvgRenderer(
             self._prepare_svg_bytes(self._def.svg_path,
-                                    style_overrides=self._style_overrides)
+                                    style_overrides=self._style_overrides,
+                                    flip_h=self._flip_h, flip_v=self._flip_v,
+                                    rotation=self._rotation_angle)
         )
         self._lead_renderer = None
         self._cached_lead_shortening = {}
@@ -438,13 +446,62 @@ class ComponentItem(QGraphicsItem):
         t.rotate(self._rotation_angle)
         t.translate(-cx, -cy)
         self.setTransform(t)
+        # Baked lettering is compensated at render time, so a change of flip or
+        # rotation means the SVG has to be rebuilt.
+        if getattr(self, "_has_upright", False):
+            self._invalidate_renderers()
 
     # -- SVG preparation --
 
     @staticmethod
+    def _apply_upright(root, flip_h: bool, flip_v: bool, rotation: float) -> None:
+        """Keep text inside ``<g id="upright">`` readable under flip/rotation.
+
+        The item transform is ``translate(c) * scale(flip) * rotate(angle) *
+        translate(-c)``, and it mirrors and rotates everything the item draws —
+        lettering included, which comes out backwards on a flipped part.
+
+        Each child of the upright group carries ``data-anchor="x,y"``: the point
+        that should stay put. Prepending ``translate(p) * M^-1 * translate(-p)``,
+        where ``M`` is the item transform's linear part, cancels the rotation and
+        the mirroring for that child while leaving the anchor where the item
+        transform puts it. The compensation is per child, not per group, so a
+        label still travels with the port it names.
+        """
+        if not flip_h and not flip_v and not rotation % 360:
+            return
+        group = None
+        for elem in root.iter():
+            tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
+            if tag == "g" and elem.get("id") == "upright":
+                group = elem
+                break
+        if group is None:
+            return
+
+        sx = -1.0 if flip_h else 1.0
+        sy = -1.0 if flip_v else 1.0
+        # M = scale(sx,sy) * rotate(angle)  ->  M^-1 = rotate(-angle) * scale(sx,sy)
+        # (1/sx == sx for sx in {+1,-1}), written outermost-first for SVG.
+        for child in group:
+            anchor = child.get("data-anchor")
+            if not anchor:
+                continue
+            try:
+                ax, ay = (float(v) for v in anchor.replace(",", " ").split())
+            except ValueError:
+                continue
+            ComponentItem._prepend_transform(
+                child,
+                f"translate({ax},{ay}) rotate({-rotation}) scale({sx},{sy}) "
+                f"translate({-ax},{-ay})")
+
+    @staticmethod
     def _prepare_svg_bytes(svg_path, lead_shortening: dict[str, float] | None = None,
                            port_positions: list | None = None,
-                           style_overrides=None) -> bytes:
+                           style_overrides=None,
+                           flip_h: bool = False, flip_v: bool = False,
+                           rotation: float = 0.0) -> bytes:
         """Load SVG, hide non-rendered groups, optionally shorten leads, and apply style overrides.
 
         Args:
@@ -468,6 +525,9 @@ class ComponentItem(QGraphicsItem):
             xy_map = [(x, y) for _, x, y in port_positions]
             name_map = {(round(x, 1), round(y, 1)): name for name, x, y in port_positions}
             ComponentItem._shorten_leads_in_svg(root, lead_shortening, xy_map, name_map)
+
+        # Keep baked lettering readable when the item is flipped or rotated
+        ComponentItem._apply_upright(root, flip_h, flip_v, rotation)
 
         # Inline CSS url() references (e.g. gradient fills) as direct SVG
         # attributes so that downstream SVG manipulations (style overrides,
@@ -956,6 +1016,8 @@ class ComponentItem(QGraphicsItem):
                     lead_shortening=shortening,
                     port_positions=port_positions,
                     style_overrides=self._style_overrides,
+                    flip_h=self._flip_h, flip_v=self._flip_v,
+                    rotation=self._rotation_angle,
                 ))
             else:
                 self._lead_renderer = None
@@ -1029,7 +1091,8 @@ class ComponentItem(QGraphicsItem):
         beyond the break line by the stretch amount — producing pure vector output.
         The result is cached and only rebuilt when the stretch amount changes.
         """
-        cache_key = (self._stretch_dx, self._stretch_dy, hash(self._style_overrides))
+        cache_key = (self._stretch_dx, self._stretch_dy, hash(self._style_overrides),
+                     self._flip_h, self._flip_v, self._rotation_angle)
         if (hasattr(self, '_stretched_cache_key')
                 and self._stretched_cache_key == cache_key
                 and hasattr(self, '_stretched_renderer_cache')):
@@ -1143,6 +1206,9 @@ class ComponentItem(QGraphicsItem):
             self._prepend_transform(leads_right, f"translate({total_dx},0)")
         if leads_bottom is not None and total_dy != 0:
             self._prepend_transform(leads_bottom, f"translate(0,{total_dy})")
+
+        # Keep baked lettering readable (see _apply_upright)
+        self._apply_upright(root, self._flip_h, self._flip_v, self._rotation_angle)
 
         # Inline CSS url() references (see _prepare_svg_bytes)
         self._inline_css_url_refs(root)
