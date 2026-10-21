@@ -17,7 +17,9 @@ env/
 # IDE / Editor
 .vscode/
 .idea/
-.claude/
+# Local Claude settings stay private, but shared skills are part of the repo.
+.claude/*
+!.claude/skills/
 *.swp
 *.swo
 *~

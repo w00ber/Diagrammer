@@ -18,7 +18,7 @@ auto-shorten leads into rounded corners; selections cut, copy, and paste
 with their connection topology intact. Everything is undoable.
 
 Components are simple SVGs with named layers (`artwork`,
-`leads`, `ports`, `labels`, `stretch`). While Diagrammer ships with a lot of built-in components, you can also create your own in Inkscape or any SVG editor by following the spec in [docs/svg-component-spec.md](docs/svg-component-spec.md). Just drop your SVG files into categorized subdirectories under `components/` and they will appear in the library panel, or you can simply point to your library directory in the settings.
+`leads`, `ports`, `labels`, `stretch`). While Diagrammer ships with a lot of built-in components, you can also create your own in Inkscape or any SVG editor by following the spec in [src/diagrammer/docs/svg-component-spec.md](src/diagrammer/docs/svg-component-spec.md). Just drop your SVG files into categorized subdirectories under `components/` and they will appear in the library panel, or you can simply point to your library directory in the settings.
 
 ## Features
 
@@ -147,7 +147,7 @@ defaults:
 ## Creating Components
 
 Components are standard SVG files with named layers. See
-[docs/svg-component-spec.md](docs/svg-component-spec.md) for the full
+[src/diagrammer/docs/svg-component-spec.md](src/diagrammer/docs/svg-component-spec.md) for the full
 specification. You can open any of the built-in components in Inkscape or Adobe Illustrator to see how they are structured, or as a starting point to create your own.
 
 Quick summary — an SVG component has these layers:
@@ -190,7 +190,7 @@ The app bundle or executable will be created in the `dist/` directory. For macOS
 
 - [docs/math-annotations.md](docs/math-annotations.md) — LaTeX math
   syntax, rendering backends, and system-LaTeX setup.
-- [docs/svg-component-spec.md](docs/svg-component-spec.md) — full SVG
+- [src/diagrammer/docs/svg-component-spec.md](src/diagrammer/docs/svg-component-spec.md) — full SVG
   component specification.
 - [docs/help.md](docs/help.md) — in-app help and complete shortcut
   reference.

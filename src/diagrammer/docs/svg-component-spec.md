@@ -94,6 +94,7 @@ All layers are `<g>` elements with specific `id` attributes, placed as **direct 
 | `labels` | No (hidden) | Defines label placeholder positions |
 | `stretch` | No (hidden) | Optional explicit stretch break axes. When absent, axes are inferred from `tile` and direction-tagged leads. |
 | `tile` | Yes (cloned) | Tile unit for repeating stretch (inside artwork) |
+| `upright` | Yes (compensated) | Baked lettering that stays readable when the component is flipped or rotated (inside artwork) |
 | `decorative` | No (hidden) | Marks component as freely resizable |
 | `snap` | No (hidden) | Defines grid snap anchor point |
 
@@ -126,19 +127,22 @@ Contains the straight line segments that connect the component body to the port 
 <g id="leads">
   <!-- Left lead: horizontal line from port (x=0) to body (x=22) -->
   <path d="M0,29.6 H22.2" stroke="#000" stroke-width="3"
-        stroke-linecap="round" fill="none"/>
+        stroke-linecap="butt" fill="none"/>
 
   <!-- Right lead: horizontal line from body (x=76) to port (x=98) -->
   <path d="M76.2,29.6 H98.4" stroke="#000" stroke-width="3"
-        stroke-linecap="round" fill="none"/>
+        stroke-linecap="butt" fill="none"/>
 </g>
 ```
 
 **If no `leads` layer exists:** The component renders entirely from `artwork` with no automatic lead shortening. Wires connect directly to ports with whatever corner style the routing produces. This is fine for components without straight lead stems, or when seamless rounded junctions aren't needed.
 
 **Lead requirements (when using the `leads` layer):**
-- Use the same stroke width as the default wire width (3 pt) for seamless joins.
-- Use `stroke-linecap="round"` for clean endpoints.
+- Use the host library's lead weight so wires join without a step in thickness —
+  3 pt matches the default wire width, but see
+  [Line weight is a property of the library](#line-weight-is-a-property-of-the-library).
+- Use `stroke-linecap="butt"` so the lead ends flush at its port; `round`
+  and `square` overhang by half the stroke width (see Style Guidelines).
 - Each lead should be a simple straight line (horizontal or vertical) from the component body to a port position.
 - The lead's endpoint must coincide with the corresponding port's position.
 
@@ -159,13 +163,13 @@ Why prefer this over the legacy `leads` group? With direction-tagged groups Diag
 <g id="leads-left">
   <!-- Left-side leads stay put when the component stretches horizontally -->
   <path d="M0,10 H17" stroke="#000" stroke-width="3"
-        stroke-linecap="round" fill="none"/>
+        stroke-linecap="butt" fill="none"/>
 </g>
 
 <g id="leads-right">
   <!-- Right-side leads + arrowhead translate together with the right port -->
   <path d="M27,10 c…"
-        stroke="#000" stroke-width="3" stroke-linecap="round" fill="none"/>
+        stroke="#000" stroke-width="3" stroke-linecap="butt" fill="none"/>
   <polygon points="53,12 60,10 53,8" fill="#000"/>
 </g>
 ```
@@ -179,7 +183,7 @@ You can mix direction-tagged groups with a legacy `leads` group; the legacy grou
 ```css
 .st1 {
   stroke: #0e72ba;
-  stroke-linecap: round;
+  stroke-linecap: butt;
   stroke-linejoin: round;   /* avoids miter-spike artifacts */
   stroke-width: 1.7px;
 }
@@ -319,6 +323,62 @@ Defines a tile region between two break lines. When stretched, the content betwe
 
 ![Stretch mechanics: gap stretch vs repeating stretch, showing before and after states with break lines, gap fill regions, and cloned tiles](fig-stretch-mechanics.svg)
 
+### `upright` — Lettering That Stays Readable
+
+A component's transform is `translate(c) * scale(flip) * rotate(angle) *
+translate(-c)`, applied to everything the item draws. Lettering baked into
+`artwork` therefore comes out mirrored on a flipped part and lying on its side
+on a rotated one.
+
+Put such lettering in a `<g id="upright">` **inside** `artwork`, and give each
+child a `data-anchor="x,y"` — the point it should stay pinned to:
+
+```xml
+<g id="artwork">
+  <circle class="st1" cx="60" cy="60" r="24"/>
+  <g id="upright">
+    <path class="st3" data-anchor="18,54" transform="translate(10.3,54) scale(1,-1)"
+          d="M4.5,4.3 …"/>
+  </g>
+</g>
+```
+
+At render time `ComponentItem._apply_upright` prepends
+`translate(p) * M⁻¹ * translate(-p)` to each child, where `M` is the linear part
+of the item transform. That cancels the rotation and the mirroring for the glyph
+while leaving its anchor wherever the item transform puts it — so the text stays
+readable *and* still travels with the port it names. Compensation is per child,
+not per group, which is what makes a label follow its own port under rotation.
+
+**Put the `upright` group at the top level, after `leads`** — not inside
+`artwork`. SVG paints in document order, so lettering inside `artwork` is drawn
+*before* the leads and a lead will simply paint over it.
+
+**Two things keep a label clear of the wiring**, and they solve different halves
+of the problem:
+
+- *Clearance* handles the component's own leads. Size the perpendicular offset
+  by the glyph's largest reach from its anchor, not its height: the label stays
+  upright while its offset vector rotates, so after a quarter turn the glyph
+  presents a different edge to the lead. `"LO"` is nearly twice as wide as it is
+  tall, and a flat offset that suits `"I"` leaves it overlapping.
+- *A white knockout box* handles everything else. A wire the user routes past
+  the part can cross a label wherever it is placed, so put a white `<rect>`
+  covering the glyph's bounding box underneath it.
+
+  Make it a rectangle, **not** a white-stroked copy of the glyph. A stroked halo
+  follows the letterforms, so a wire grazing its edge comes away scalloped and
+  reads as a damaged conductor; a rectangle either cuts the wire cleanly or
+  leaves it alone. Get the clearance right as well, or the knockout will punch a
+  gap in the component's own lead.
+
+This is for lettering that is part of the drawing. It is not the `labels` layer,
+which is a separate (currently unimplemented) hook for editable placeholders.
+
+> The `_LBL` filter components predate this and bake their lettering directly
+> into `artwork`, so they still mirror when flipped. Moving them into an
+> `upright` group is a drop-in fix whenever they are next touched.
+
 ### `decorative` — Decorative Component Marker
 
 An empty `<g id="decorative"/>` element marks the component as **decorative** — freely resizable in both width and height with no ports or leads. These are intended for visual elements like borders, shaded regions, title blocks, and other non-electrical decorations.
@@ -377,12 +437,31 @@ Optional metadata for component behavior.
 ## Style Guidelines
 
 ### Stroke widths
-- **Lead lines:** 3 pt (matches default wire width for seamless connections)
-- **Component body:** 3 pt recommended for consistency; other widths allowed for visual distinction
+- **Lead lines:** match the host library's lead weight — see
+  [Line weight is a property of the library](#line-weight-is-a-property-of-the-library)
+  below. 3 pt is the default wire width and the right answer for a standalone
+  component, but a part dropped into `PAPER_2pt` must use 2 pt or its wires will
+  step in thickness at the port.
+- **Component body:** not standardised — see
+  [Body weight is per-family](#body-weight-is-per-family).
 
 ### Stroke caps and joins
-- **Leads:** `stroke-linecap: round` (blends smoothly with wire endpoints)
-- **Body:** `stroke-linecap: round; stroke-linejoin: round` recommended
+- **Caps:** `stroke-linecap: butt` — a flush end. Both `round` and `square`
+  overhang the endpoint by half the stroke width, and that overhang shows:
+  it pokes out past a tee-junction line join, and past the body outline
+  wherever an interior line runs up to it.
+- **Joins:** `stroke-linejoin: round`.
+
+> **Butt caps change how you draw a multi-segment run.** A right-angled branch
+> drawn as separate `<line>` elements relied on round caps to fill its corners;
+> with butt caps each corner notches by a quarter of the stroke width. Draw the
+> whole run as one `<path>` (`M … H … V … H …`) so the corners are *joins*
+> rather than free ends. `tools/gen_splitters.py`'s square cascade does this.
+
+Much of the existing library still declares `stroke-linecap: round` (127 of 229
+files; the other 102 declare nothing and so already get `butt`). New components
+should use `butt`; the older files are worth converting whenever they are next
+touched.
 
 ### Colors
 - Default: `#000` (black) for strokes
@@ -391,6 +470,81 @@ Optional metadata for component behavior.
 ### Fill
 - Most electrical components: `fill: none` (transparent)
 - Flowchart shapes: `fill: white` or light colors for solid backgrounds
+
+## House Conventions (the shipped libraries)
+
+Everything above is the contract the *application* enforces: get it wrong and
+ports go undetected or leads fail to shorten. This section is different — it is
+what the bundled libraries happen to agree on. Nothing here is checked by code,
+but a part that ignores it looks wrong sitting next to its neighbours.
+
+### Line weight is a property of the library
+
+The same component is shipped once per library at a different line weight, so a
+diagram drawn for a paper and the same diagram drawn for slides both read
+correctly at their final size. **A new part belongs in every library it is
+relevant to, drawn at that library's weight** — not in one library only.
+
+| Library | Lead weight | Intended for |
+| ------- | ----------- | ------------ |
+| `PAPER_2pt` | 2 px | figures in papers |
+| `SLIDES_3pt` | 3 px | presentation slides |
+| `CRYO_WIRING_6pt` | 6 px | large-format fridge wiring diagrams |
+| `FLAIR` | n/a | illustrative/decorative parts, no fixed weight |
+| `flowchart` | n/a | flowchart shapes, no leads |
+
+The lead weight is the one that must be exact. `ConnectCommand._get_lead_stroke_width`
+parses it out of the component's CSS and gives the attached wire the same width,
+so a mismatch shows up as a visible step in thickness at the port.
+
+### Body weight is per-family
+
+Body weight is *not* standardised, and the libraries are not self-consistent
+about it — bodies in `PAPER_2pt` range from 1.6 px to 3.2 px, and even within the
+switch family `SP6T` uses a 2.7 px body while `SPDT` uses 2 px.
+
+Nor is there a single rule about body versus interior. The families do opposite
+things, deliberately:
+
+- In `switches`, the body is the heaviest line (`SP6T`: 2.7 px box, 2 px
+  contacts and arms) so the outline reads above its contents.
+- In `PASSIVE`, the *signal path* is the heaviest line and the box recedes
+  (`90degHYBRID0`, `DIR_COUPLER1`: 4 px transmission lines, 2 px box,
+  1.6 px flanges) so the coupling topology is what you see first.
+
+When adding to an existing family, **open the specific neighbour you want to sit
+beside, read its body weight, and match that** rather than reaching for a
+nominal value. Record which part you matched in the generator or a comment, so
+the next person does not have to re-derive it.
+
+### Port grids in the circuit libraries
+
+The `circuits/` families share a footprint so that parts are interchangeable on
+the canvas — a splitter can replace a switch without moving a wire:
+
+- viewBox 80 pt wide, with the common/input port at `x=0` and outputs at `x=80`
+- ports on a 20 pt pitch (40 pt when there are only two, matching `SPDT`)
+- the common port centred vertically: `cy = height / 2`
+- body inset 10 pt from the viewBox on all sides, `rx="4"` on the rounded rect
+- leads spanning the inset only (`x=0→10` and `x=80→70`), so the lead/body weight
+  change lands exactly on the outline rather than somewhere inside the body
+
+### Generate families, do not hand-author them
+
+A part that exists at several N, across several libraries, is a cross product —
+eleven symbols times two libraries for the splitters. Hand-authoring those
+drifts. Write a generator under `tools/`, put the settled numbers in named
+constants at the top, and regenerate the whole set when one changes.
+
+[`tools/gen_splitters.py`](../../../tools/gen_splitters.py) is the worked
+example: one geometry definition, three styles, two libraries, with every tuned
+parameter (`FAN_LAND`, `TREE_SHIFT`, `SQ_RISER`) named and commented.
+
+Validate the output against the application's own parser rather than by eye
+alone — `ComponentDef.from_svg` for port maps and `ComponentLibrary.scan` for
+discovery. A cheap check that catches the common mistake: every lead endpoint
+must coincide with a port coordinate, or `ComponentItem._shorten_leads_in_svg`
+will silently skip that lead.
 
 ## Component Library Organization
 
@@ -423,7 +577,7 @@ Each subdirectory becomes a **category** in the library panel. File names (witho
   <defs>
     <style>
       .stroke { fill: none; stroke: #000; stroke-width: 3px;
-                stroke-linecap: round; stroke-linejoin: round; }
+                stroke-linecap: butt; stroke-linejoin: round; }
     </style>
   </defs>
 
@@ -471,9 +625,9 @@ Each subdirectory becomes a **category** in the library panel. File names (witho
 
   <g id="leads">
     <line x1="0" y1="10" x2="15" y2="10"
-          stroke="#000" stroke-width="3" stroke-linecap="round"/>
+          stroke="#000" stroke-width="3" stroke-linecap="butt"/>
     <line x1="105" y1="10" x2="120" y2="10"
-          stroke="#000" stroke-width="3" stroke-linecap="round"/>
+          stroke="#000" stroke-width="3" stroke-linecap="butt"/>
   </g>
 
   <g id="ports">
