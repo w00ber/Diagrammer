@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 120">
+  <defs>
+    <style>
+      .st0 {
+        fill: #c66;
+      }
+
+      .st1, .st2, .st3 {
+        fill: none;
+        stroke: #000;
+        stroke-linecap: butt;
+        stroke-linejoin: round;
+      }
+
+      .st1 {
+        stroke-width: 2px;
+      }
+
+      .st2 {
+        stroke-width: 3px;
+      }
+
+      .st3 {
+        stroke-width: 2.7px;
+      }
+    </style>
+  </defs>
+  <g id="artwork">
+    <rect class="st3" x="10" y="10" width="60" height="100" rx="4" ry="4"/>
+    <line class="st1" x1="10" y1="60" x2="20" y2="60"/>
+    <path class="st1" d="M20,60 H23.75 V40 H45"/>
+    <path class="st1" d="M20,60 H23.75 V80 H45"/>
+    <path class="st1" d="M45,40 H48.75 V30 H70"/>
+    <path class="st1" d="M45,40 H48.75 V50 H70"/>
+    <path class="st1" d="M45,80 H48.75 V70 H70"/>
+    <path class="st1" d="M45,80 H48.75 V90 H70"/>
+  </g>
+  <g id="leads">
+    <line id="lead:com" class="st2" x1="0" y1="60" x2="10" y2="60"/>
+    <line id="lead:1" class="st2" x1="80" y1="30" x2="70" y2="30"/>
+    <line id="lead:2" class="st2" x1="80" y1="50" x2="70" y2="50"/>
+    <line id="lead:3" class="st2" x1="80" y1="70" x2="70" y2="70"/>
+    <line id="lead:4" class="st2" x1="80" y1="90" x2="70" y2="90"/>
+  </g>
+  <g id="ports">
+    <circle id="port:com" class="st0" cx="0" cy="60" r="3"/>
+    <circle id="port:1" class="st0" cx="80" cy="30" r="3"/>
+    <circle id="port:2" class="st0" cx="80" cy="50" r="3"/>
+    <circle id="port:3" class="st0" cx="80" cy="70" r="3"/>
+    <circle id="port:4" class="st0" cx="80" cy="90" r="3"/>
+  </g>
+</svg>
