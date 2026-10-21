@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 99.5 40">
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 100 40">
   <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
   <defs>
     <style>
@@ -50,18 +50,14 @@
   </g>
   <g id="Layer_11">
     <g id="ports">
-      <circle id="port:left" class="st0" cy="10.2" r="3"/>
-      <circle id="port:right" class="st0" cx="99.5" cy="10.2" r="3"/>
-      <circle id="port:left1" class="st0" cy="29.8" r="3"/>
-      <circle id="port:right1" class="st0" cx="99.5" cy="29.8" r="3"/>
+      <circle id="port:left" class="st0" cy="10" r="3"/>
+      <circle id="port:right" class="st0" cx="100" cy="10" r="3"/>
+      <circle id="port:left1" class="st0" cy="30" r="3"/>
+      <circle id="port:right1" class="st0" cx="100" cy="30" r="3"/>
     </g>
     <g id="stretch">
       <line id="stretch:v2" class="st1" x1="60" x2="60" y2="40"/>
       <line id="stretch:v1" class="st1" x1="40" x2="40" y2="40"/>
-    </g>
-    <g id="leads" class="st5">
-      <line class="st2" x1="10.2" y1="20" y2="20"/>
-      <line class="st2" x1="120" y1="20" x2="107.2" y2="20"/>
     </g>
     <g id="artwork">
       <g>

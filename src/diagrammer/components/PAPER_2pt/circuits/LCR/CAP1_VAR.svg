@@ -9,7 +9,7 @@
 
       .st1 {
         stroke-linejoin: bevel;
-        stroke-width: 3px;
+        stroke-width: 2px;
       }
 
       .st1, .st2 {
