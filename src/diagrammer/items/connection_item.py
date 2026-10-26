@@ -219,7 +219,11 @@ class ConnectionItem(QGraphicsPathItem):
         # Flags -----------------------------------------------------------
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setAcceptHoverEvents(True)
-        self.setZValue(6)  # above components (z=5) — approach segments fill lead gaps cleanly
+        # Seed Z only: the scene re-stacks everything into its layer band.
+        # A wire is created after the parts it joins, so creation order
+        # already keeps it on top of them and the approach segments fill
+        # the lead gaps cleanly.
+        self.setZValue(6)
 
         # Initial route
         self.update_route()

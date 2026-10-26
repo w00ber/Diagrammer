@@ -5,6 +5,12 @@ geometry. Two snapshots compare equal iff the visual layout is the same
 within a configurable tolerance — independent of internal storage choices.
 This lets transform refactors prove "this sequence is a no-op" without
 coupling tests to internal representation.
+
+Stacking order is deliberately not part of a snapshot. Z values are derived
+from the layer bands and get renumbered whenever those change, and a scene
+built item-by-item in a test carries the raw constructor Z while a loaded one
+has been through ``reflow_z`` — so comparing them would only measure that
+difference. Stacking has its own tests in ``test_stacking_order.py``.
 """
 
 from __future__ import annotations
@@ -49,7 +55,6 @@ def _component_entry(item, tol: float) -> dict[str, Any]:
         "kind": "component",
         "name": item.component_def.name,
         "pos": _round_pt(pos, tol),
-        "z": _round(item.zValue(), tol),
         "rotation_angle": _round(item.rotation_angle, tol),
         "flip_h": bool(item.flip_h),
         "flip_v": bool(item.flip_v),
@@ -70,7 +75,6 @@ def _annotation_entry(item, tol: float) -> dict[str, Any]:
     return {
         "kind": "annotation",
         "pos": _round_pt(pos, tol),
-        "z": _round(item.zValue(), tol),
         "rotation": _round(rot, tol),
         "flip_h": flip_h,
         "flip_v": flip_v,
@@ -90,7 +94,6 @@ def _shape_entry(item, tol: float) -> dict[str, Any]:
         "kind": "shape",
         "subkind": type(item).__name__,
         "pos": _round_pt(pos, tol),
-        "z": _round(item.zValue(), tol),
         "rotation": _round(rot, tol),
         "flip_h": flip_h,
         "flip_v": flip_v,
@@ -119,7 +122,6 @@ def _connection_entry(item, tol: float) -> dict[str, Any]:
         waypoints_scene.append(_round_pt(pt, tol))
     return {
         "kind": "connection",
-        "z": _round(item.zValue(), tol),
         "source": _round_pt(src, tol),
         "target": _round_pt(tgt, tol),
         "waypoints": waypoints_scene,
@@ -133,7 +135,6 @@ def _junction_entry(item, tol: float) -> dict[str, Any]:
     return {
         "kind": "junction",
         "pos": _round_pt(item.pos(), tol),
-        "z": _round(item.zValue(), tol),
         "port": _round_pt(item.port.scene_center(), tol),
     }
 

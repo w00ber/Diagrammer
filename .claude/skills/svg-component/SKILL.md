@@ -126,6 +126,10 @@ stash and compare before assuming you caused a failure.
 | `scripts/validate_components.py` | Parse and check components the way the app does. Exits non-zero on error, so it can gate a commit. |
 | `scripts/contact_sheet.py` | Compose SVGs into one captioned sheet (`--row` groups them) for visual review. `.png` output needs `rsvg-convert`. |
 
+Plus, in the repo itself, `scripts/normalize_editor_svgs.py` — repairs the
+`id`/primitive/wrapper mangling an SVG editor leaves behind; see *Things that go
+wrong*.
+
 Both take `--help`.
 
 ## Things that go wrong
@@ -135,6 +139,36 @@ layers from the parser. The spec also documents the "Use Artboards" export trap
 (the viewBox silently grows to the artwork bounding box, pushing ports off the
 edge) and the decimal-precision setting that kinks smooth curves. If a
 hand-exported component behaves strangely, check those first.
+
+**Round-tripping a component through a non-Illustrator editor can silently
+un-make it.** VectorCraft, for one, does three things that each on their own
+leave the part parsing as a picture with no ports and no stretch: it sanitizes
+the colon out of `id="port:left"` (demoting the real name to
+`data-name="port:left"`, which the parser never reads), it converts `<circle>`
+and `<line>` into `<path>` (`_parse_ports` takes only `circle`/`rect`, stretch
+only `line`), and it may re-wrap everything in `<g id="Layer_1">`. None of it
+changes the rendered picture, so it survives review by eye.
+
+`scripts/normalize_editor_svgs.py` reverses all three, losslessly and
+idempotently:
+
+```bash
+python scripts/normalize_editor_svgs.py src/diagrammer/components --dry-run
+```
+
+Install `scripts/install_git_hooks.sh` once and a pre-commit hook normalizes
+staged component SVGs and validates them, so a mangled export cannot reach
+the history.
+
+Two cautions, both learned from the shipped tree. The script restores an `id`
+*only* when it is the colon-sanitized form of the `data-name` — Illustrator uses
+the same pair of attributes to de-duplicate a clashing id (`id="port:21"` with
+`data-name="port:2"` is a **different** port from `port:2`, and rewriting it
+would destroy one), so anything that is not a plain colon swap is left alone.
+And its `--snap`/`--check-grid` grid alignment is opt-in: a part that centres a
+port in a frame which is not a whole number of grid cells is off-grid by design,
+and most of the library is like that, so `--check-grid` warns on 97 of 208 files
+and `--snap` would rewrite 14 the validator already calls sound.
 
 **Leads must end exactly on their port.** `_find_port_at` matches within 2 pt.
 Put the weight transition on the body outline — leads spanning only the inset

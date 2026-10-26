@@ -12,6 +12,20 @@ from PySide6.QtCore import QPointF, Qt
 logger = logging.getLogger(__name__)
 
 
+def _restore_stack_z(item, data: dict) -> None:
+    """Re-apply the saved Z so stacking order survives a save/load trip.
+
+    The absolute value is still derived data — ``reflow_z`` rewrites it from
+    the layer index right after the load. What matters is the *relative*
+    order within a layer, which reflow preserves by sorting on current Z, so
+    a part brought to the front (or pasted on top) comes back on top rather
+    than snapping to wherever its item type used to sit.
+    """
+    z = data.get("z")
+    if isinstance(z, (int, float)):
+        item.setZValue(float(z))
+
+
 def _restore_group(item, data: dict) -> None:
     """Restore group stack from saved data (supports old and new format)."""
     raw = data.get("group")
@@ -275,6 +289,7 @@ class DiagramSerializer:
             item._layer_index = cd.get("layer", 0)
             scene.addItem(item)
             _restore_group(item, cd)
+            _restore_stack_z(item, cd)
             id_map[item.instance_id] = item
 
         # Load junctions
@@ -286,6 +301,7 @@ class DiagramSerializer:
             if jd.get("end_marker") in ("filled", "open"):
                 item.end_marker = jd["end_marker"]
             _restore_group(item, jd)
+            _restore_stack_z(item, jd)
             id_map[item.instance_id] = item
 
         # Load connections
@@ -372,6 +388,7 @@ class DiagramSerializer:
             scene.addItem(conn)
             scene.register_connection(conn)
             _restore_group(conn, cd)
+            _restore_stack_z(conn, cd)
             id_map[conn.instance_id] = conn
 
         # Load crossover overrides (2.1+) — tolerant of malformed entries
@@ -454,6 +471,7 @@ class DiagramSerializer:
                 item.arrow_extend = sd["arrow_extend"]
             scene.addItem(item)
             _restore_group(item, sd)
+            _restore_stack_z(item, sd)
 
         # Load SVG images
         for sid in data.get("svg_images", []):
@@ -468,6 +486,7 @@ class DiagramSerializer:
             item._layer_index = sid.get("layer", 0)
             scene.addItem(item)
             _restore_group(item, sid)
+            _restore_stack_z(item, sid)
 
         # Load annotations
         for ad in data.get("annotations", []):
@@ -506,9 +525,12 @@ class DiagramSerializer:
             item._layer_index = ad.get("layer", 0)
             scene.addItem(item)
             _restore_group(item, ad)
+            _restore_stack_z(item, ad)
 
         # Recompute Z values from layer index (Illustrator semantics).
-        # Saved per-item z values are now derived data and intentionally ignored.
+        # The saved per-item z values restored above only seed the relative
+        # order within each layer; reflow_z turns them back into the current
+        # band geometry.
         from diagrammer.canvas.scene import DiagramScene
         if isinstance(scene, DiagramScene):
             scene.reflow_z()

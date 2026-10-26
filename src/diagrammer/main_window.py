@@ -175,6 +175,7 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         # Annotations tool palette below library
         from diagrammer.panels.annotations_panel import AnnotationsPanel
         self._annotations_panel = AnnotationsPanel(self)
+        self._annotations_panel.setObjectName("AnnotationsPanel")
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._annotations_panel)
         self.splitDockWidget(self._library_panel, self._annotations_panel, Qt.Orientation.Vertical)
         self._annotations_panel.tool_activated.connect(self._on_annotation_tool)
@@ -204,6 +205,29 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
 
         # Restore saved dock layout (overrides defaults if previously saved)
         self._restore_dock_state()
+
+        self._populate_panels_menu()
+
+    def _populate_panels_menu(self) -> None:
+        """Fill View > Panels with a show/hide toggle per dock.
+
+        Without this a panel closed from its title-bar X is only
+        recoverable through Qt's dock context menu, which is easy to
+        miss.
+        """
+        menu = getattr(self, "_panels_menu", None)
+        if menu is None:
+            return
+        menu.clear()
+        for panel in (
+            self._library_panel,
+            self._annotations_panel,
+            self._props_panel,
+            self._layers_panel,
+        ):
+            act = panel.toggleViewAction()
+            act.setText(panel.windowTitle() or act.text())
+            menu.addAction(act)
 
     # --------------------------------------------------------- Tab management
 

@@ -322,6 +322,14 @@ class MenuMixin:
 
         view_menu.addSeparator()
 
+        # ---- Panels ----
+        # Populated at the end of ``_create_panels``: the docks do not exist
+        # yet when the menus are built, so only the empty submenu is made
+        # here and the toggle actions are appended once the panels are up.
+        self._panels_menu = view_menu.addMenu("&Panels")
+
+        view_menu.addSeparator()
+
         # ---- Appearance ----
         appearance_menu = view_menu.addMenu("&Appearance")
         self._theme_group = QActionGroup(self)

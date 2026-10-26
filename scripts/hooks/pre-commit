@@ -1,0 +1,105 @@
+#!/bin/sh
+#
+# Keep editor-mangled component SVGs out of the history.
+#
+# An SVG editor that round-trips a component can strip the colons out of
+# ``id="port:left"``, turn <circle>/<line> into <path>, or re-wrap everything in
+# <g id="Layer_1">. Each of those makes the part parse as a picture with no
+# ports and no stretch, and none of it is visible in the rendered symbol — so it
+# reaches a commit easily and is only noticed much later on the canvas.
+#
+# This hook normalizes the staged component SVGs, re-stages anything it fixed,
+# and then validates them the way the app's own parser does, blocking the commit
+# on a real error. Only staged files are touched, so it never surprises you with
+# changes elsewhere in the tree.
+#
+# Install with: scripts/install_git_hooks.sh
+# Skip once with: git commit --no-verify
+
+set -eu
+
+REPO=$(git rev-parse --show-toplevel)
+cd "$REPO"
+
+# The normalizer is pure stdlib, but the validator imports the app, so it needs
+# the interpreter that has PySide6. Prefer an explicit override, then the conda
+# env the project uses, then whatever python3 is on PATH.
+pick_python() {
+    if [ -n "${DIAGRAMMER_PYTHON:-}" ]; then
+        echo "$DIAGRAMMER_PYTHON"
+        return
+    fi
+    for candidate in "$HOME/miniforge3/envs/CMT/bin/python" \
+                     "$(command -v python3 || true)"; do
+        if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+            echo "$candidate"
+            return
+        fi
+    done
+    echo ""
+}
+
+PYTHON=$(pick_python)
+if [ -z "$PYTHON" ]; then
+    echo "pre-commit: no usable python3 found; skipping SVG checks" >&2
+    exit 0
+fi
+
+# Staged component SVGs only, NUL-separated so paths with spaces and the µ in
+# "µwave" survive. Deleted files are excluded via --diff-filter.
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR -z \
+         -- 'src/diagrammer/components/*.svg' | tr '\0' '\n')
+
+if [ -z "$STAGED" ]; then
+    exit 0
+fi
+
+echo "pre-commit: checking $(printf '%s\n' "$STAGED" | wc -l | tr -d ' ') component SVG(s)"
+
+# 1. Repair the mechanical mangling in place. Lossless, so it is safe to apply
+#    without asking; anything it changes gets re-staged below.
+printf '%s\n' "$STAGED" | while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    [ -f "$f" ] || continue
+    before=$(git hash-object "$f")
+    "$PYTHON" scripts/normalize_editor_svgs.py "$f" >/dev/null
+    after=$(git hash-object "$f")
+    if [ "$before" != "$after" ]; then
+        git add -- "$f"
+        echo "pre-commit: normalized and re-staged $f"
+    fi
+done
+
+# 2. Validate against the app's parser. Errors mean the part misbehaves on the
+#    canvas, so stop the commit; warnings are advisory and do not block.
+VALIDATOR=".claude/skills/svg-component/scripts/validate_components.py"
+if [ ! -f "$VALIDATOR" ]; then
+    echo "pre-commit: $VALIDATOR missing; skipping validation" >&2
+    exit 0
+fi
+
+# Re-read the staged list: step 1 may have rewritten files.
+set --
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    [ -f "$f" ] || continue
+    set -- "$@" "$f"
+done <<EOF
+$STAGED
+EOF
+
+if [ "$#" -eq 0 ]; then
+    exit 0
+fi
+
+if ! "$PYTHON" "$VALIDATOR" "$@"; then
+    cat >&2 <<'MSG'
+
+pre-commit: a staged component SVG does not parse as a usable part.
+  The errors above come from the app's own parser, so the symbol will
+  misbehave on the canvas even if it looks right in an editor.
+  Read src/diagrammer/docs/svg-component-spec.md, or commit with
+  --no-verify if you know the part is deliberately decorative.
+MSG
+    exit 1
+fi

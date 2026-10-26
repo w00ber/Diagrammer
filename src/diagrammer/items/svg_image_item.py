@@ -63,7 +63,7 @@ class SvgImageItem(QGraphicsItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setAcceptHoverEvents(True)
-        self.setZValue(4)  # between shapes (3) and components (5)
+        self.setZValue(4)  # seed Z; the scene re-stacks by creation order
 
     # =====================================================================
     # Properties

@@ -46,9 +46,18 @@ conda env, and run headless:
 QT_QPA_PLATFORM=offscreen ~/miniforge3/envs/CMT/bin/python -m pytest tests -q
 ```
 
-As of 2026-10-20, 6 tests in `test_shortcut_overlay.py` and `test_wire_end_dots.py`
-fail on a clean tree (keybinding/overlay expectations). Check against a stash
-before assuming you broke something.
+As of 2026-10-22, **11** tests fail on a clean tree — 6 keybinding/overlay
+expectations in `test_shortcut_overlay.py` and `test_wire_end_dots.py`, plus 5
+junction-dot ones in `test_compound_export.py`, `test_crossovers.py` and
+`test_tee_junction.py`. Verify against a clean checkout before assuming you
+broke something, and prefer a throwaway worktree to a stash so uncommitted work
+stays put:
+
+```bash
+git worktree add -f --detach /tmp/clean HEAD
+(cd /tmp/clean && QT_QPA_PLATFORM=offscreen ~/miniforge3/envs/CMT/bin/python -m pytest tests -q)
+git worktree remove --force /tmp/clean
+```
 
 ## Conventions that bite
 

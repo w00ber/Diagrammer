@@ -127,7 +127,7 @@ class ClipboardMixin:
         idx = 0
         for comp in selected_comps:
             id_map[comp.instance_id] = idx
-            self._clipboard.append({
+            entry = {
                 "type": "component",
                 "def_key": comp.library_key,
                 "pos": (comp.pos().x(), comp.pos().y()),
@@ -137,7 +137,13 @@ class ClipboardMixin:
                 "stretch_dx": comp.stretch_dx,
                 "stretch_dy": comp.stretch_dy,
                 "group": list(comp._group_ids),
-            })
+            }
+            # Per-instance SVG style edits (fill, stroke, line width...).
+            # Stored as plain data so later edits to the original do not
+            # leak into what is already on the clipboard.
+            if not comp.style_overrides.is_empty():
+                entry["style_overrides"] = comp.style_overrides.to_dict()
+            self._clipboard.append(entry)
             idx += 1
         for junc in selected_juncs:
             id_map[junc.instance_id] = idx
@@ -145,6 +151,7 @@ class ClipboardMixin:
                 "type": "junction",
                 "pos": (junc.pos().x(), junc.pos().y()),
                 "visible": junc.isVisible(),
+                "end_marker": junc.end_marker,
                 "group": list(junc._group_ids),
             })
             idx += 1
@@ -251,6 +258,39 @@ class ClipboardMixin:
                     ],
                 })
 
+        self._note_internal_copy()
+
+    # ------------------------------------ internal vs external precedence
+
+    def _note_internal_copy(self) -> None:
+        """Stamp the pasteboard's state at the moment of an internal copy.
+
+        ``_copy`` fills only the in-memory clipboard; it never writes to the
+        system pasteboard.  So an SVG left there by another app (graphulator,
+        Illustrator) outlives it and, now that we read that flavour, would
+        win every later paste -- Ctrl+C / Ctrl+V inside Diagrammer would keep
+        pasting a stale picture.  Remembering ``changeCount`` lets ``_paste``
+        tell "the user copied inside Diagrammer most recently" from "a new
+        external SVG has arrived since".
+        """
+        from diagrammer.io import pasteboard_read
+
+        self._copy_change_count = pasteboard_read.change_count()
+
+    def _internal_copy_is_current(self) -> bool:
+        """True when the internal clipboard postdates the pasteboard's content."""
+        from diagrammer.io import pasteboard_read
+
+        if not self._clipboard:
+            return False
+        stamped = getattr(self, "_copy_change_count", None)
+        if stamped is None:
+            return False
+        current = pasteboard_read.change_count()
+        # Unreadable (non-macOS) -> keep the old behaviour of letting
+        # external SVG win.
+        return current is not None and current == stamped
+
     # -------------------------------------------------------------- cut
 
     def _cut(self) -> None:
@@ -266,24 +306,35 @@ class ClipboardMixin:
         Returns True if SVG was found and pasted, False otherwise.
         """
         from PySide6.QtWidgets import QApplication
+
+        from diagrammer.io import pasteboard_read
+
+        if self._internal_copy_is_current():
+            return False
+
         clipboard = QApplication.clipboard()
         mime = clipboard.mimeData()
-        if mime is None:
-            return False
 
         svg_data: bytes | None = None
 
         # Check for explicit SVG MIME type
-        if mime.hasFormat("image/svg+xml"):
+        if mime is not None and mime.hasFormat("image/svg+xml"):
             raw = mime.data("image/svg+xml")
             if raw and raw.size() > 0:
                 svg_data = bytes(raw)
 
         # Fallback: check if plain text looks like SVG
-        if svg_data is None and mime.hasText():
+        if svg_data is None and mime is not None and mime.hasText():
             text = mime.text().strip()
             if text.startswith("<svg") or text.startswith("<?xml"):
                 svg_data = text.encode("utf-8")
+
+        # The usual case on macOS: exporters tag clipboard SVG with the
+        # ``public.svg-image`` UTI, which Qt has no mime converter for, so
+        # mimeData() offers only the raster flavour.  Read NSPasteboard
+        # directly instead -- see diagrammer.io.pasteboard_read.
+        if svg_data is None:
+            svg_data = pasteboard_read.read_svg()
 
         if svg_data is None:
             return False
@@ -352,6 +403,11 @@ class ClipboardMixin:
 
         PASTE_OFFSET = 40.0  # offset pasted items from originals
 
+        # Items created through a command (components, wires) get a
+        # top-of-band Z from the command itself; the ones added straight to
+        # the scene below need ``assign_item_z`` or they would paste
+        # underneath the diagram they were copied from.
+
         # First pass: create components, junctions, and annotations
         new_items: list = []  # ComponentItem, JunctionItem, AnnotationItem, or None
         pasted_annotations: list = []
@@ -378,6 +434,12 @@ class ClipboardMixin:
                     item.set_flip_v(True)
                 if entry.get("stretch_dx", 0) or entry.get("stretch_dy", 0):
                     item.set_stretch(entry.get("stretch_dx", 0), entry.get("stretch_dy", 0))
+                if entry.get("style_overrides"):
+                    from diagrammer.models.svg_style_override import (
+                        ComponentStyleOverrides,
+                    )
+                    item.set_style_overrides(
+                        ComponentStyleOverrides.from_dict(entry["style_overrides"]))
                 # Set exact position after all transforms
                 item.setPos(pos)
                 item._skip_snap = False
@@ -391,7 +453,10 @@ class ClipboardMixin:
                 junc._skip_snap = False
                 if not entry.get("visible", True):
                     junc.setVisible(False)
+                if entry.get("end_marker", "none") in ("filled", "open"):
+                    junc.end_marker = entry["end_marker"]
                 self._scene.addItem(junc)
+                self._scene.assign_item_z(junc)
                 _remap_group(junc, entry)
                 new_items.append(junc)
             elif entry["type"] == "annotation":
@@ -419,6 +484,7 @@ class ClipboardMixin:
                 if angle:
                     annot.rotate_by(angle)
                 self._scene.addItem(annot)
+                self._scene.assign_item_z(annot)
                 _remap_group(annot, entry)
                 pasted_annotations.append(annot)
             elif entry["type"] in ("rectangle", "ellipse", "line"):
@@ -472,6 +538,7 @@ class ClipboardMixin:
                 if angle:
                     shape.rotate_by(angle)
                 self._scene.addItem(shape)
+                self._scene.assign_item_z(shape)
                 _remap_group(shape, entry)
                 pasted_annotations.append(shape)
             elif entry["type"] == "svg_image":
@@ -488,6 +555,7 @@ class ClipboardMixin:
                 svg_item.setPos(pos)
                 svg_item._skip_snap = False
                 self._scene.addItem(svg_item)
+                self._scene.assign_item_z(svg_item)
                 _remap_group(svg_item, entry)
                 pasted_annotations.append(svg_item)
 

@@ -1095,7 +1095,7 @@ class AnnotationItem(QGraphicsTextItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
-        self.setZValue(8)  # above wires (6) and components (5)
+        self.setZValue(8)  # annotations have their own band above the artwork
 
     # =====================================================================
     # Public properties

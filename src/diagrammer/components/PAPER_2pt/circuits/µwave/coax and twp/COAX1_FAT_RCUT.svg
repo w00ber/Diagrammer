@@ -1,77 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 40 40">
-  <!-- Generator: Adobe Illustrator 30.6.0, SVG Export Plug-In . SVG Version: 2.1.4 Build 109)  -->
-  <defs>
-    <style>
-      .st0 {
-        fill: #c66;
-      }
-
-      .st1 {
-        stroke: #c03;
-        stroke-miterlimit: 10;
-        stroke-width: .9px;
-      }
-
-      .st1, .st2, .st3 {
-        fill: none;
-      }
-
-      .st2 {
-        stroke-linecap: round;
-        stroke-width: 2px;
-      }
-
-      .st2, .st4 {
-        stroke: #000;
-      }
-
-      .st2, .st4, .st3 {
-        stroke-linejoin: round;
-      }
-
-      .st5 {
-        fill: #fff;
-      }
-
-      .st4 {
-        fill: #cccbcb;
-      }
-
-      .st3 {
-        stroke: #999;
-        stroke-width: .2px;
-      }
-
-      .st6 {
-        display: none;
-      }
-    </style>
-  </defs>
-  <g id="guide" class="st6">
-    <line class="st3" x1="80" y1="0" x2="80" y2="40"/>
-    <line class="st3" x1="-40" y1="40" x2="-40" y2="0"/>
-    <line class="st3" x1="-20" y1="0" x2="-20" y2="40"/>
-    <line class="st3" x1="0" y1="0" x2="0" y2="40"/>
-    <line class="st3" x1="20" y1="0" x2="20" y2="40"/>
-    <line class="st3" x1="40" y1="0" x2="40" y2="40"/>
-    <line class="st3" x1="60" y1="0" x2="60" y2="40"/>
-    <line class="st3" x1="-40" y1="0" x2="80" y2="0"/>
-    <line class="st3" x1="-40" y1="20" x2="80" y2="20"/>
-    <line class="st3" x1="-40" y1="40" x2="80" y2="40"/>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="40" height="40" viewBox="0 0 40 40">
+  <title>COAX1_FAT_RCUT.svg</title>
+  <g id="guide" display="none">
+    <path d="M80 0 L80 40" fill="none" stroke="#999999" stroke-width="0.2" stroke-linejoin="round"/>
+    <path d="M-40 40 L-40 0" fill="none" stroke="#999999" stroke-width="0.2" stroke-linejoin="round"/>
+    <path d="M-20 0 L-20 40" fill="none" stroke="#999999" stroke-width="0.2" stroke-linejoin="round"/>
+    <path d="M0 0 L0 40" fill="none" stroke="#999999" stroke-width="0.2" stroke-linejoin="round"/>
+    <path d="M20 0 L20 40" fill="none" stroke="#999999" stroke-width="0.2" stroke-linejoin="round"/>
+    <path d="M40 0 L40 40" fill="none" stroke="#999999" stroke-width="0.2" stroke-linejoin="round"/>
+    <path d="M60 0 L60 40" fill="none" stroke="#999999" stroke-width="0.2" stroke-linejoin="round"/>
+    <path d="M-40 0 L80 0" fill="none" stroke="#999999" stroke-width="0.2" stroke-linejoin="round"/>
+    <path d="M-40 20 L80 20" fill="none" stroke="#999999" stroke-width="0.2" stroke-linejoin="round"/>
+    <path d="M-40 40 L80 40" fill="none" stroke="#999999" stroke-width="0.2" stroke-linejoin="round"/>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st0" cx="0" cy="20" r="3"/>
+    <circle id="port:left" fill="#cc6666" cx="0" cy="20" r="3"/>
   </g>
   <g id="stretch">
-    <line id="stretch:v" class="st1" x1="20" y1="0" x2="20" y2="40"/>
+    <line id="stretch:v" fill="none" stroke="#cc0033" stroke-width="0.9" stroke-miterlimit="10" x1="20" y1="0" x2="20" y2="40"/>
   </g>
   <g id="artwork">
-    <path class="st4" d="M30.4 37.2 C27 34.4 21.5 27.7 21.5 20 S26.7 6.1 30 3.1"/>
-    <path class="st4" d="M30 3.1 C31.3 1.9 32.7 1.3 34.1 1.3 H11.3 C6.1 1.3 1.7 9.7 1.7 20 S6 38.7 11.3 38.7 H34.1 C32.8 38.7 31.6 38.2 30.4 37.2 C30.4 37.2 30 3.1 30 3.1 Z"/>
-    <path class="st5" d="M44.8 39.4 C44.5 30.6 41.5 30.3 41.5 20.6 S44.7 10 44.8 0.5 H24.7 C24.6 10.1 21.5 10.6 21.5 20.4 S24.5 30.4 24.8 39.5 H44.8 Z"/>
+    <path d="M30.4 37.2 C27 34.4 21.5 27.7 21.5 20 C21.5 12.3 26.7 6.1 30 3.1" fill="#cccbcb" stroke="#000000" stroke-linejoin="round"/>
+    <path d="M30 3.1 C31.3 1.9 32.7 1.3 34.1 1.3 L11.3 1.3 C6.1 1.3 1.7 9.7 1.7 20 C1.7 30.3 6 38.7 11.3 38.7 L34.1 38.7 C32.8 38.7 31.6 38.2 30.4 37.2 Z" fill="#cccbcb" stroke="#000000" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M44.8 39.4 C44.5 30.6 41.5 30.3 41.5 20.6 C41.5 10.9 44.7 10 44.8 0.5 L24.7 0.5 C24.6 10.1 21.5 10.6 21.5 20.4 C21.5 30.2 24.5 30.4 24.8 39.5 L44.8 39.5 Z" fill="#ffffff"/>
   </g>
   <g id="leads">
-    <line class="st2" x1="1.2" y1="20" x2="0" y2="20"/>
+    <path d="M1.2 20 L0 20" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>

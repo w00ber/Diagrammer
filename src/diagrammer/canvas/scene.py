@@ -28,15 +28,30 @@ _RUBBERBAND_PEN = QPen(QColor(100, 100, 255, 180), 2.0, Qt.PenStyle.DashLine)
 PORT_SNAP_DISTANCE = 20.0
 
 # Layer-aware Z stacking.
-# Each layer occupies a Z band of width LAYER_STRIDE. Within a band, items are
-# ordered by type (shapes < components < wires < annotations) and then by a
-# small intra-type offset that grows with insertion order. Layer index 0 is
-# the *top* layer (Illustrator convention), so it gets the highest band.
+# Each layer occupies a Z band of width LAYER_STRIDE. Within a band, items sit
+# in one of two type bases (artwork < annotations) and then at a small
+# intra-base offset that grows with insertion order. Layer index 0 is the
+# *top* layer (Illustrator convention), so it gets the highest band.
 LAYER_STRIDE = 1000.0
 
 # Type Z bases — must stay below LAYER_STRIDE so they never bleed into the
-# next layer band. Order matches the historical constructor values:
-#   shapes (3) < components (5) < junctions/connections (6) < annotations (8)
+# next layer band.
+#
+# Shapes, SVG images, components, junctions and wires share ONE base: inside a
+# layer they stack purely in the order they were added, so the thing you just
+# dropped, pasted or brought to front covers what was already there, and a
+# wire still covers the parts it connects (it is necessarily created after
+# them). They used to have a base each (shapes 3 < images 4 < components 5 <
+# wires 6), which pinned a wire above every component forever — pasting a part
+# over an existing circuit left that circuit's wire stubs painted across it,
+# and Bring to Front could not lift it clear.
+#
+# Annotations keep their own base above the artwork so a label is never buried
+# by a wire or part drawn later.
+ARTWORK_BASE_Z = 5.0
+ANNOTATION_BASE_Z = 8.0
+
+
 def _type_base_z(item) -> float:
     from diagrammer.items.annotation_item import AnnotationItem
     from diagrammer.items.component_item import ComponentItem
@@ -45,15 +60,10 @@ def _type_base_z(item) -> float:
     from diagrammer.items.shape_item import LineItem, ShapeItem
     from diagrammer.items.svg_image_item import SvgImageItem
     if isinstance(item, AnnotationItem):
-        return 8.0
-    if isinstance(item, (JunctionItem, ConnectionItem)):
-        return 6.0
-    if isinstance(item, ComponentItem):
-        return 5.0
-    if isinstance(item, SvgImageItem):
-        return 4.0
-    if isinstance(item, (ShapeItem, LineItem)):
-        return 3.0
+        return ANNOTATION_BASE_Z
+    if isinstance(item, (JunctionItem, ConnectionItem, ComponentItem,
+                         SvgImageItem, ShapeItem, LineItem)):
+        return ARTWORK_BASE_Z
     return 0.0
 
 
