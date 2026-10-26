@@ -765,9 +765,10 @@ def _render_svg_image(parent: ET.Element, item, ox: float, oy: float) -> None:
     """Render an SvgImageItem by inlining its SVG content at its scene position/size."""
     import xml.etree.ElementTree as ET2
 
-    sc = item.mapToScene(QPointF(0, 0))
-    x = sc.x() - ox
-    y = sc.y() - oy
+    # item.pos(), not mapToScene(0,0): the rotation/flip is re-emitted
+    # below, so folding its translation in here would apply it twice.
+    x = item.pos().x() - ox
+    y = item.pos().y() - oy
 
     try:
         root = ET2.fromstring(item.svg_data)
@@ -780,22 +781,33 @@ def _render_svg_image(parent: ET.Element, item, ox: float, oy: float) -> None:
         if isinstance(el.tag, str) and el.tag.startswith(_SVG_NS):
             el.tag = el.tag[len(_SVG_NS):]
 
-    # Get the SVG's native viewBox dimensions for scaling
-    vb = root.get("viewBox", "")
-    vx = vy = 0.0
-    vw = vh = 0.0
-    if vb:
-        parts = vb.replace(",", " ").split()
-        if len(parts) == 4:
-            try:
-                vx, vy, vw, vh = (float(p) for p in parts)
-            except ValueError:
-                pass
+    # Source rect: the item's own mapping from SVG user units onto its
+    # rect, which is the viewBox widened around content drawn outside it
+    # (see SvgImageItem). Reading it off the item keeps export and canvas
+    # in step instead of re-deriving the viewBox here.
+    src = item.source_rect
+    vx, vy = src.x(), src.y()
+    vw, vh = src.width(), src.height()
 
-    # Build a transform that positions and scales the SVG content
-    # to match the item's current size on the canvas
+    # Build a transform that positions, orients and scales the SVG content
+    # to match the item's current appearance on the canvas
     g = ET2.SubElement(parent, "g")
     transform_parts = [f"translate({x:.1f},{y:.1f})"]
+    angle = getattr(item, "rotation_angle", 0.0) or 0.0
+    flip_h = bool(getattr(item, "flip_h", False))
+    flip_v = bool(getattr(item, "flip_v", False))
+    if angle or flip_h or flip_v:
+        # Same pivot order as SvgImageItem._apply_transform: translate to
+        # the intrinsic anchor, flip, rotate, translate back.
+        cx = item.image_width / 2
+        cy = item.image_height / 2
+        transform_parts.append(f"translate({cx:.1f},{cy:.1f})")
+        if flip_h or flip_v:
+            transform_parts.append(
+                f"scale({-1 if flip_h else 1},{-1 if flip_v else 1})")
+        if angle:
+            transform_parts.append(f"rotate({angle:.4f})")
+        transform_parts.append(f"translate({-cx:.1f},{-cy:.1f})")
     if vw > 0 and vh > 0:
         sx = item.image_width / vw
         sy = item.image_height / vh

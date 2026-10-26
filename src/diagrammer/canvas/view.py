@@ -988,11 +988,12 @@ class DiagramView(QGraphicsView):
                 LineItem as _AltLineItem,
                 ShapeItem as _AltShapeItem,
             )
+            from diagrammer.items.svg_image_item import SvgImageItem as _AltSvgItem
             if event.modifiers() & Qt.KeyboardModifier.AltModifier and (
                 isinstance(
                     item,
                     (ComponentItem, AnnotationItem, ConnectionItem,
-                     _AltShapeItem, _AltLineItem),
+                     _AltShapeItem, _AltLineItem, _AltSvgItem),
                 )
             ):
                 # For grouped wires, redirect to a component in the group
@@ -2180,6 +2181,12 @@ class DiagramView(QGraphicsView):
                 width=item.image_width,
                 height=item.image_height,
             )
+            if item.flip_h:
+                clone.set_flip_h(True)
+            if item.flip_v:
+                clone.set_flip_v(True)
+            if item.rotation_angle:
+                clone.rotate_by(item.rotation_angle)
             clone.setZValue(item.zValue() + 0.01)
         else:
             from diagrammer.items.shape_item import (

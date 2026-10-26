@@ -223,6 +223,9 @@ class ClipboardMixin:
                 "width": svg_img.image_width,
                 "height": svg_img.image_height,
                 "svg_data": base64.b64encode(svg_img.svg_data).decode("ascii"),
+                "rotation_angle": svg_img.rotation_angle,
+                "flip_h": svg_img.flip_h,
+                "flip_v": svg_img.flip_v,
                 "group": list(svg_img._group_ids),
             })
         for conn in selected_conns:
@@ -551,6 +554,12 @@ class ClipboardMixin:
                     width=entry.get("width"),
                     height=entry.get("height"),
                 )
+                if entry.get("flip_h"):
+                    svg_item.set_flip_h(True)
+                if entry.get("flip_v"):
+                    svg_item.set_flip_v(True)
+                if entry.get("rotation_angle"):
+                    svg_item.rotate_by(entry["rotation_angle"])
                 svg_item._skip_snap = True
                 svg_item.setPos(pos)
                 svg_item._skip_snap = False

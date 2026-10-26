@@ -483,6 +483,13 @@ class DiagramSerializer:
                 instance_id=sid.get("id"),
             )
             item.setPos(QPointF(sid["pos"][0], sid["pos"][1]))
+            if sid.get("flip_h"):
+                item.set_flip_h(True)
+            if sid.get("flip_v"):
+                item.set_flip_v(True)
+            angle = sid.get("rotation_angle", 0) or 0
+            if angle:
+                item.rotate_by(angle)
             item._layer_index = sid.get("layer", 0)
             scene.addItem(item)
             _restore_group(item, sid)
@@ -692,6 +699,9 @@ def _serialize_svg_image(item) -> dict:
         "width": item.image_width,
         "height": item.image_height,
         "svg_data": base64.b64encode(item.svg_data).decode("ascii"),
+        "rotation_angle": getattr(item, 'rotation_angle', 0.0),
+        "flip_h": getattr(item, 'flip_h', False),
+        "flip_v": getattr(item, 'flip_v', False),
         "layer": getattr(item, '_layer_index', 0),
         "z": item.zValue(),
         "group": getattr(item, '_group_ids', []) or [],

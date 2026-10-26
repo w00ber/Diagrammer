@@ -419,6 +419,13 @@ def instantiate_compound(
             height=sid.get("height"),
         )
         _apply_layer_and_pos(item, sid)
+        if sid.get("flip_h"):
+            item.set_flip_h(True)
+        if sid.get("flip_v"):
+            item.set_flip_v(True)
+        angle = sid.get("rotation_angle", 0) or 0
+        if angle:
+            item.rotate_by(angle)
         scene.addItem(item)
         created.append(item)
         saved_z[id(item)] = float(sid.get("z", 0.0))

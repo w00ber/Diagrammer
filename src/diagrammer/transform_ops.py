@@ -398,15 +398,17 @@ class TransformMixin:
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.items.junction_item import JunctionItem
         from diagrammer.items.shape_item import ShapeItem
+        from diagrammer.items.svg_image_item import SvgImageItem
 
         comp_targets = [i for i in self._scene.selectedItems() if isinstance(i, ComponentItem)]
         junc_targets = [i for i in self._scene.selectedItems() if isinstance(i, JunctionItem)]
         annot_targets = [i for i in self._scene.selectedItems() if isinstance(i, AnnotationItem)]
         shape_targets = [i for i in self._scene.selectedItems() if isinstance(i, ShapeItem)]
+        svg_targets = [i for i in self._scene.selectedItems() if isinstance(i, SvgImageItem)]
         conn_targets = [i for i in self._scene.selectedItems()
                         if isinstance(i, ConnectionItem)]
 
-        movable = comp_targets + junc_targets + annot_targets + shape_targets
+        movable = comp_targets + junc_targets + annot_targets + shape_targets + svg_targets
         if not movable and not conn_targets:
             return
 
@@ -433,11 +435,11 @@ class TransformMixin:
                 if isinstance(junc, JunctionItem) and junc not in junc_targets:
                     junc_targets.append(junc)
 
-        movable = comp_targets + junc_targets + annot_targets + shape_targets
+        movable = comp_targets + junc_targets + annot_targets + shape_targets + svg_targets
 
         self._scene.undo_stack.beginMacro(f"Rotate {len(movable)} items")
 
-        if len(movable) == 1 and isinstance(movable[0], (AnnotationItem, ShapeItem)):
+        if len(movable) == 1 and isinstance(movable[0], (AnnotationItem, ShapeItem, SvgImageItem)):
             self._scene.undo_stack.push(RotateItemCommand(movable[0], degrees))
         else:
             # Each item rotates internally AND orbits the pivot: the
@@ -463,7 +465,7 @@ class TransformMixin:
             for i, item in enumerate(movable):
                 if isinstance(item, ComponentItem):
                     self._scene.undo_stack.push(RotateComponentCommand(item, degrees))
-                elif isinstance(item, (AnnotationItem, ShapeItem)):
+                elif isinstance(item, (AnnotationItem, ShapeItem, SvgImageItem)):
                     self._scene.undo_stack.push(RotateItemCommand(item, degrees))
                 cur_sc = _scene_center(item)
                 offset = target_centers[i] - cur_sc
@@ -507,6 +509,7 @@ class TransformMixin:
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.items.junction_item import JunctionItem
         from diagrammer.items.shape_item import ShapeItem
+        from diagrammer.items.svg_image_item import SvgImageItem
 
         comp_targets = [i for i in self._scene.selectedItems()
                         if isinstance(i, ComponentItem)]
@@ -516,10 +519,12 @@ class TransformMixin:
                          if isinstance(i, AnnotationItem)]
         shape_targets = [i for i in self._scene.selectedItems()
                          if isinstance(i, ShapeItem)]
+        svg_targets = [i for i in self._scene.selectedItems()
+                       if isinstance(i, SvgImageItem)]
         conn_targets = [i for i in self._scene.selectedItems()
                         if isinstance(i, ConnectionItem)]
 
-        movable = comp_targets + junc_targets + annot_targets + shape_targets
+        movable = comp_targets + junc_targets + annot_targets + shape_targets + svg_targets
         if not movable and not conn_targets:
             return
 
@@ -540,7 +545,7 @@ class TransformMixin:
                 if isinstance(junc, JunctionItem) and junc not in junc_targets:
                     junc_targets.append(junc)
 
-        movable = comp_targets + junc_targets + annot_targets + shape_targets
+        movable = comp_targets + junc_targets + annot_targets + shape_targets + svg_targets
 
         self._scene.undo_stack.beginMacro(f"Fine rotate {len(movable)} items")
 
@@ -573,7 +578,7 @@ class TransformMixin:
         for item in movable:
             if isinstance(item, ComponentItem):
                 self._scene.undo_stack.push(RotateComponentCommand(item, degrees))
-            elif isinstance(item, (AnnotationItem, ShapeItem)):
+            elif isinstance(item, (AnnotationItem, ShapeItem, SvgImageItem)):
                 self._scene.undo_stack.push(RotateItemCommand(item, degrees))
 
             cur_sc = _scene_center(item)
@@ -606,14 +611,17 @@ class TransformMixin:
         from diagrammer.items.connection_item import ConnectionItem
         from diagrammer.items.junction_item import JunctionItem
         from diagrammer.items.shape_item import ShapeItem
+        from diagrammer.items.svg_image_item import SvgImageItem
 
         selected_comps = [i for i in self._scene.selectedItems() if isinstance(i, ComponentItem)]
         selected_juncs = [i for i in self._scene.selectedItems() if isinstance(i, JunctionItem)]
         selected_annots = [i for i in self._scene.selectedItems() if isinstance(i, AnnotationItem)]
         selected_shapes = [i for i in self._scene.selectedItems() if isinstance(i, ShapeItem)]
+        selected_svgs = [i for i in self._scene.selectedItems() if isinstance(i, SvgImageItem)]
         selected_conns = [i for i in self._scene.selectedItems() if isinstance(i, ConnectionItem)]
 
-        all_movable = selected_comps + selected_juncs + selected_annots + selected_shapes
+        all_movable = (selected_comps + selected_juncs + selected_annots
+                       + selected_shapes + selected_svgs)
         extra_juncs = self._gather_connected_junctions(all_movable)
         selected_juncs.extend(extra_juncs)
 
@@ -624,7 +632,8 @@ class TransformMixin:
                 if isinstance(junc, JunctionItem) and junc not in selected_juncs:
                     selected_juncs.append(junc)
 
-        all_movable = selected_comps + selected_juncs + selected_annots + selected_shapes
+        all_movable = (selected_comps + selected_juncs + selected_annots
+                       + selected_shapes + selected_svgs)
 
         axis = "H" if horizontal else "V"
         self._scene.undo_stack.beginMacro(f"Flip {axis} {len(all_movable)} items")
@@ -633,7 +642,7 @@ class TransformMixin:
         # through the group path so its mirror axis can keep the grid.
         if len(all_movable) <= 1 and not selected_comps:
             from diagrammer.commands.transform_command import FlipItemCommand
-            for item in selected_annots + selected_shapes:
+            for item in selected_annots + selected_shapes + selected_svgs:
                 cmd = FlipItemCommand(item, horizontal)
                 self._scene.undo_stack.push(cmd)
             self._scene.undo_stack.endMacro()
@@ -690,12 +699,12 @@ class TransformMixin:
 
         # Flip annotations and shapes internally
         from diagrammer.commands.transform_command import FlipItemCommand
-        for item in selected_annots + selected_shapes:
+        for item in selected_annots + selected_shapes + selected_svgs:
             cmd = FlipItemCommand(item, horizontal)
             self._scene.undo_stack.push(cmd)
 
         # Mirror non-component items (junctions, annotations, shapes)
-        for item in selected_juncs + selected_annots + selected_shapes:
+        for item in selected_juncs + selected_annots + selected_shapes + selected_svgs:
             old_pos = item.pos()
             sc = _scene_center(item)
             if horizontal:
