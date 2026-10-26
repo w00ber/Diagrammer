@@ -160,6 +160,14 @@ Install `scripts/install_git_hooks.sh` once and a pre-commit hook normalizes
 staged component SVGs and validates them, so a mangled export cannot reach
 the history.
 
+It also strips the `<metadata>` block Illustrator writes when **Preserve
+Illustrator Editing Capabilities** is left checked on export. That block holds
+`<i:aipgf>` — the whole document a second time as a zstd/base64 private stream,
+45–90 KB against a median component of 1.5 KB. Nothing but Illustrator reads
+it, so removing it cannot change the rendered symbol or what the parser sees;
+what it costs is Illustrator's editing state on re-open, so keep the `.ai`
+beside it if that matters. Uncheck the option and the problem does not arise.
+
 Two cautions, both learned from the shipped tree. The script restores an `id`
 *only* when it is the colon-sanitized form of the `data-name` — Illustrator uses
 the same pair of attributes to de-duplicate a clashing id (`id="port:21"` with

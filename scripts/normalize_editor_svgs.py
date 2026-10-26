@@ -17,9 +17,17 @@ see nothing:
    from the parser entirely.
 
 All three are mechanical and reversible, so this script fixes them in place.
+Those three repairs are lossless, so the default run applies them blind and is
+safe in a pre-commit hook.
 
-Those three repairs are lossless and reversible, so the default run applies them
-blind and is safe in a pre-commit hook.
+A fourth default repair is lossy in one direction only. Illustrator's "Preserve
+Illustrator Editing Capabilities" export option embeds a ``<metadata>`` block
+holding ``<i:aipgf>`` -- the whole document again as a zstd/base64 private
+stream, 45-90 KB against a median component of 1.5 KB. Nothing but Illustrator
+reads it, so removing it cannot change the rendered symbol or how the parser
+sees it; what it costs is Illustrator's own editing state on re-open. The
+component tree is shipped artwork rather than a working file, so that is the
+right trade -- keep the .ai beside it if the state matters.
 
 Grid alignment is **opt-in**, and the reason is worth stating. ``--snap`` can
 re-align ports, but only as a rigid translation of the whole document: when
@@ -337,7 +345,53 @@ def unwrap_layer_group(text: str) -> tuple[str, list[str]]:
 
 
 # --------------------------------------------------------------------------
-# 4. grid reporting (never automatic)
+# 4. Illustrator PGF private data
+# --------------------------------------------------------------------------
+
+def strip_editor_metadata(text: str) -> tuple[str, list[str]]:
+    """Drop the Adobe PGF blob that "Preserve Illustrator Editing
+    Capabilities" bakes into an export.
+
+    The ``<metadata>`` block holds ``<i:aipgf>``: the whole document a second
+    time, as a zstd/base64 private stream Illustrator reads back so a re-open
+    recovers live text, effects and layer state. Nothing outside Illustrator
+    can read it -- Qt's renderer, ``ComponentDef.from_svg`` and every browser
+    skip it -- and it dwarfs the drawing it accompanies, 45-90 KB against a
+    median component of 1.5 KB.
+
+    It is **not** reversible: stripping it costs the Illustrator editing
+    state, which is why this is a separate step rather than part of the
+    de-mangling above. That is the right trade here because the component
+    tree is the shipped artwork, not the working file -- keep the .ai beside
+    it if that state matters. The visible drawing is untouched.
+
+    Removes the ``xmlns:i`` declaration with it, since the ``i:`` prefix has
+    no other user once the block is gone.
+    """
+    notes: list[str] = []
+    if "i:aipgf" not in text:
+        return text, notes
+
+    before = len(text)
+    # Non-greedy, DOTALL: the blob contains a CDATA section, so match to the
+    # first </metadata> after it rather than trying to parse the contents.
+    text, n = re.subn(r"[ \t]*<metadata>.*?</metadata>\n?", "", text,
+                      flags=re.DOTALL)
+    if not n:
+        return text, notes
+
+    # The prefix is only ever used by the block just removed; leaving the
+    # declaration behind would be a dangling namespace.
+    if not re.search(r"<i:|\si:[\w-]+=", text):
+        text = re.sub(r'\s+xmlns:i="[^"]*"', "", text)
+
+    notes.append(f"stripped Illustrator PGF metadata "
+                 f"({(before - len(text)) / 1024:.0f} KB)")
+    return text, notes
+
+
+# --------------------------------------------------------------------------
+# 5. grid reporting (never automatic)
 # --------------------------------------------------------------------------
 
 def _viewbox(text: str) -> tuple[float, float, float, float] | None:
@@ -607,6 +661,8 @@ def normalize(text: str, grid: float = DEFAULT_GRID,
     text, n, w = restore_primitives(text)
     notes += n
     warnings += w
+    text, n = strip_editor_metadata(text)
+    notes += n
 
     if viewbox is not None:
         text, n = set_viewbox(text, viewbox)
