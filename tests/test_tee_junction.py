@@ -185,3 +185,109 @@ class TestNotATee:
         _connect(scene, _junction(scene, 100, 100).port, tap.port)
         scene.update_connections()
         assert scene.find_tee_at(QPointF(100, 0), tolerance=12.0) is None
+
+
+def _branch_to(scene, x, y, far=(0, 100)):
+    """A free end at (x, y) on a wire from (x + far[0], y + far[1])."""
+    end = _junction(scene, x, y)
+    wire = _connect(scene, _junction(scene, x + far[0], y + far[1]).port, end.port)
+    scene.update_connections()
+    return end, wire
+
+
+class TestReviewFindings:
+    """Regressions from the automated review of PR #35."""
+
+    def test_traced_wire_with_waypoint_on_its_end_is_detected(self, scene, host):
+        # Trace mode (W) stores a waypoint exactly on a free-end junction,
+        # leaving a zero-length last segment.
+        end, wire = _branch_to(scene, 100, 0, far=(-60, 100))
+        wire.vertices = [QPointF(100, 100), QPointF(100, 0)]
+        scene.update_connections()
+        hit = scene.find_tee_at(QPointF(100, 0), 12.0)
+        assert hit is not None and hit[1] is end.port
+
+    def test_45_degree_branch_is_a_tee(self, scene, host):
+        from diagrammer.items.connection_item import ROUTE_DIRECT
+
+        end, wire = _branch_to(scene, 100, 0, far=(-50, 50))
+        wire.routing_mode = ROUTE_DIRECT
+        scene.update_connections()
+        hit = scene.find_tee_at(QPointF(100, 0), 12.0)
+        assert hit is not None and hit[1] is end.port
+
+    def test_hidden_host_is_ignored(self, scene, host):
+        _branch_to(scene, 100, 0)
+        host.setVisible(False)
+        assert scene.find_tee_at(QPointF(100, 0), 12.0) is None
+
+    def test_hidden_branch_wire_is_ignored(self, scene, host):
+        _end, wire = _branch_to(scene, 100, 0)
+        wire.setVisible(False)
+        assert scene.find_tee_at(QPointF(100, 0), 12.0) is None
+
+    def test_hidden_component_is_ignored(self, scene, library, host):
+        _capacitor(scene, library, QPointF(100, 0)).setVisible(False)
+        assert scene.find_tee_at(QPointF(100, 0), 12.0) is None
+
+    def test_hidden_wire_is_not_hit(self, scene, host):
+        assert scene.find_wire_at(QPointF(100, 2), 12.0) is not None
+        host.setVisible(False)
+        assert scene.find_wire_at(QPointF(100, 2), 12.0) is None
+
+    def test_terminal_marker_is_cleared_and_undo_restores_it(self, scene, host):
+        end, _wire = _branch_to(scene, 100, 0)
+        end.end_marker = "open"
+        scene.convert_tee_to_junction(*scene.find_tee_at(QPointF(100, 0), 12.0))
+        assert end.end_marker == "none" and end._should_draw_dot()
+        scene.undo_stack.undo()
+        assert end.end_marker == "open"
+
+    def test_host_arrows_survive_tee_split(self, scene, host):
+        from diagrammer.items.connection_item import WireArrow
+        from diagrammer.utils.geometry import point_at_fraction
+
+        host.arrows = [WireArrow(t=0.1), WireArrow(t=0.9, forward=False, style="open")]
+        spots = [point_at_fraction(host.all_points(), a.t)[0] for a in host.arrows]
+        end, _wire = _branch_to(scene, 100, 0)
+        scene.convert_tee_to_junction(*scene.find_tee_at(QPointF(100, 0), 12.0))
+
+        def carried():
+            return [(h, a) for h in _host_halves(scene, end) for a in h.arrows]
+
+        assert len(carried()) == 2
+        assert {(a.forward, a.style) for _h, a in carried()} == {(True, None), (False, "open")}
+        for half, arrow in carried():
+            pos = point_at_fraction(half.all_points(), arrow.t)[0]
+            assert min(abs(pos.x() - s.x()) + abs(pos.y() - s.y()) for s in spots) < 1e-6
+
+        scene.undo_stack.undo()
+        assert len(host.arrows) == 2
+        scene.undo_stack.redo()
+        assert len(carried()) == 2
+
+    def test_host_arrows_survive_crossing_conversion(self, scene):
+        from diagrammer.items.connection_item import WireArrow
+
+        horiz = _connect(scene, _junction(scene, 0, 0).port, _junction(scene, 200, 0).port)
+        _connect(scene, _junction(scene, 100, -100).port, _junction(scene, 100, 100).port)
+        horiz.arrows = [WireArrow(t=0.25), WireArrow(t=0.75)]
+        scene.update_connections()
+        scene.convert_crossing_to_junction(*scene.find_crossing_at(QPointF(100, 0), 12.0))
+        assert sum(len(c.arrows) for c in _wires(scene)) == 2
+
+    def test_hidden_wire_arrow_and_crossing_are_not_hit(self, scene):
+        from diagrammer.items.connection_item import WireArrow
+
+        horiz = _connect(scene, _junction(scene, 0, 0).port, _junction(scene, 200, 0).port)
+        vert = _connect(scene, _junction(scene, 100, -100).port, _junction(scene, 100, 100).port)
+        horiz.arrows = [WireArrow(t=0.25)]
+        scene.update_connections()
+        assert scene.find_wire_arrow_at(QPointF(50, 0), 12.0) is not None
+        assert scene.find_crossing_at(QPointF(100, 0), 12.0) is not None
+        horiz.setVisible(False)
+        assert scene.find_wire_arrow_at(QPointF(50, 0), 12.0) is None
+        assert scene.find_crossing_at(QPointF(100, 0), 12.0) is None
+        vert.setVisible(False)
+        horiz.setVisible(True)
+        assert scene.find_crossing_at(QPointF(100, 0), 12.0) is None
