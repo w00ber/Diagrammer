@@ -115,9 +115,11 @@ problems in the shipped libraries.
 QT_QPA_PLATFORM=offscreen ~/miniforge3/envs/CMT/bin/python -m pytest tests -q
 ```
 
-The default `python3` has neither pytest nor PySide6. Six tests in
-`test_shortcut_overlay.py` and `test_wire_end_dots.py` fail on a clean tree —
-stash and compare before assuming you caused a failure.
+The default `python3` has neither pytest nor PySide6. The suite is fully green,
+so a failure is yours — but measure it *in this checkout*, never in a
+`git worktree`: the env's editable-install `.pth` hardcodes this directory's
+`src`, so a worktree run imports the wrong source. See the "Running tests"
+section of [CLAUDE.md](../../../CLAUDE.md) for both of the traps here.
 
 ## Scripts
 

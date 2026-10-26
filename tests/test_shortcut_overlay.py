@@ -15,6 +15,26 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
+def native(*portable: str) -> str:
+    """The platform's own spelling of one or more portable key sequences.
+
+    The overlay and the hint label render ``NativeText``, because that is what
+    a user expects to read: on macOS "Shift+F" is shown as "⇧F", "Esc" as "⎋"
+    and "Ctrl+Shift+H" as "⇧⌘H". Asserting the portable spelling instead would
+    make these tests pass on Linux and fail on macOS while the app is correct
+    on both.
+
+    Deriving the expectation through ``QKeySequence`` keeps each assertion
+    about the thing it is actually for — which *binding* the row shows — and
+    leaves the glyph mapping to Qt. Several arguments are joined with " / ",
+    matching how paired Shift-variant rows are built.
+    """
+    from PySide6.QtGui import QKeySequence
+
+    fmt = QKeySequence.SequenceFormat.NativeText
+    return " / ".join(QKeySequence(seq).toString(fmt) for seq in portable)
+
+
 @pytest.fixture()
 def main_window(tmp_path):
     """A MainWindow with settings redirected to tmp; cleaned up after use."""
@@ -95,7 +115,7 @@ def test_discoverability_label_tracks_toggle_key(main_window):
     shortcuts.get_shortcut("overlay.toggle").set_override("Ctrl+Shift+K")
     try:
         main_window._refresh_overlay_hint_label()
-        assert "Ctrl+Shift+K" in main_window._overlay_hint_label.text()
+        assert native("Ctrl+Shift+K") in main_window._overlay_hint_label.text()
     finally:
         shortcuts.get_shortcut("overlay.toggle").reset()
 
@@ -148,7 +168,7 @@ def test_hint_keys_resolve_live_after_rebind(main_window):
         rows = dict((label, keys) for keys, label in
                     main_window._shortcut_hint_rows("component"))
         # flip_h is paired with flip_v on one row: "keyH / keyV".
-        assert rows["Flip horizontal / vertical"] == "Ctrl+Alt+M / Shift+F"
+        assert rows["Flip horizontal / vertical"] == native("Ctrl+Alt+M", "Shift+F")
     finally:
         shortcuts.get_shortcut("edit.flip_h").reset()
 
@@ -185,17 +205,17 @@ def test_none_context_has_connect_mode_and_escape(main_window):
     assert "Exit to select mode" in labels
     rows = dict((label, keys) for keys, label in
                 main_window._shortcut_hint_rows("none"))
-    assert rows["Connect / wire mode"] == "W"
-    assert rows["Exit to select mode"] == "Esc"
+    assert rows["Connect / wire mode"] == native("W")
+    assert rows["Exit to select mode"] == native("Esc")
 
 
 def test_component_context_pairs_shift_variants_on_one_row(main_window):
     rows = dict((label, keys) for keys, label in
                 main_window._shortcut_hint_rows("component"))
     # Shift-variant pairs collapse to a single "keyA / keyB" row.
-    assert rows["Rotate CCW / CW 90°"] == "Space / Shift+Space"
-    assert rows["Fine rotate CCW / CW 15°"] == "R / Shift+R"
-    assert rows["Flip horizontal / vertical"] == "F / Shift+F"
+    assert rows["Rotate CCW / CW 90°"] == native("Space", "Shift+Space")
+    assert rows["Fine rotate CCW / CW 15°"] == native("R", "Shift+R")
+    assert rows["Flip horizontal / vertical"] == native("F", "Shift+F")
     # Align uses unrelated keys, so it stays on separate rows (no wide pair).
-    assert rows["Align horizontally"] == "Ctrl+Shift+H"
+    assert rows["Align horizontally"] == native("Ctrl+Shift+H")
     assert "Align horizontal / vertical" not in rows

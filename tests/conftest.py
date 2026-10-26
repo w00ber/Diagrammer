@@ -22,6 +22,43 @@ def _ensure_qapp():
     yield app
 
 
+@pytest.fixture(autouse=True)
+def isolate_app_settings(tmp_path, monkeypatch):
+    """Run every test against factory settings, not the developer's own.
+
+    ``app_settings`` is a module-level singleton whose ``__init__`` ends in
+    ``load()``, so merely importing the app reads
+    ``~/.diagrammer/settings.json``. Any test that asserts on default
+    behaviour then measures whoever happens to be running it. That is not
+    hypothetical: with "Show junction dots" switched off in a real install,
+    six junction-dot tests in ``test_crossovers``, ``test_tee_junction`` and
+    ``test_compound_export`` fail on that machine and pass everywhere else —
+    which is what the "fails on a clean tree" note in CLAUDE.md was really
+    describing, since a clean checkout still reads the same home directory.
+
+    Redirecting ``_SETTINGS_FILE`` also closes the write direction: anything
+    reaching ``app_settings.save()`` would otherwise overwrite the real file
+    with whatever a test had just set.
+
+    The redirect target is created empty, because ``reset_all`` derives
+    ``_first_launch`` from whether the file exists and ``MainWindow`` applies
+    first-launch library defaults when it is True. Tests should see an
+    ordinary installed app, not a fresh one.
+    """
+    from diagrammer.panels import settings_dialog as sd
+
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text("{}")
+    monkeypatch.setattr(sd, "_SETTINGS_FILE", settings_file)
+    sd.app_settings.reset_all()
+    try:
+        yield sd.app_settings
+    finally:
+        # The singleton outlives the test, so leave it at defaults rather
+        # than at whatever this test set.
+        sd.app_settings.reset_all()
+
+
 @pytest.fixture
 def scene():
     """Create a fresh DiagramScene for each test."""

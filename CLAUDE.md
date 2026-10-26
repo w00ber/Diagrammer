@@ -46,18 +46,39 @@ conda env, and run headless:
 QT_QPA_PLATFORM=offscreen ~/miniforge3/envs/CMT/bin/python -m pytest tests -q
 ```
 
-As of 2026-10-22, **11** tests fail on a clean tree — 6 keybinding/overlay
-expectations in `test_shortcut_overlay.py` and `test_wire_end_dots.py`, plus 5
-junction-dot ones in `test_compound_export.py`, `test_crossovers.py` and
-`test_tee_junction.py`. Verify against a clean checkout before assuming you
-broke something, and prefer a throwaway worktree to a stash so uncommitted work
-stays put:
+As of 2026-10-26 the suite is **fully green — 382 passed, 0 failed**. Any
+failure you see is yours. Earlier notes here claimed 6 then 11 permanent
+failures; both were measurement artifacts, from the two traps below.
 
-```bash
-git worktree add -f --detach /tmp/clean HEAD
-(cd /tmp/clean && QT_QPA_PLATFORM=offscreen ~/miniforge3/envs/CMT/bin/python -m pytest tests -q)
-git worktree remove --force /tmp/clean
+**Never measure a baseline in a `git worktree`.** The conda env has an editable
+install whose `.pth` hardcodes this checkout's `src`:
+
 ```
+~/miniforge3/envs/CMT/lib/python3.*/site-packages/__editable__.diagrammer-0.10.0.pth
+  -> /Users/joe/Documents/PROGRAMMING/python/MY_PACKAGES/Diagrammer/src
+```
+
+So `pytest` run inside a worktree collects *that worktree's* tests but imports
+*this* directory's `diagrammer`. Comparing a branch against `main` that way
+pairs one tree's tests with another tree's source and invents failures wholesale
+— it is what produced a bogus "47 failures across 5 root causes" reading of a
+tree that actually had 10. To test another revision, either check it out here,
+or point `PYTHONPATH` at the worktree's `src` and confirm
+`python -c "import diagrammer; print(diagrammer.__file__)"` resolves where you
+expect.
+
+**Tests must not read `~/.diagrammer/settings.json`.** `app_settings` is a
+singleton whose `__init__` ends in `load()`, so importing the app picks up
+whoever is running it. The autouse `isolate_app_settings` fixture in
+`tests/conftest.py` redirects `_SETTINGS_FILE` to a tmp path and calls
+`reset_all()`, which also stops a stray `save()` from overwriting the real
+file. Don't bypass it: with "Show junction dots" off in a real install, six
+junction-dot tests fail on that machine and pass everywhere else.
+
+Assertions about a *displayed* shortcut go through the `native()` helper in
+`tests/test_shortcut_overlay.py`. The app renders `NativeText`, so `Shift+F` is
+`⇧F` on macOS and `Shift+F` on Linux; hardcoding either spelling makes the test
+platform-specific while the app is correct on both.
 
 ## Conventions that bite
 
