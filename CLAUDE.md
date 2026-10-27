@@ -11,6 +11,7 @@ See [README.md](README.md) for what it does and how to install it.
 | SVG components (new parts, ports, leads, stretch) | **[src/diagrammer/docs/svg-component-spec.md](src/diagrammer/docs/svg-component-spec.md)** |
 | LaTeX / math annotations | [docs/math-annotations.md](docs/math-annotations.md) |
 | User-facing behaviour | [docs/tutorial.md](docs/tutorial.md), [src/diagrammer/docs/help.md](src/diagrammer/docs/help.md) |
+| Wire / selection / drag / undo interaction | **[docs/wiring-interaction-redesign.md](docs/wiring-interaction-redesign.md)** — the target model and the staged refactor; do not add another per-operation junction policy |
 
 The component spec lives under `src/diagrammer/docs/` because it ships as in-app
 help — not in the top-level `docs/`. It is the single source of truth for the
