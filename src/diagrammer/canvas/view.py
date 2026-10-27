@@ -748,6 +748,7 @@ class DiagramView(QGraphicsView):
         """Return the top scene item at the position, skipping rubberband overlays."""
         scene_pos = self.mapToScene(viewport_pos.toPoint() if hasattr(viewport_pos, 'toPoint') else viewport_pos)
         # Use items() to get all items at the position, then skip overlays
+        first = None
         for item in self.scene().items(scene_pos, Qt.ItemSelectionMode.IntersectsItemShape,
                                         Qt.SortOrder.DescendingOrder, self.transform()):
             # Skip rubberband path and dot overlays
@@ -755,7 +756,18 @@ class DiagramView(QGraphicsView):
                 continue
             if item in self._diagram_scene._rubberband_dots:
                 continue
-            return item
+            if first is None:
+                first = item
+            # A junction under the cursor outranks the wires meeting
+            # there. Wires stack just above junctions and carry a hit
+            # halo wider than the junction's pick disc, so by z-order a
+            # free end could never be grabbed through its own wire.
+            if isinstance(item, JunctionItem):
+                return item
+            if not isinstance(item, ConnectionItem):
+                return item
+        if first is not None:
+            return first
 
         # Fallback: check AnnotationItems by bounding rect manually.
         # When math is rendered, QGraphicsTextItem's internal shape may be
@@ -828,17 +840,6 @@ class DiagramView(QGraphicsView):
             if isinstance(item, PortItem) and not self._trace_routing:
                 item = item.component
 
-            # If a JunctionItem is hit but a selected connection has a
-            # waypoint at the same spot, redirect to the ConnectionItem so
-            # that waypoint drag takes priority over junction drag.
-            if isinstance(item, JunctionItem) and not self._trace_routing:
-                for si in self._diagram_scene.selectedItems():
-                    if isinstance(si, ConnectionItem):
-                        wi = si._find_waypoint_at(scene_pos)
-                        if wi is not None:
-                            item = si
-                            break
-
             # -- Trace routing mode: start from empty space or wire endpoint --
             if self._trace_routing and not self._diagram_scene.is_connecting:
                 # Not currently connecting — start a new trace
@@ -862,7 +863,6 @@ class DiagramView(QGraphicsView):
                     from diagrammer.items.junction_item import JunctionItem as _JI
                     junc = _JI()
                     junc.setPos(snapped)
-                    junc.setVisible(False)
                     self._diagram_scene.addItem(junc)
                     self._diagram_scene.adopt_pending_junction(junc)
                     if hasattr(self._diagram_scene, 'assign_active_layer'):
@@ -1595,17 +1595,7 @@ class DiagramView(QGraphicsView):
                 if not isinstance(item, ConnectionItem):
                     continue
                 item._selected_waypoints.clear()
-                pinned = item.junction_handle_indices()
                 for idx, wp in enumerate(item.vertices):
-                    if idx in pinned:
-                        # This waypoint *is* a free end's junction, not a
-                        # bend the user placed. Dragging it on its own
-                        # tears the wire off the junction and leaves the
-                        # rest of the circuit hanging from a point that
-                        # is no longer there; whether it travels is the
-                        # junction's own business, decided by the
-                        # junction-selection rule above.
-                        continue
                     if rect.contains(wp):
                         item._selected_waypoints.add(idx)
                 if item._selected_waypoints:
@@ -2361,7 +2351,6 @@ class DiagramView(QGraphicsView):
             from diagrammer.items.junction_item import JunctionItem
             junction = JunctionItem()
             junction.setPos(snapped)
-            junction.setVisible(False)  # endpoint, not a visual junction
             self._diagram_scene.addItem(junction)
             self._diagram_scene.adopt_pending_junction(junction)
             if hasattr(self._diagram_scene, 'assign_active_layer'):

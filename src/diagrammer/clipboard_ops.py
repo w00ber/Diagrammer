@@ -492,8 +492,6 @@ class ClipboardMixin:
                 junc._skip_snap = True
                 junc.setPos(pos)
                 junc._skip_snap = False
-                if not entry.get("visible", True):
-                    junc.setVisible(False)
                 if entry.get("end_marker", "none") in ("filled", "open"):
                     junc.end_marker = entry["end_marker"]
                 _add_pasted(junc, "Paste junction")

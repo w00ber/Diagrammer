@@ -384,6 +384,12 @@ class DiagramSerializer:
                 conn.update_route()
             elif wps:
                 conn.vertices = [QPointF(w[0], w[1]) for w in wps]
+            # Older files carry a waypoint on every junction endpoint — the
+            # free end's grab handle before junctions were items of their
+            # own — and whatever bends a segment drag straightened out.
+            # Both are redundant by construction; drop them on the way in.
+            if conn.simplify_waypoints():
+                conn.update_route()
             conn._layer_index = cd.get("layer", 0)
             scene.addItem(conn)
             scene.register_connection(conn)

@@ -467,18 +467,21 @@ class TestDeleteWaypointUndo:
         scene.undo_stack.redo()
         assert len(conn.vertices) == 2
 
-    def test_endpoint_delete_moves_junction_undoably(self, scene):
+    def test_first_bend_delete_leaves_the_junction_where_it_is(self, scene):
+        """A junction is its own item; deleting a bend never moves it."""
         conn, j1, j2 = self._wire_with_waypoints(
-            scene, [(0, 0), (150, 80), (300, 0)])
+            scene, [(60, -40), (150, 80), (300, 0)])
         j1_start = QPointF(j1.pos())
 
-        conn._delete_waypoint(0)  # source-junction endpoint
+        conn._delete_waypoint(0)
         assert len(conn.vertices) == 2
-        assert j1.pos() != j1_start, "adjacent junction did not follow the delete"
+        assert j1.pos() == j1_start
+        # The router closes the gap from the junction to the next bend.
+        assert conn.routed_points()[0] == j1_start
 
         scene.undo_stack.undo()
         assert len(conn.vertices) == 3
-        assert j1.pos() == j1_start, "junction position not restored on undo"
+        assert j1.pos() == j1_start
 
         scene.undo_stack.redo()
         assert len(conn.vertices) == 2

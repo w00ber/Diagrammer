@@ -401,14 +401,14 @@ class DiagramScene(QGraphicsScene):
 
             layer = self._layer_manager.layers[layer_idx]
 
-            # Junctions are wire anchors, so they follow their layer's
-            # visibility but never take the movable/selectable flags: their
-            # position is owned by the wires meeting there. Leaving them out
-            # of this loop entirely is what left a wire end dot painted on an
-            # otherwise blank canvas when a layer was hidden, which reads as
-            # "everything was deleted" rather than "a layer is off".
+            # Junctions follow their layer's visibility (leaving them out
+            # of this loop is what once left a wire end dot painted on an
+            # otherwise blank canvas when a layer was hidden) and its lock,
+            # like any other item. They are never ItemIsMovable: the view
+            # moves them explicitly, as it does components.
             if isinstance(item, JunctionItem):
                 item.setVisible(layer.visible)
+                item.setFlag(item.GraphicsItemFlag.ItemIsSelectable, not layer.locked)
                 continue
 
             # Visibility

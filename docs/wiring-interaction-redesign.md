@@ -209,3 +209,18 @@ decision; C does.
 
 - 2026-10-27: Rotation question put to the user with the pictures
   above; answer pending. A and B proceed regardless.
+- 2026-10-27: **Step A landed** (`33309be`). `movable_closure` is the
+  rule; drag, unified drag, nudge, copy and duplicate call it. Grouping
+  and the transforms go through `_gather_connected_junctions`, now a
+  wrapper over the same rule with `include_touching`.
+- 2026-10-27: **Step B landed.** `JunctionItem` is selectable, has a
+  pick disc, paints a handle while it or an attached wire is selected,
+  and is never created hidden. The free-end grab-handle waypoint is
+  gone: `_store_expanded_as_waypoints` treats a junction endpoint like
+  a port, `simplify_waypoints` has no endpoint exemptions, and the
+  serializer heals legacy handle waypoints on load. A rubber band now
+  selects the junctions it covers, so the boxed tee of a rail travels
+  with the box and its rail segment rubber-bands — the test for the
+  user's partial-selection gesture was updated to say so. Deleting a
+  bend no longer tows a junction. Locked layers lock junctions too.
+  Hit-testing prefers a junction over the wires meeting at it.

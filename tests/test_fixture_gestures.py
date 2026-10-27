@@ -115,28 +115,42 @@ class TestSelectAllAndDragIsRigid:
 
 class TestPartialSelectionLeavesTheRestAlone:
     def test_boxing_the_source_and_resistor_does_not_tear_the_bottom_rail(self, library):
-        """The bottom rail runs on to the LC branches, which were not
-        selected, so it must not move or deform. Its taps rubber-band."""
+        """The band takes the tee at (340, 840) — the user boxed it — so
+        the rail segment hanging off that tee rubber-bands. Every other
+        segment of the bottom rail runs on to LC branches that were not
+        selected and must come through untouched; the stretched segment
+        must still end on its far junction."""
+        band = QRectF(180, 640, 260, 260)
         with _open(library, "ladder_two_copies.dgm") as (scene, view):
-            # Rails of the y=680..880 ladder.
-            rails_before = {
-                i.instance_id: [(round(p.x()), round(p.y())) for p in i.routed_points()]
-                for i in scene.items()
-                if isinstance(i, ConnectionItem)
-                and isinstance(i.source_port.component, JunctionItem)
-                and isinstance(i.target_port.component, JunctionItem)
-                and abs(i.source_port.scene_center().y() - 840) < 1
-            }
+            rails_before = {}
+            for i in scene.items():
+                if (isinstance(i, ConnectionItem)
+                        and isinstance(i.source_port.component, JunctionItem)
+                        and isinstance(i.target_port.component, JunctionItem)
+                        and abs(i.source_port.scene_center().y() - 840) < 1):
+                    rails_before[i.instance_id] = [
+                        (round(p.x()), round(p.y())) for p in i.routed_points()
+                    ]
             assert rails_before, "fixture changed: no bottom-rail segments found"
 
-            _rubber_band(scene, view, QRectF(180, 640, 260, 260))
+            _rubber_band(scene, view, band)
+            boxed = {j.instance_id for j in scene.selectedItems()
+                     if isinstance(j, JunctionItem)}
+            assert boxed, "the band should have selected the tee it covers"
             anchor = next(i for i in scene.selectedItems() if isinstance(i, ComponentItem))
             _drag(scene, view, anchor, QPointF(-60, 170))
 
             for i in scene.items():
-                if isinstance(i, ConnectionItem) and i.instance_id in rails_before:
-                    now = [(round(p.x()), round(p.y())) for p in i.routed_points()]
-                    assert now == rails_before[i.instance_id], "bottom rail deformed"
+                if not (isinstance(i, ConnectionItem) and i.instance_id in rails_before):
+                    continue
+                now = [(round(p.x()), round(p.y())) for p in i.routed_points()]
+                was = rails_before[i.instance_id]
+                touches_boxed = (i.source_port.component.instance_id in boxed
+                                 or i.target_port.component.instance_id in boxed)
+                if touches_boxed:
+                    assert now[-1] == was[-1], "stretched segment lost its far end"
+                else:
+                    assert now == was, "untouched rail segment deformed"
 
 
 class TestUndoAfterGestureRestoresGeometry:

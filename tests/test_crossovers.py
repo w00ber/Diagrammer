@@ -394,21 +394,21 @@ class TestJunctionDotSetting:
 
 class TestWireEndMarkers:
     def _free_end_wire(self, scene):
-        """Wire between two hidden free-end junctions; returns the target end."""
-        end = _add_junction(scene, 200, 0)
-        _connect(scene, _add_junction(scene, 0, 0).port, end.port)
+        """Wire between two free-end junctions; returns the target end."""
+        end = _add_junction(scene, 200, 0, visible=True)
+        _connect(scene, _add_junction(scene, 0, 0, visible=True).port, end.port)
         return end
 
     def test_default_is_none(self, scene):
+        """A free end is an ordinary item that simply paints nothing."""
         end = self._free_end_wire(scene)
         assert end.end_marker == "none"
-        assert not end.isVisible()
+        assert end.isVisible()
+        assert not end._should_draw_dot()
 
-    def test_marker_makes_hidden_junction_visible(self, scene):
+    def test_marker_paints_above_the_wire(self, scene):
         end = self._free_end_wire(scene)
         end.end_marker = "filled"
-        assert end.isVisible()
-        # And it paints above the attached wire
         conn = scene.connections_on_port(end.port)[0]
         assert end.zValue() > conn.zValue()
 
@@ -440,7 +440,6 @@ class TestWireEndMarkers:
             # The automatic-dot gate is off, but the explicit marker stands
             assert not end._should_draw_dot()
             assert end.end_marker == "filled"
-            assert end.isVisible()
         finally:
             app_settings.show_junction_dots = old
 
