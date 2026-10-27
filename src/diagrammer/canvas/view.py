@@ -60,15 +60,10 @@ class DiagramView(QGraphicsView):
         self._drag_internal_conns: list = []  # connections with both ends in drag selection
         self._drag_conn_waypoints: dict = {}  # conn instance_id -> initial waypoints
         self._drag_auto_junctions: list = []  # junctions auto-included (need manual move)
-        self._drag_ext_conn_orig_wps: dict = {}  # external conn instance_id -> original waypoints
-        # Scene-space waypoints to hold fixed on wires that straddle the
-        # drag set (one endpoint moving, one staying). See
-        # _hold_external_conn_waypoints.
-        self._drag_ext_conn_hold_wps: dict = {}
-        # conn instance_id -> port-local anchor snapshot taken at drag
-        # start; the single source of truth for the drag's wire undo
-        # entries. See _snapshot_connection_anchors.
-        self._drag_conn_anchor_starts: dict = {}
+        # conn instance_id -> waypoints at drag start, for every wire in
+        # the scene; the single source of truth for the drag's wire undo
+        # entries. See _snapshot_connection_routes.
+        self._drag_conn_starts: dict = {}
         self._drag_mouse_start: QPointF | None = None
         # Unified waypoint+component drag state
         self._selected_waypoint_set: dict[str, set[int]] = {}  # conn instance_id → selected wp indices
@@ -140,16 +135,19 @@ class DiagramView(QGraphicsView):
     def _on_scene_selection_changed(self) -> None:
         """Remove stale entries when connections are deselected.
 
-        Guarded against a shutdown race: during window close Qt can
-        emit ``selectionChanged`` one last time while the scene's C++
-        object is being torn down (e.g. as child items are deleted
-        and their selection state flips). At that point the Python
-        wrapper ``self._diagram_scene`` points at an already-deleted
-        C++ object, and calling ``selectedItems()`` on it raises
-        ``RuntimeError: Internal C++ object (DiagramScene) already
-        deleted.`` We swallow that specific case and bail out — the
-        view is about to go away anyway.
+        Deferred by one event-loop turn rather than done inline: a
+        QGraphicsScene emits ``selectionChanged`` from its destructor
+        as it deletes selected items, and touching the scene from the
+        slot at that moment segfaults before any Python guard can run.
+        By the time the deferred call executes the scene is either
+        alive or fully gone (``self.scene()`` is None).
         """
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._prune_stale_waypoint_selection)
+
+    def _prune_stale_waypoint_selection(self) -> None:
+        if self.scene() is None:
+            return
         try:
             scene_items = self._diagram_scene.selectedItems()
         except RuntimeError:
@@ -1321,7 +1319,6 @@ class DiagramView(QGraphicsView):
                 conn.update_route()
 
             # Update external connections
-            self._hold_external_conn_waypoints()
             internal_ids = set(id(c) for c in self._drag_internal_conns)
             unified_ids = set(
                 id(self._selected_waypoint_conns[cid])
@@ -1391,7 +1388,6 @@ class DiagramView(QGraphicsView):
                     conn.update_route()
 
                 # Update non-internal connections (external wires to the group)
-                self._hold_external_conn_waypoints()
                 internal_ids = set(id(c) for c in self._drag_internal_conns)
                 for item in self._diagram_scene.items():
                     if isinstance(item, ConnectionItem) and id(item) not in internal_ids:
@@ -1424,12 +1420,11 @@ class DiagramView(QGraphicsView):
         for conn in self._drag_internal_conns:
             if self._drag_conn_waypoints.get(conn.instance_id, []) != list(conn.vertices):
                 return True
-        if self._drag_ext_conn_orig_wps:
-            for item in self._diagram_scene.items():
-                if isinstance(item, ConnectionItem):
-                    orig = self._drag_ext_conn_orig_wps.get(item.instance_id)
-                    if orig is not None and orig != list(item.vertices):
-                        return True
+        for item in self._diagram_scene.items():
+            if isinstance(item, ConnectionItem):
+                orig = self._drag_conn_starts.get(item.instance_id)
+                if orig is not None and orig != list(item.vertices):
+                    return True
         return False
 
     def mouseReleaseEvent(self, event) -> None:
@@ -1545,9 +1540,7 @@ class DiagramView(QGraphicsView):
                     self._drag_anchor_item = None
                     self._drag_internal_conns = []
                     self._drag_conn_waypoints = {}
-                    self._drag_ext_conn_orig_wps = {}
-                    self._drag_ext_conn_hold_wps = {}
-                    self._drag_conn_anchor_starts = {}
+                    self._drag_conn_starts = {}
                     self._drag_anchor_start_pos = None
                     self._drag_auto_junctions = []
                     self._drag_mouse_start = None
@@ -1789,135 +1782,56 @@ class DiagramView(QGraphicsView):
             c.instance_id: [QPointF(w) for w in c.vertices]
             for c in closure.internal_wires
         }
-        self._trim_external_conn_endpoint_wps(
-            closure.mover_ids(), {id(c) for c in closure.internal_wires},
-        )
+        self._snapshot_connection_routes()
+        self._tidy_boundary_wires(closure.boundary_wires)
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
 
-    def _trim_external_conn_endpoint_wps(self, comp_ids: set[int],
-                                            seen_conn_ids: set[int]) -> None:
-        """Trim stale waypoints near moving endpoints on external connections.
+    def _tidy_boundary_wires(self, wires) -> None:
+        """Prune a boundary wire's redundant waypoints before it stretches.
 
-        When a segment drag stores the expanded route as waypoints, port
-        positions can end up stored as explicit waypoints.  If the
-        component is later dragged, those stale waypoints create trailing
-        wire stubs.  This method strips them at drag start and records
-        the originals for undo.
+        A waypoint sitting on the port that is about to move would stay
+        behind as a stub; it is redundant by construction and goes now,
+        after the snapshot so the undo entry puts it back.
         """
-        from diagrammer.utils.geometry import point_distance
-        # Before anything in this drag mutates a route.
-        self._snapshot_connection_anchors()
-        self._drag_ext_conn_orig_wps = {}
-        self._drag_ext_conn_hold_wps = {}
-        for si in self._diagram_scene.items():
-            if not isinstance(si, ConnectionItem) or id(si) in seen_conn_ids:
-                continue
-            src_comp = si.source_port.component if si.source_port else None
-            tgt_comp = si.target_port.component if si.target_port else None
-            src_in = src_comp is not None and id(src_comp) in comp_ids
-            tgt_in = tgt_comp is not None and id(tgt_comp) in comp_ids
-            if not (src_in or tgt_in) or (src_in and tgt_in):
-                continue  # skip unrelated or internal connections
-            if not si._waypoints:
-                continue
-            orig = [QPointF(w) for w in si._waypoints]
-            changed = False
-            if tgt_in:
-                tgt_pos = si.target_port.scene_center()
-                while si._waypoints and point_distance(si._waypoints[-1], tgt_pos) < 1.0:
-                    si._pop_waypoint_at(len(si._waypoints) - 1)
-                    changed = True
-            if src_in:
-                src_pos = si.source_port.scene_center()
-                while si._waypoints and point_distance(si._waypoints[0], src_pos) < 1.0:
-                    si._pop_waypoint_at(0)
-                    changed = True
-            if changed:
-                self._drag_ext_conn_orig_wps[si.instance_id] = orig
-            # Pin what survives, in scene space. Waypoints are stored
-            # relative to whichever endpoint port is nearer, so a plain
-            # update_route() during the drag would carry the bends on the
-            # moving half of the wire along with the component and leave
-            # the rest behind — the wire shears into a staircase. The
-            # moving end should rubber-band into bends that stay put.
-            # A wire whose waypoints the user explicitly rubber-banded
-            # is driven by the unified drag instead — holding it here
-            # would undo that move on every mouse event.
-            if si._waypoints and si.instance_id not in self._selected_waypoint_set:
-                self._drag_ext_conn_hold_wps[si.instance_id] = [
-                    QPointF(w) for w in si._waypoints
-                ]
+        for wire in wires:
+            if wire.simplify_waypoints():
+                wire.update_route()
 
-    def _snapshot_connection_anchors(self) -> None:
-        """Record every wire's port-local anchors at the start of a drag.
+    def _snapshot_connection_routes(self) -> None:
+        """Record every wire's waypoints at the start of a drag.
 
-        One snapshot covers internal, external and unified-selected
+        One snapshot covers internal, boundary and unified-selected
         wires alike, so the release handler has a before-state for any
-        route the drag touches without three dicts having to agree on
-        which category a wire fell into.
+        route the drag touches.
         """
-        self._drag_conn_anchor_starts = {
-            item.instance_id: item.waypoint_anchor_snapshot()
+        self._drag_conn_starts = {
+            item.instance_id: [QPointF(w) for w in item.vertices]
             for item in self._diagram_scene.items()
             if isinstance(item, ConnectionItem)
         }
 
     @staticmethod
-    def _anchors_differ(a: list, b: list, tol: float = 0.01) -> bool:
-        """True when two anchor snapshots describe different routes.
-
-        Compared with a tolerance because holding a wire's waypoints in
-        scene space during a drag round-trips them through the port
-        frames once per mouse event, which leaves float dust behind.
-        """
+    def _routes_differ(a: list, b: list, tol: float = 0.01) -> bool:
         if len(a) != len(b):
             return True
-        for (sa, dxa, dya), (sb, dxb, dyb) in zip(a, b):
-            if sa != sb or abs(dxa - dxb) > tol or abs(dya - dyb) > tol:
-                return True
-        return False
+        return any(abs(p.x() - q.x()) > tol or abs(p.y() - q.y()) > tol
+                   for p, q in zip(a, b))
 
     def _record_dragged_connection_routes(self) -> None:
-        """Push undo entries for wires this drag reshaped.
-
-        Anchors rather than scene points: this runs inside the "Move
-        group" macro alongside the item moves, and Qt undoes macro
-        children in reverse push order, so a scene-coordinate entry
-        would be replayed while the components are still at their
-        dragged positions and bring the wire back displaced by the drag
-        delta.
-        """
-        from diagrammer.commands.connect_command import SetWaypointAnchorsCommand
+        """Push undo entries for wires this drag reshaped."""
+        from diagrammer.commands.connect_command import EditWaypointsCommand
 
         for item in self._diagram_scene.items():
             if not isinstance(item, ConnectionItem):
                 continue
-            old_anchors = self._drag_conn_anchor_starts.get(item.instance_id)
-            if old_anchors is None:
+            before = self._drag_conn_starts.get(item.instance_id)
+            if before is None:
                 continue  # created during this drag (auto-join)
-            new_anchors = item.waypoint_anchor_snapshot()
-            if self._anchors_differ(old_anchors, new_anchors):
+            after = [QPointF(w) for w in item.vertices]
+            if self._routes_differ(before, after):
                 self._diagram_scene.undo_stack.push(
-                    SetWaypointAnchorsCommand(item, old_anchors, new_anchors)
+                    EditWaypointsCommand(item, before, after)
                 )
-
-    def _hold_external_conn_waypoints(self) -> None:
-        """Re-pin held waypoints to their scene positions, then re-route.
-
-        Called on every drag move for wires that straddle the drag set.
-        Rebinding through ``_set_waypoints_from_scene`` recomputes the
-        port-relative offsets against the ports' *current* positions, so
-        the bend stays where the user left it on screen.
-        """
-        if not self._drag_ext_conn_hold_wps:
-            return
-        for item in self._diagram_scene.items():
-            if not isinstance(item, ConnectionItem):
-                continue
-            held = self._drag_ext_conn_hold_wps.get(item.instance_id)
-            if held is None:
-                continue
-            item._set_waypoints_from_scene([QPointF(w) for w in held])
 
     def _simplify_dragged_connections(self) -> None:
         """Prune no-op waypoints on every wire this drag touched.
@@ -1946,7 +1860,6 @@ class DiagramView(QGraphicsView):
         """
         from diagrammer.canvas.closure import movable_closure
 
-        self._snapshot_connection_anchors()
         selected = [
             i for i in self._diagram_scene.selectedItems()
             if isinstance(i, (ComponentItem, JunctionItem, AnnotationItem))
@@ -1977,11 +1890,10 @@ class DiagramView(QGraphicsView):
             c.instance_id: [QPointF(w) for w in c.vertices]
             for c in self._drag_internal_conns
         }
-        seen_ids = {id(c) for c in closure.internal_wires}
-        seen_ids.update(id(self._selected_waypoint_conns[cid])
-                        for cid in unified_conn_ids
-                        if cid in self._selected_waypoint_conns)
-        self._trim_external_conn_endpoint_wps(closure.mover_ids(), seen_ids)
+        self._snapshot_connection_routes()
+        self._tidy_boundary_wires(
+            w for w in closure.boundary_wires if w.instance_id not in unified_conn_ids
+        )
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
 
     def _expand_group_selection(self, clicked_item) -> list:
@@ -2315,10 +2227,7 @@ class DiagramView(QGraphicsView):
         movable = closure.movers
 
         self._diagram_scene.undo_stack.beginMacro("Nudge")
-        # Wire routes are recorded at the end, from anchors: this macro
-        # also moves the ports those routes hang off, and Qt undoes its
-        # children in reverse push order.
-        self._snapshot_connection_anchors()
+        self._snapshot_connection_routes()
 
         # Move items (components, junctions, annotations, shapes)
         for item in movable:
@@ -2336,7 +2245,7 @@ class DiagramView(QGraphicsView):
                 si.update_route()
 
         self._record_dragged_connection_routes()
-        self._drag_conn_anchor_starts = {}
+        self._drag_conn_starts = {}
         self._diagram_scene.undo_stack.endMacro()
         self._diagram_scene.update_connections()
 

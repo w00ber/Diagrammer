@@ -224,3 +224,18 @@ decision; C does.
   user's partial-selection gesture was updated to say so. Deleting a
   bend no longer tows a junction. Locked layers lock junctions too.
   Hit-testing prefers a junction over the wires meeting at it.
+- 2026-10-27: User confirmed the rotation picture: a lone component's
+  rotation leaves the bend where it is and rubber-bands the last leg.
+- 2026-10-27: **Step C landed.** Waypoints are scene coordinates.
+  Deleted: `Waypoint`, `_make_anchor`, `_refresh_from_anchors`,
+  `_set_waypoint_at`/`_pop_waypoint_at` rebinding, the anchor-snapshot
+  API, `SetWaypointAnchorsCommand`, `_SetAnchorsCommand`,
+  `_hold_external_conn_waypoints`, `_trim_external_conn_endpoint_wps`,
+  and three of the view's drag-state dicts. `EditWaypointsCommand`
+  (scene points) is order-independent by construction because nothing
+  re-binds; the drag records every reshaped wire against one snapshot
+  taken at press. Format 2.5 writes `[x, y]` waypoints — the v1 form
+  every 2.x reader accepts — and still reads the 2.0 port-relative form
+  through the port's frame. Clipboard and compound manifests likewise.
+  Rotating one component now rubber-bands its wires (I2); group
+  transforms map internal wires explicitly as before.

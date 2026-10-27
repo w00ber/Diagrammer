@@ -82,11 +82,34 @@ from PySide6.QtWidgets import QGraphicsScene
 #   2.4 - optional connection "arrows" list — signal-flow direction
 #         arrows riding on a wire: [{"t": float, "forward": bool,
 #         "style"?: "filled"|"open", "size"?: float, "line_width"?: float}].
+#   2.5 - wire waypoints are scene coordinates [x, y] again (the v1
+#         form, which every 2.x reader already accepts). The 2.0 port-
+#         relative form is still read and resolved through the port's
+#         frame on load. See docs/wiring-interaction-redesign.md, I2.
 # ---------------------------------------------------------------------------
 
 FORMAT_MAJOR = 2
-FORMAT_MINOR = 4
+FORMAT_MINOR = 5
 FORMAT_VERSION = f"{FORMAT_MAJOR}.{FORMAT_MINOR}"
+
+
+def _waypoints_from_data(wps, src_port, tgt_port) -> list:
+    """Scene-coordinate waypoints from either on-disk form.
+
+    ``[x, y]`` pairs are scene coordinates (format 1.x and 2.5+). The
+    2.0-2.4 form ``{"a": "src"|"tgt", "dx", "dy"}`` is port-local; it is
+    resolved through the named port's current frame, which is right
+    because components are placed before their wires are built.
+    """
+    out = []
+    for w in wps or []:
+        if isinstance(w, dict):
+            port = src_port if w.get("a", "src") == "src" else tgt_port
+            out.append(port.mapToScene(QPointF(float(w.get("dx", 0.0)),
+                                               float(w.get("dy", 0.0)))))
+        else:
+            out.append(QPointF(float(w[0]), float(w[1])))
+    return out
 
 
 def _parse_version(v: str) -> tuple[int, int]:
@@ -370,20 +393,9 @@ class DiagramSerializer:
             # directly to the resolved port. The legacy v1 form is [x, y]
             # in scene coordinates and rebinds via the closest-port helper
             # for backward compat (see version history above).
-            wps = cd.get("waypoints") or []
-            if wps and isinstance(wps[0], dict):
-                from diagrammer.items.connection_item import Waypoint
-                anchors = []
-                for wd in wps:
-                    anchor_port = src_port if wd.get("a", "src") == "src" else tgt_port
-                    anchors.append(Waypoint(anchor_port,
-                                            float(wd.get("dx", 0.0)),
-                                            float(wd.get("dy", 0.0))))
-                conn._anchors = anchors
-                conn._waypoints = [a.to_scene() for a in anchors]
-                conn.update_route()
-            elif wps:
-                conn.vertices = [QPointF(w[0], w[1]) for w in wps]
+            wps = _waypoints_from_data(cd.get("waypoints"), src_port, tgt_port)
+            if wps:
+                conn.vertices = wps
             # Older files carry a waypoint on every junction endpoint — the
             # free end's grab handle before junctions were items of their
             # own — and whatever bends a segment drag straightened out.
@@ -621,11 +633,7 @@ def _serialize_connection(item) -> dict:
             "component_id": tgt_port.component.instance_id,
             "port_name": tgt_port.port_name,
         },
-        "waypoints": [
-            {"a": "src" if a.anchor is item.source_port else "tgt",
-             "dx": a.dx, "dy": a.dy}
-            for a in item._anchors
-        ],
+        "waypoints": [[w.x(), w.y()] for w in item.vertices],
         "line_width": item.line_width,
         "line_color": item.line_color.name(),
         "corner_radius": item.corner_radius,

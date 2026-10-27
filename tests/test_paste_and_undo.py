@@ -188,15 +188,13 @@ class TestUndoAfterMoveRestoresWireShape:
         view._drag_mouse_start = QPointF(0, 120)
         for item in dragged:
             scene.record_move_start(item.instance_id, item.pos())
-        comp_ids = {id(i) for i in dragged}
         view._drag_internal_conns = []
         view._drag_conn_waypoints = {}
-        view._trim_external_conn_endpoint_wps(comp_ids, set())
+        view._snapshot_connection_routes()
         for item in dragged:
             item._skip_snap = True
             item.setPos(item.pos() + QPointF(200, 0))
             item._skip_snap = False
-        view._hold_external_conn_waypoints()
         scene.update_connections()
 
         view.mouseReleaseEvent(_release(view, QPointF(200, 120)))
@@ -222,9 +220,12 @@ def _release(view, scene_pos: QPointF):
     )
 
 
-class TestAnchorSnapshotRoundTrip:
-    def test_snapshot_survives_a_port_move(self, library):
-        """The property the undo entries rely on."""
+class TestEditWaypointsIsOrderIndependent:
+    def test_undo_with_a_port_elsewhere_still_restores_the_shape(self, library):
+        """The property the move macro relies on: a wire edit's undo gives
+        the same shape whether the ports have been put back yet or not."""
+        from diagrammer.commands.connect_command import EditWaypointsCommand
+
         scene = DiagramScene(library=library)
         a = JunctionItem()
         a.setPos(QPointF(0, 0))
@@ -235,15 +236,16 @@ class TestAnchorSnapshotRoundTrip:
         cmd = CreateConnectionCommand(scene, a.port, b.port)
         scene.undo_stack.push(cmd)
         wire: ConnectionItem = cmd.connection
-        wire.vertices = [QPointF(0, 0), QPointF(200, -80), QPointF(400, 0)]
-        snapshot = wire.waypoint_anchor_snapshot()
+        before = [QPointF(200, -80)]
+        after = [QPointF(200, -160)]
+        wire.vertices = before
+        edit = EditWaypointsCommand(wire, before, after)
+        scene.undo_stack.push(edit)
 
-        # Move a port, restore the snapshot, move the port back.
+        # Undo the edit while a port is somewhere else entirely.
         a.setPos(QPointF(0, 250))
-        wire.apply_waypoint_anchor_snapshot(snapshot)
+        scene.undo_stack.undo()
         a.setPos(QPointF(0, 0))
         wire.update_route()
 
-        assert [(round(w.x(), 3), round(w.y(), 3)) for w in wire.vertices] == [
-            (0.0, 0.0), (200.0, -80.0), (400.0, 0.0),
-        ]
+        assert [(w.x(), w.y()) for w in wire.vertices] == [(200.0, -80.0)]

@@ -313,12 +313,12 @@ class TestReviewFindingsPR36:
                          QPointF(480, 160), QPointF(400, 160)]
         scene.update_connections()
         before = _geometry(scene)
-        count = len(loop._anchors)
+        count = len(loop.vertices)
         host = _make_transform_host(scene, library)
         for _ in range(4):
             _select_all(scene)
             host._rotate_selected(90)
-            assert len(loop._anchors) == count
+            assert len(loop.vertices) == count
         assert loop.routing_mode == ROUTE_ORTHO
         assert_snapshots_equal(before, _geometry(scene))
 

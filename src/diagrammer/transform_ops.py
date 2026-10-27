@@ -182,7 +182,7 @@ def _route_interior(wire) -> list[QPointF]:
 
 def _capture_internal_wire_shapes(wires) -> list:
     """Snapshot each internal wire's visible route (scene coords), plus
-    the routing mode and the pre-transform anchor list (for undo).
+    its waypoints and routing mode before the transform (for undo).
 
     Auto-routed bends and closed-polygon vertices aren't stored as
     user waypoints, so a transform on the parent components would let
@@ -190,23 +190,18 @@ def _capture_internal_wire_shapes(wires) -> list:
     transformed key-points. Capturing every interior point lets
     ``_apply_internal_wire_shapes`` replay the route as a rigid body.
 
-    Returns ``[(wire, [QPointF, ...], pre_anchors, orig_routing_mode), ...]``.
+    Returns ``[(wire, [QPointF, ...], pre_waypoints, orig_routing_mode), ...]``.
     """
-    from diagrammer.items.connection_item import Waypoint
-
-    snapshots = []
-    for wire in wires:
-        # Snapshot the pre-transform anchor list so undo can restore
-        # exactly (Waypoint is a small dataclass-like; copy by hand).
-        pre_anchors = [Waypoint(a.anchor, a.dx, a.dy) for a in wire._anchors]
-        snapshots.append(
-            (wire, _route_interior(wire), pre_anchors, wire.routing_mode))
-    return snapshots
+    return [
+        (wire, _route_interior(wire), [QPointF(w) for w in wire.vertices],
+         wire.routing_mode)
+        for wire in wires
+    ]
 
 
 def _apply_internal_wire_shapes(undo_stack, snapshots, transform) -> None:
     """Map each captured route through *transform* and install it as the
-    wire's anchors — all undoable.
+    wire's waypoints — all undoable.
 
     The wire keeps its routing mode when its router redraws the mapped
     route unchanged (an orthogonal route through a quarter turn or a
@@ -214,54 +209,19 @@ def _apply_internal_wire_shapes(undo_stack, snapshots, transform) -> None:
     rotation tilts the segments) it is pinned to ROUTE_DIRECT, which
     draws the waypoints as given.
 
-    Call this AFTER the items have been transformed. *transform* must
-    be the same rigid map the items followed (``_rotation_map`` /
-    ``_mirror_map``); the mapped points are then bound to ports in
-    their post-transform frames, so the wire lands congruent with the
-    components regardless of which port each point binds to.
-
-    Relying on the port frames to carry the transform instead (binding
-    before, resolving after) breaks for junction ports: junctions only
-    translate during a group transform, never rotate or flip, so any
-    point anchored to one — e.g. the midpoint of a lead drawn from a
-    free end toward a component — kept its unrotated offset (issue #34).
+    *transform* must be the same rigid map the items followed
+    (``_rotation_map`` / ``_mirror_map``), so the wire lands congruent
+    with the components.
     """
-    from diagrammer.commands.connect_command import SetRoutingModeCommand
+    from diagrammer.commands.connect_command import (
+        EditWaypointsCommand,
+        SetRoutingModeCommand,
+    )
     from diagrammer.items.connection_item import ROUTE_DIRECT
-    from PySide6.QtGui import QUndoCommand
 
-    class _SetAnchorsCommand(QUndoCommand):
-        """Atomic install/restore of a wire's port-local anchors.
-
-        Installing the anchors verbatim is exact: the macro's redo
-        replays the item transforms first, so the port frames match the
-        ones bound here. Re-deriving them from scene coordinates would
-        bind against whatever the frames happen to be at that moment.
-        """
-
-        def __init__(self, wire, new_anchors, old_anchors):
-            super().__init__()
-            self.setText("Preserve wire shape through transform")
-            self._wire = wire
-            self._new = new_anchors
-            self._old = old_anchors
-
-        def _install(self, anchors):
-            from diagrammer.items.connection_item import Waypoint
-            self._wire._anchors = [Waypoint(a.anchor, a.dx, a.dy) for a in anchors]
-            self._wire._waypoints = [a.to_scene() for a in self._wire._anchors]
-            self._wire.update_route()
-
-        def redo(self):
-            self._install(self._new)
-
-        def undo(self):
-            self._install(self._old)
-
-    for wire, interior, pre_anchors, orig_mode in snapshots:
+    for wire, interior, pre_waypoints, orig_mode in snapshots:
         mapped = [transform(p) for p in interior]
-        new_anchors = [wire._make_anchor(p) for p in mapped]
-        undo_stack.push(_SetAnchorsCommand(wire, new_anchors, pre_anchors))
+        undo_stack.push(EditWaypointsCommand(wire, pre_waypoints, mapped))
         # Ports have already moved, so these are the transformed ends.
         route = mapped if wire.closed else [
             wire.source_port.scene_center(), *mapped,
@@ -336,7 +296,7 @@ class TransformMixin:
         """Rotate closed polygon waypoints around *pivot* (default: centroid)."""
         import math
         from diagrammer.commands.add_command import MoveComponentCommand
-        from diagrammer.commands.connect_command import SetWaypointAnchorsCommand
+        from diagrammer.commands.connect_command import EditWaypointsCommand
         from diagrammer.items.junction_item import JunctionItem
 
         for conn in conns:
@@ -355,15 +315,8 @@ class TransformMixin:
             new_wps = [QPointF(cx + (w.x() - cx) * cos_a - (w.y() - cy) * sin_a,
                                cy + (w.x() - cx) * sin_a + (w.y() - cy) * cos_a)
                        for w in wps]
-            # Anchors: the junction move below shares this macro, and
-            # Qt undoes macro children in reverse push order, so scene
-            # coordinates would re-bind against a port that has not
-            # been put back yet.
-            old_anchors = conn.waypoint_anchor_snapshot()
-            conn._set_waypoints_from_scene(new_wps)
-            conn.update_route()
-            self._scene.undo_stack.push(SetWaypointAnchorsCommand(
-                conn, old_anchors, conn.waypoint_anchor_snapshot()))
+            self._scene.undo_stack.push(
+                EditWaypointsCommand(conn, [QPointF(w) for w in wps], new_wps))
 
             # Move the junction to track rotation
             junc = conn.source_port.component

@@ -1,5 +1,5 @@
 {
-  "version": "2.4",
+  "version": "2.5",
   "layers": [
     {
       "name": "Default",
@@ -231,18 +231,7 @@
         "component_id": "b7f8745a5c76",
         "port_name": "center"
       },
-      "waypoints": [
-        {
-          "a": "tgt",
-          "dx": 0.0,
-          "dy": 0.0
-        },
-        {
-          "a": "tgt",
-          "dx": 0.0,
-          "dy": 0.0
-        }
-      ],
+      "waypoints": [],
       "line_width": 3.0,
       "line_color": "#000000",
       "corner_radius": 1.0,
@@ -263,16 +252,10 @@
         "port_name": "center"
       },
       "waypoints": [
-        {
-          "a": "src",
-          "dx": 0.0,
-          "dy": 49.69999999999999
-        },
-        {
-          "a": "tgt",
-          "dx": 0.0,
-          "dy": 0.0
-        }
+        [
+          200.0,
+          500.0
+        ]
       ],
       "line_width": 3.0,
       "line_color": "#000000",
@@ -333,28 +316,7 @@
         "component_id": "d837c5236d95",
         "port_name": "right"
       },
-      "waypoints": [
-        {
-          "a": "src",
-          "dx": -20.0,
-          "dy": 0.0
-        },
-        {
-          "a": "src",
-          "dx": -64.95000000000005,
-          "dy": 0.0
-        },
-        {
-          "a": "src",
-          "dx": -65.05000000000007,
-          "dy": -0.10000000000002274
-        },
-        {
-          "a": "tgt",
-          "dx": 0.0,
-          "dy": 0.0
-        }
-      ],
+      "waypoints": [],
       "line_width": 3.0,
       "line_color": "#000000",
       "corner_radius": 1.0,

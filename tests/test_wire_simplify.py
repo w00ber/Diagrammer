@@ -185,33 +185,23 @@ class TestBoundaryWireDoesNotShear:
     def test_moving_one_endpoint_leaves_the_far_bends_alone(self, scene):
         """The reported "vertices left behind" staircase.
 
-        Waypoints bind to the nearer endpoint port, so re-routing a wire
-        whose far end stayed put used to carry the near half of its bends
-        along with the move. The drag now holds them in scene space.
+        Waypoints used to bind to the nearer endpoint port, so moving one
+        end carried the near half of the bends along. They are scene
+        coordinates now: an endpoint move touches nothing but the last
+        leg, which the router re-draws.
         """
-        from diagrammer.canvas.view import DiagramView
-
-        view = DiagramView(scene)
         a = _junction(scene, 0, 0)
         b = _junction(scene, 600, 0)
         w = _connect(scene, a.port, b.port)
-        w.vertices = [QPointF(0, 0), QPointF(200, -100), QPointF(400, -100),
-                      QPointF(600, 0)]
-        w.update_route()
-
-        comp_ids = {id(a)}
-        view._dragging_components = [a]
-        view._trim_external_conn_endpoint_wps(comp_ids, set())
+        w.vertices = [QPointF(200, -100), QPointF(400, -100)]
 
         a._skip_snap = True
         a.setPos(QPointF(0, 300))
         a._skip_snap = False
-        view._hold_external_conn_waypoints()
         w.update_route()
 
-        held = _xy(w.vertices)
-        assert (200.0, -100.0) in held
-        assert (400.0, -100.0) in held
+        assert _xy(w.vertices) == [(200.0, -100.0), (400.0, -100.0)]
+        assert w.routed_points()[0] == QPointF(0, 300)
 
 
 class TestHeldWaypointsSurvive:

@@ -227,14 +227,9 @@ class ClipboardMixin:
                     "src_port": conn.source_port.port_name,
                     "tgt_comp": tgt_idx,
                     "tgt_port": conn.target_port.port_name,
-                    # Port-relative waypoints follow the (offset-pasted)
-                    # endpoint ports automatically; no PASTE_OFFSET shift
-                    # needed on the wire shape itself.
-                    "waypoints": [
-                        {"a": "src" if a.anchor is conn.source_port else "tgt",
-                         "dx": a.dx, "dy": a.dy}
-                        for a in conn._anchors
-                    ],
+                    # Scene coordinates; the paste shifts them by the
+                    # same offset as the items.
+                    "waypoints": [[w.x(), w.y()] for w in conn.vertices],
                     "line_width": conn.line_width,
                     "line_color": conn.line_color.name(),
                     "corner_radius": conn.corner_radius,
@@ -631,27 +626,10 @@ class ClipboardMixin:
                         conn.routing_mode = entry["routing_mode"]
                     if entry.get("closed"):
                         conn.closed = True
-                    # Restore waypoints. New port-relative form (`waypoints`)
-                    # is bound directly. Legacy absolute form (`vertices`)
-                    # falls back through the rebind helper with the paste
-                    # offset applied — kept for any in-flight clipboard
-                    # data from before the format switch.
-                    wps = entry.get("waypoints") or []
+                    wps = entry.get("waypoints") or entry.get("vertices") or []
                     if wps:
-                        from diagrammer.items.connection_item import Waypoint
-                        anchors = []
-                        for wd in wps:
-                            anchor_port = src_port if wd.get("a", "src") == "src" else tgt_port
-                            anchors.append(Waypoint(anchor_port,
-                                                    float(wd.get("dx", 0.0)),
-                                                    float(wd.get("dy", 0.0))))
-                        conn._anchors = anchors
-                        conn._waypoints = [a.to_scene() for a in anchors]
-                        conn.update_route()
-                    elif entry.get("vertices"):
                         conn.vertices = [
-                            QPointF(v[0] + off_x, v[1] + off_y)
-                            for v in entry["vertices"]
+                            QPointF(v[0] + off_x, v[1] + off_y) for v in wps
                         ]
                     # Restore direction arrows (route-relative fractions)
                     if entry.get("arrows"):

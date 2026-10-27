@@ -188,36 +188,26 @@ class TestWireFollowsPort:
         assert conn._source_port.scene_center().x() == pytest.approx(new_src.x())
         assert conn._source_port.scene_center().y() == pytest.approx(new_src.y())
 
-    def test_waypoint_follows_anchor_port_through_rotation(self, scene, library):
-        """A waypoint anchored to a port must move with that port through
-        any component transform. Port-relative offsets are stored in the
-        port's local coords (Phase D semantics), so the waypoint rotates
-        with the parent component automatically."""
+    def test_waypoint_stays_put_when_only_the_component_rotates(self, scene, library):
+        """Waypoints are scene coordinates (I2). Rotating one component
+        leaves the wire's bend where the user put it; the last leg
+        rubber-bands from the rotated port. Rotating the wire *with* the
+        component is the group transform's job and maps it explicitly."""
         cdef = _two_port_def(library)
         comp_a = _place_component(scene, cdef, QPointF(0, 0))
         comp_b = _place_component(scene, cdef, QPointF(300, 0))
-        # Waypoint near comp_a's source port — closest-port heuristic
-        # binds it to that port.
         src_port = comp_a.ports[-1]
         src_pt = src_port.scene_center()
         wp = QPointF(src_pt.x() + 10, src_pt.y() - 20)
         conn = _connect(scene, comp_a, src_port.port_name,
                         comp_b, comp_b.ports[0].port_name, waypoints=[wp])
-        # The anchor must have been bound to comp_a's port.
-        assert conn._anchors[0].anchor is src_port
-        anchor_dx = conn._anchors[0].dx
-        anchor_dy = conn._anchors[0].dy
-        # Rotate the component; the anchor's port-LOCAL offset is
-        # invariant under any parent transform.
+
         scene.undo_stack.push(RotateComponentCommand(comp_a, 90))
-        assert conn._anchors[0].dx == pytest.approx(anchor_dx)
-        assert conn._anchors[0].dy == pytest.approx(anchor_dy)
-        # And the resolved scene point matches the rotated frame —
-        # i.e., the waypoint rotated 90 around the port along with
-        # the rest of the component, not just translated.
-        rotated_scene = src_port.mapToScene(QPointF(anchor_dx, anchor_dy))
-        assert conn._waypoints[0].x() == pytest.approx(rotated_scene.x(), abs=0.5)
-        assert conn._waypoints[0].y() == pytest.approx(rotated_scene.y(), abs=0.5)
+        scene.update_connections()
+
+        assert conn._waypoints[0] == wp
+        # And the route still starts at the (now rotated) port.
+        assert conn.routed_points()[0] == src_port.scene_center()
 
 
 # ---------------------------------------------------------------------------
@@ -429,9 +419,6 @@ class TestSaveLoadRoundtrip:
         assert len(loaded._waypoints) == 1
         assert loaded._waypoints[0].x() == pytest.approx(wp.x(), abs=0.5)
         assert loaded._waypoints[0].y() == pytest.approx(wp.y(), abs=0.5)
-        # And it should be port-anchored (closest port wins; here source
-        # is closer because PASTE_OFFSET-style offset isn't in play).
-        assert loaded._anchors[0].anchor in (loaded.source_port, loaded.target_port)
 
 
 # ---------------------------------------------------------------------------
@@ -1007,8 +994,11 @@ class TestClipboardRoundtrip:
                      (src_pt.y() + tgt_pt.y()) / 2 - 40)
         conn = _connect(scene, comp_a, src_port.port_name,
                         comp_b, tgt_port.port_name, waypoints=[wp])
-        # Capture the wire's anchor offsets before copy.
-        original_offsets = [(a.dx, a.dy) for a in conn._anchors]
+        # Capture the wire's shape relative to its source port before copy.
+        def _rel(c):
+            o = c.source_port.scene_center()
+            return [(w.x() - o.x(), w.y() - o.y()) for w in c.vertices]
+        original_offsets = _rel(conn)
 
         for item in (comp_a, comp_b, conn):
             item.setSelected(True)
@@ -1023,5 +1013,4 @@ class TestClipboardRoundtrip:
         assert len(all_comps) == 4
         assert len(all_conns) == 2
         pasted_conn = next(c for c in all_conns if c is not conn)
-        pasted_offsets = [(a.dx, a.dy) for a in pasted_conn._anchors]
-        assert pasted_offsets == pytest.approx(original_offsets, abs=0.5)
+        assert _rel(pasted_conn) == pytest.approx(original_offsets, abs=0.5)

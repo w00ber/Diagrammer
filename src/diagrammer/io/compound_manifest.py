@@ -312,20 +312,14 @@ def instantiate_compound(
             conn.routing_mode = cd["routing_mode"]
         if cd.get("closed"):
             conn.closed = True
+        # A manifest's wires are stored relative to the compound: port-
+        # local offsets (2.0-2.4 manifests) resolve through the already-
+        # placed ports; scene pairs are offsets from the drop position.
         wps = cd.get("waypoints") or []
         if wps and isinstance(wps[0], dict):
-            from diagrammer.items.connection_item import Waypoint
-            anchors = []
-            for wd in wps:
-                anchor_port = src_port if wd.get("a", "src") == "src" else tgt_port
-                anchors.append(Waypoint(anchor_port,
-                                        float(wd.get("dx", 0.0)),
-                                        float(wd.get("dy", 0.0))))
-            conn._anchors = anchors
-            conn._waypoints = [a.to_scene() for a in anchors]
-            conn.update_route()
+            from diagrammer.io.serializer import _waypoints_from_data
+            conn.vertices = _waypoints_from_data(wps, src_port, tgt_port)
         elif wps:
-            # Legacy v1 manifest: absolute waypoints offset by drop position.
             conn.vertices = [
                 QPointF(drop_pos.x() + wx, drop_pos.y() + wy)
                 for wx, wy in wps
