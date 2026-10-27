@@ -30,6 +30,7 @@ from diagrammer.utils.geometry import (
     build_rounded_path,
     closest_point_on_segment,
     fraction_at_point,
+    is_redundant_bend,
     ortho_route,
     ortho_route_45,
     point_at_fraction,
@@ -125,6 +126,29 @@ HIT_TOLERANCE = 8.0
 # Tolerance (px) for deciding whether a segment is H or V.
 _ORIENT_TOL = 2.0
 
+# Tolerance (px) for pruning waypoints that no longer bend the route.
+# Half a pixel: tight enough that a deliberate jog survives, loose
+# enough to absorb the float drift of repeated port-relative rebinding.
+_SIMPLIFY_TOL = 0.5
+
+
+def _dedup_points(points: list[QPointF]) -> list[QPointF]:
+    """Drop consecutive coincident points from an expanded route.
+
+    A junction endpoint is stored both as the port position and as the
+    grab-handle waypoint, so the raw expansion carries zero-length
+    segments at the ends. Those shift every segment index that hit
+    testing and segment dragging work with, so they are stripped before
+    the route is published.
+    """
+    if len(points) < 2:
+        return points
+    out = [points[0]]
+    for pt in points[1:]:
+        if point_distance(out[-1], pt) > 1e-6:
+            out.append(pt)
+    return out if len(out) >= 2 else [points[0], points[-1]]
+
 
 class ConnectionItem(QGraphicsPathItem):
     """A connection line between two ports with orthogonal routing.
@@ -213,6 +237,12 @@ class ConnectionItem(QGraphicsPathItem):
         self._drag_start_pos: QPointF | None = None
         self._drag_start_expanded: list[QPointF] | None = None
         self._drag_start_waypoints: list[QPointF] | None = None  # for undo
+        # Port-local form of the same snapshot. The undo entry is built
+        # from this, not from the scene points: the macro also carries
+        # the endpoint junction's move, and Qt replays macro children in
+        # reverse, so scene coordinates would be re-bound against ports
+        # that have not been put back yet.
+        self._drag_start_anchors: list[tuple[bool, float, float]] | None = None
         self._drag_start_arrows: list[WireArrow] | None = None   # for undo
         self._drag_start_junction_pos: dict[str, QPointF] = {}  # instance_id → start pos
 
@@ -486,6 +516,160 @@ class ConnectionItem(QGraphicsPathItem):
         self._waypoints.pop(idx)
         return anchor.to_scene()
 
+    def junction_handle_indices(self) -> set[int]:
+        """Waypoint indices that stand in for a free end's JunctionItem.
+
+        ``_store_expanded_as_waypoints`` keeps an endpoint waypoint on a
+        junction-terminated wire because the junction is invisible and
+        that handle is the user's only way to grab the free end. It sits
+        exactly on the junction, so it must travel with it and never on
+        its own.
+        """
+        from diagrammer.items.junction_item import JunctionItem
+
+        out: set[int] = set()
+        if self._closed or not self._waypoints:
+            return out
+        for port, idx in ((self._source_port, 0),
+                          (self._target_port, len(self._waypoints) - 1)):
+            if port is None:
+                continue
+            if not isinstance(port.component, JunctionItem):
+                continue
+            if point_distance(self._waypoints[idx], port.scene_center()) < 1.0:
+                out.add(idx)
+        return out
+
+    def waypoint_anchor_snapshot(self) -> list[tuple[bool, float, float]]:
+        """Capture the waypoints as port-local offsets: (is_source, dx, dy).
+
+        Undo entries that record a waypoint edit must survive being
+        replayed while the endpoint ports sit somewhere other than where
+        they were when the snapshot was taken. That happens on every
+        group move: the macro holds both the item moves and the wire
+        edits, and Qt undoes them in reverse push order, so the wire is
+        restored while the components are still at their dragged
+        positions. Absolute scene coordinates re-bind against those
+        wrong frames and the wire comes back displaced by the drag
+        delta — a stub shooting off to one side. Port-local offsets
+        carry their own frame, so they restore correctly in any order.
+        """
+        return [
+            (a.anchor is self._source_port, float(a.dx), float(a.dy))
+            for a in self._anchors
+        ]
+
+    def apply_waypoint_anchor_snapshot(
+        self, snapshot: list[tuple[bool, float, float]]
+    ) -> None:
+        """Re-install waypoints from :meth:`waypoint_anchor_snapshot`."""
+        self._anchors = [
+            Waypoint(self._source_port if is_src else self._target_port, dx, dy)
+            for is_src, dx, dy in snapshot
+        ]
+        self._waypoints = [a.to_scene() for a in self._anchors]
+
+    def simplify_waypoints(self) -> bool:
+        """Drop waypoints that no longer bend the route. Returns True if any went.
+
+        Every segment drag stores the whole expanded route back as
+        explicit waypoints (see :meth:`_store_expanded_as_waypoints`),
+        so a bend the user later straightens out leaves a waypoint
+        stranded in the middle of a straight run. Those strays are
+        invisible but far from harmless:
+
+        * they split one draggable run into two, so the next segment
+          drag moves half of it and leaves a stub behind;
+        * they pin a point the grid snap then cannot move, which reads
+          as "snapping stopped working" on that wire;
+        * they are bound to whichever endpoint port is nearer, so moving
+          one end of the wire teleports half of them and shears the
+          shape.
+
+        Pruning after every edit keeps a wire's waypoint list
+        proportional to the bends actually in it. Junction endpoints are
+        exempt at the ends: there the first/last waypoint is the user's
+        only grab handle for a free wire end.
+
+        The caller is responsible for :meth:`update_route`.
+        """
+        if self._closed:
+            return self._simplify_closed()
+
+        from diagrammer.items.junction_item import JunctionItem
+        src_comp = self._source_port.component if self._source_port else None
+        tgt_comp = self._target_port.component if self._target_port else None
+        keep_first = isinstance(src_comp, JunctionItem)
+        keep_last = isinstance(tgt_comp, JunctionItem)
+
+        removed_any = False
+        while True:
+            n = len(self._waypoints)
+            if n == 0:
+                break
+            kps = self._key_points()  # [src, *waypoints, tgt]
+            victim = None
+            for wi in range(n):
+                if keep_first and wi == 0:
+                    continue
+                if keep_last and wi == n - 1:
+                    continue
+                if wi in self._selected_waypoints:
+                    # The user is holding this handle (or just placed it
+                    # with Ctrl+click, which lands it right on the line).
+                    # Pruning it out from under them is never helpful.
+                    continue
+                if is_redundant_bend(kps[wi], kps[wi + 1], kps[wi + 2],
+                                     _SIMPLIFY_TOL):
+                    victim = wi
+                    break
+            if victim is None:
+                break
+            self._pop_waypoint_at(victim)
+            self._reindex_selected_waypoints(victim)
+            removed_any = True
+        return removed_any
+
+    def _reindex_selected_waypoints(self, removed: int) -> None:
+        """Shift the multi-select set down after waypoint *removed* went.
+
+        ``_selected_waypoints`` holds indices into ``_waypoints``; leaving
+        them alone after a prune would move the wrong handles on the next
+        group drag.
+        """
+        if not self._selected_waypoints:
+            return
+        self._selected_waypoints = {
+            (i - 1 if i > removed else i)
+            for i in self._selected_waypoints
+            if i != removed
+        }
+
+    def _simplify_closed(self) -> bool:
+        """``simplify_waypoints`` for a closed polygon (all points are vertices).
+
+        Stops at three vertices — below that there is no polygon left to
+        draw, so a degenerate shape keeps its points rather than
+        vanishing under the user.
+        """
+        removed_any = False
+        while len(self._waypoints) > 3:
+            n = len(self._waypoints)
+            victim = None
+            for i in range(n):
+                if is_redundant_bend(self._waypoints[(i - 1) % n],
+                                     self._waypoints[i],
+                                     self._waypoints[(i + 1) % n],
+                                     _SIMPLIFY_TOL):
+                    victim = i
+                    break
+            if victim is None:
+                break
+            self._pop_waypoint_at(victim)
+            self._reindex_selected_waypoints(victim)
+            removed_any = True
+        return removed_any
+
     def _refresh_from_anchors(self) -> None:
         """Recompute the scene-space cache from anchors.
 
@@ -556,7 +740,7 @@ class ConnectionItem(QGraphicsPathItem):
                     result.extend(seg[1:])
                 else:
                     result.extend(seg)
-            return result
+            return _dedup_points(result)
 
         result: list[QPointF] = []
         for i in range(len(kps) - 1):
@@ -595,7 +779,7 @@ class ConnectionItem(QGraphicsPathItem):
                 self._add_wire_junction_approach(result, self._target_port,
                                                  at_start=False, ext=ext, scene=scene)
 
-        return result
+        return _dedup_points(result)
 
     @staticmethod
     def _get_scene_approach(port) -> tuple[float, float]:
@@ -909,6 +1093,7 @@ class ConnectionItem(QGraphicsPathItem):
         """
         if self._closed:
             self._set_waypoints_from_scene([QPointF(p) for p in expanded])
+            self.simplify_waypoints()
             self.update_route()
             return
 
@@ -948,6 +1133,10 @@ class ConnectionItem(QGraphicsPathItem):
                 while wps and point_distance(wps[-1], tgt) < 1.0:
                     wps.pop()
         self._set_waypoints_from_scene(wps)
+        # The expanded route is every bend the router produced, including
+        # the ones this drag has just straightened out. Storing them all
+        # verbatim is what made waypoint lists grow without bound.
+        self.simplify_waypoints()
         self.update_route()
 
     # =====================================================================
@@ -1366,6 +1555,16 @@ class ConnectionItem(QGraphicsPathItem):
 
             wi = self._find_waypoint_at(pos)
 
+            # Heal before a gesture that works on segments rather than
+            # handles. A wire loaded from an older file (or shaped before
+            # pruning existed) can carry waypoints that sit mid-run and
+            # split one draggable segment into several, which is what
+            # makes a run refuse to straighten onto the grid. Skipped
+            # when a handle is under the cursor: the user is reaching for
+            # a specific waypoint, and the prune would renumber the rest.
+            if wi is None and self.simplify_waypoints():
+                self.update_route()
+
             # Ctrl+Shift+click on waypoint → delete it
             if wi is not None and ctrl and shift:
                 self._delete_waypoint(wi)
@@ -1395,6 +1594,7 @@ class ConnectionItem(QGraphicsPathItem):
                 self._drag_start_pos = QPointF(pos)
                 self._drag_start_expanded = [QPointF(p) for p in self._expanded]
                 self._drag_start_waypoints = [QPointF(w) for w in self._waypoints]
+                self._drag_start_anchors = self.waypoint_anchor_snapshot()
                 self._record_endpoint_junction_starts()
                 event.accept()
                 return
@@ -1409,6 +1609,7 @@ class ConnectionItem(QGraphicsPathItem):
                 self._drag_start_pos = QPointF(pos)
                 self._drag_start_expanded = [QPointF(p) for p in self._expanded]
                 self._drag_start_waypoints = [QPointF(w) for w in self._waypoints]
+                self._drag_start_anchors = self.waypoint_anchor_snapshot()
                 self._record_endpoint_junction_starts()
                 self.update()
                 event.accept()
@@ -1426,6 +1627,7 @@ class ConnectionItem(QGraphicsPathItem):
                 self._drag_start_pos = QPointF(pos)
                 self._drag_start_expanded = [QPointF(p) for p in self._expanded]
                 self._drag_start_waypoints = [QPointF(w) for w in self._waypoints]
+                self._drag_start_anchors = self.waypoint_anchor_snapshot()
                 # Record junction endpoint positions for undo.
                 from diagrammer.items.junction_item import JunctionItem
                 self._drag_start_junction_pos = {}
@@ -1615,19 +1817,27 @@ class ConnectionItem(QGraphicsPathItem):
             event.accept()
             return
         if self._dragging_waypoint is not None or self._dragging_segment is not None:
+            # Heal before snapshotting, so the undo entry records the
+            # tidied list and a redo can't resurrect the strays.
+            if self.simplify_waypoints():
+                self.update_route()
             # Push undo command for the waypoint change (and any junction moves)
             if self._drag_start_waypoints is not None:
                 new_waypoints = [QPointF(w) for w in self._waypoints]
                 if new_waypoints != self._drag_start_waypoints:
-                    from diagrammer.commands.connect_command import EditWaypointsCommand
+                    from diagrammer.commands.connect_command import (
+                        SetWaypointAnchorsCommand,
+                    )
                     scene = self.scene()
                     if scene and hasattr(scene, 'undo_stack'):
                         # Bundle waypoint edit + junction moves in a macro
                         has_junction_moves = bool(self._drag_start_junction_pos)
                         if has_junction_moves:
                             scene.undo_stack.beginMacro("Move waypoints")
-                        cmd = EditWaypointsCommand(
-                            self, self._drag_start_waypoints, new_waypoints
+                        cmd = SetWaypointAnchorsCommand(
+                            self,
+                            self._drag_start_anchors or [],
+                            self.waypoint_anchor_snapshot(),
                         )
                         scene.undo_stack.push(cmd)
                         # Record junction position changes
@@ -1651,6 +1861,7 @@ class ConnectionItem(QGraphicsPathItem):
             self._drag_start_pos = None
             self._drag_start_expanded = None
             self._drag_start_waypoints = None
+            self._drag_start_anchors = None
             self._drag_start_junction_pos = {}
             event.accept()
             return
@@ -1727,8 +1938,9 @@ class ConnectionItem(QGraphicsPathItem):
             return
 
         from diagrammer.commands.add_command import MoveComponentCommand
-        from diagrammer.commands.connect_command import EditWaypointsCommand
+        from diagrammer.commands.connect_command import SetWaypointAnchorsCommand
 
+        old_anchors = self.waypoint_anchor_snapshot()
         junction_old_pos = QPointF(junction.pos()) if junction is not None else None
         has_junction_move = (junction is not None
                              and junction_new_pos != junction_old_pos)
@@ -1742,7 +1954,10 @@ class ConnectionItem(QGraphicsPathItem):
 
         if has_junction_move:
             undo_stack.beginMacro("Delete waypoint")
-        undo_stack.push(EditWaypointsCommand(self, old_wps, new_wps))
+        # Anchors, not scene points: the junction move shares this macro
+        # and Qt undoes macro children in reverse push order.
+        undo_stack.push(SetWaypointAnchorsCommand(
+            self, old_anchors, self.waypoint_anchor_snapshot()))
         if has_junction_move:
             undo_stack.push(
                 MoveComponentCommand(junction, junction_old_pos,
@@ -1770,6 +1985,14 @@ class ConnectionItem(QGraphicsPathItem):
                 best_idx, kp_exp_indices
             )
             self._waypoints.insert(insert_wp_idx, self._snap_to_grid(best_proj))
+            # A waypoint dropped onto a segment is collinear by
+            # construction. Select it so the pruning pass leaves it be
+            # until the user has actually moved it somewhere.
+            self._selected_waypoints = {
+                (i + 1 if i >= insert_wp_idx else i)
+                for i in self._selected_waypoints
+            }
+            self._selected_waypoints.add(insert_wp_idx)
             self.update_route()
 
     def mouseDoubleClickEvent(self, event) -> None:  # noqa: ANN001
@@ -1803,27 +2026,32 @@ class ConnectionItem(QGraphicsPathItem):
     ) -> list[int]:
         """Return for each key-point the index in ``_expanded`` where it appears.
 
-        Because ``_build_expanded`` concatenates segments and drops duplicate
-        junctions, key-point *k* always appears at a specific index in the
-        expanded list.
+        Found by scanning the live expanded route rather than by
+        re-adding up segment lengths. The route the user clicked on is
+        not simply the concatenation of ``_expand_route`` calls: it also
+        carries lead-approach stubs outside the ports and has coincident
+        points collapsed. Predicting the offsets instead of looking them
+        up put the index off by one wherever either applied, which sent
+        a Ctrl+click insertion into the wrong slot in ``_waypoints``.
         """
         if kps is None:
             kps = self._key_points()
-        if len(kps) < 2:
+        exp = self._expanded
+        if not exp:
             return list(range(len(kps)))
 
-        indices: list[int] = [0]  # First key-point is always index 0
-        offset = 0
-        for i in range(len(kps) - 1):
-            seg = self._expand_route(kps[i], kps[i + 1])
-            # This segment contributes (len(seg) - 1) new points to the
-            # expanded list (the first point overlaps with the previous
-            # segment's last point, except for the very first segment).
-            if i == 0:
-                offset += len(seg) - 1
-            else:
-                offset += len(seg) - 1
-            indices.append(offset)
+        indices: list[int] = []
+        cursor = 0
+        for kp in kps:
+            found = next(
+                (i for i in range(cursor, len(exp))
+                 if point_distance(exp[i], kp) < 0.5),
+                None,
+            )
+            if found is None:
+                found = min(cursor, len(exp) - 1)
+            indices.append(found)
+            cursor = found
         return indices
 
     def _wp_insert_index_for_expanded_segment(

@@ -132,3 +132,52 @@ class TestTerminalJunctionAutoInclude:
 
         pulled = _terminal_junctions_to_auto_include(scene.items(), [comp, jct])
         assert jct not in pulled
+
+
+class TestClosureAlongRails:
+    """The rule: the connected sub-circuit you selected moves, up to the
+    first component you did not select.
+
+    A rail is a chain of junctions joined by wires. Judged one at a
+    time, every rail junction has a neighbour that is "not selected" —
+    another junction, which can never be selected — so a single-pass
+    policy left every rail behind even with the whole circuit boxed.
+    """
+
+    def _ladder(self, scene, library):
+        cdef = _two_port_def(library)
+        a = _place(scene, cdef, QPointF(0, 100))
+        b = _place(scene, cdef, QPointF(400, 100))
+        # Rail: three junctions in a chain, taps from each component.
+        j0, j1, j2 = (JunctionItem() for _ in range(3))
+        for j, x in ((j0, 0), (j1, 200), (j2, 400)):
+            j.setPos(QPointF(x, 0))
+            scene.addItem(j)
+        _connect(scene, j0, None, j1, None)
+        _connect(scene, j1, None, j2, None)
+        _connect(scene, a, a.ports[0].port_name, j0, None)
+        _connect(scene, b, b.ports[0].port_name, j2, None)
+        return a, b, (j0, j1, j2)
+
+    def test_whole_circuit_selected_pulls_the_whole_rail(self, scene, library):
+        a, b, rail = self._ladder(scene, library)
+        pulled = set(_terminal_junctions_to_auto_include(scene.items(), [a, b]))
+        assert pulled == set(rail)
+
+    def test_rail_continuing_to_an_unselected_part_stays(self, scene, library):
+        a, b, rail = self._ladder(scene, library)
+        pulled = _terminal_junctions_to_auto_include(scene.items(), [a])
+        assert pulled == [], "rail runs on to b, which is not moving"
+
+    def test_free_end_of_a_selected_rail_comes_along(self, scene, library):
+        """A rail's dangling end has only a junction neighbour; it must
+        follow the rail rather than pin it."""
+        cdef = _two_port_def(library)
+        a = _place(scene, cdef, QPointF(0, 100))
+        j0, j_end = JunctionItem(), JunctionItem()
+        j0.setPos(QPointF(0, 0)); j_end.setPos(QPointF(300, 0))
+        scene.addItem(j0); scene.addItem(j_end)
+        _connect(scene, a, a.ports[0].port_name, j0, None)
+        _connect(scene, j0, None, j_end, None)
+        pulled = set(_terminal_junctions_to_auto_include(scene.items(), [a]))
+        assert pulled == {j0, j_end}

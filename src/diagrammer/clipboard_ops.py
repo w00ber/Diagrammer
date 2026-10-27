@@ -364,8 +364,40 @@ class ClipboardMixin:
 
     # -------------------------------------------------------------- paste
 
+    def _paste_offset(self, fallback: float) -> tuple[float, float]:
+        """Translation to apply to clipboard coordinates, as (dx, dy).
+
+        Pasted items land centred on the visible canvas rather than a
+        fixed nudge from wherever they were copied: after scrolling to a
+        new part of a drawing, a paste that reappears next to the
+        original is off screen and has to be hunted down and dragged.
+
+        The delta is rounded to whole grid steps so items that were on
+        the grid stay on it, and falls back to *fallback* on both axes
+        when there is no view to centre on, or when centring would drop
+        the copy exactly on top of what it was copied from.
+        """
+        from diagrammer.canvas.grid import DEFAULT_GRID_SPACING
+
+        view = getattr(self, "_view", None)
+        xs = [e["pos"][0] for e in self._clipboard if "pos" in e]
+        ys = [e["pos"][1] for e in self._clipboard if "pos" in e]
+        if view is None or not xs:
+            return fallback, fallback
+
+        target = view.mapToScene(view.viewport().rect().center())
+        dx = target.x() - (min(xs) + max(xs)) / 2.0
+        dy = target.y() - (min(ys) + max(ys)) / 2.0
+
+        spacing = getattr(view, "grid_spacing", DEFAULT_GRID_SPACING) or 1.0
+        dx = round(dx / spacing) * spacing
+        dy = round(dy / spacing) * spacing
+        if dx == 0 and dy == 0:
+            return fallback, fallback
+        return dx, dy
+
     def _paste(self) -> None:
-        """Paste clipboard contents, offset from original positions.
+        """Paste clipboard contents, centred on the visible canvas.
 
         Checks the system clipboard first for external SVG data (e.g. from
         Illustrator or Inkscape). Falls back to the internal clipboard.
@@ -377,7 +409,10 @@ class ClipboardMixin:
 
         self._scene.undo_stack.beginMacro("Paste")
         import uuid as _uuid
-        from diagrammer.commands.add_command import AddComponentCommand
+        from diagrammer.commands.add_command import (
+            AddComponentCommand,
+            AddItemsCommand,
+        )
         from diagrammer.commands.connect_command import CreateConnectionCommand
         from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.junction_item import JunctionItem
@@ -404,7 +439,21 @@ class ClipboardMixin:
                     new_stack.append(old_gid_to_new[gid])
                 set_group_ids(target_item, new_stack)
 
-        PASTE_OFFSET = 40.0  # offset pasted items from originals
+        def _add_pasted(item, label: str) -> None:
+            """Put *item* in the scene through the undo stack.
+
+            Junctions, annotations, shapes and images used to go in with
+            a bare ``scene.addItem``, which left them on the canvas after
+            an undo of the paste — the pasted text had to be deleted by
+            hand, and the orphaned junctions kept nearby wires routing
+            around points the user could no longer see.
+            """
+            self._scene.undo_stack.push(
+                AddItemsCommand(self._scene, [item], label)
+            )
+
+        PASTE_OFFSET = 40.0  # fallback nudge when the paste can't be centred
+        off_x, off_y = self._paste_offset(PASTE_OFFSET)
 
         # Items created through a command (components, wires) get a
         # top-of-band Z from the command itself; the ones added straight to
@@ -420,7 +469,7 @@ class ClipboardMixin:
                 if comp_def is None:
                     new_items.append(None)
                     continue
-                pos = QPointF(entry["pos"][0] + PASTE_OFFSET, entry["pos"][1] + PASTE_OFFSET)
+                pos = QPointF(entry["pos"][0] + off_x, entry["pos"][1] + off_y)
                 cmd = AddComponentCommand(self._scene, comp_def, pos)
                 self._scene.undo_stack.push(cmd)
                 item = cmd.item
@@ -450,7 +499,7 @@ class ClipboardMixin:
                 new_items.append(item)
             elif entry["type"] == "junction":
                 junc = JunctionItem()
-                pos = QPointF(entry["pos"][0] + PASTE_OFFSET, entry["pos"][1] + PASTE_OFFSET)
+                pos = QPointF(entry["pos"][0] + off_x, entry["pos"][1] + off_y)
                 junc._skip_snap = True
                 junc.setPos(pos)
                 junc._skip_snap = False
@@ -458,13 +507,12 @@ class ClipboardMixin:
                     junc.setVisible(False)
                 if entry.get("end_marker", "none") in ("filled", "open"):
                     junc.end_marker = entry["end_marker"]
-                self._scene.addItem(junc)
-                self._scene.assign_item_z(junc)
+                _add_pasted(junc, "Paste junction")
                 _remap_group(junc, entry)
                 new_items.append(junc)
             elif entry["type"] == "annotation":
                 annot = AnnotationItem(entry.get("source_text", "Text"))
-                pos = QPointF(entry["pos"][0] + PASTE_OFFSET, entry["pos"][1] + PASTE_OFFSET)
+                pos = QPointF(entry["pos"][0] + off_x, entry["pos"][1] + off_y)
                 if "font_family" in entry:
                     annot.font_family = entry["font_family"]
                 if "font_size" in entry:
@@ -486,12 +534,11 @@ class ClipboardMixin:
                 angle = entry.get("rotation_angle", entry.get("rotation", 0)) or 0
                 if angle:
                     annot.rotate_by(angle)
-                self._scene.addItem(annot)
-                self._scene.assign_item_z(annot)
+                _add_pasted(annot, "Paste annotation")
                 _remap_group(annot, entry)
                 pasted_annotations.append(annot)
             elif entry["type"] in ("rectangle", "ellipse", "line"):
-                pos = QPointF(entry["pos"][0] + PASTE_OFFSET, entry["pos"][1] + PASTE_OFFSET)
+                pos = QPointF(entry["pos"][0] + off_x, entry["pos"][1] + off_y)
                 if entry["type"] == "rectangle":
                     shape = RectangleItem(
                         width=entry.get("width", 100),
@@ -540,14 +587,13 @@ class ClipboardMixin:
                 angle = entry.get("rotation_angle", entry.get("rotation", 0)) or 0
                 if angle:
                     shape.rotate_by(angle)
-                self._scene.addItem(shape)
-                self._scene.assign_item_z(shape)
+                _add_pasted(shape, f"Paste {entry['type']}")
                 _remap_group(shape, entry)
                 pasted_annotations.append(shape)
             elif entry["type"] == "svg_image":
                 import base64
                 from diagrammer.items.svg_image_item import SvgImageItem
-                pos = QPointF(entry["pos"][0] + PASTE_OFFSET, entry["pos"][1] + PASTE_OFFSET)
+                pos = QPointF(entry["pos"][0] + off_x, entry["pos"][1] + off_y)
                 svg_data = base64.b64decode(entry["svg_data"])
                 svg_item = SvgImageItem(
                     svg_data,
@@ -563,8 +609,7 @@ class ClipboardMixin:
                 svg_item._skip_snap = True
                 svg_item.setPos(pos)
                 svg_item._skip_snap = False
-                self._scene.addItem(svg_item)
-                self._scene.assign_item_z(svg_item)
+                _add_pasted(svg_item, "Paste image")
                 _remap_group(svg_item, entry)
                 pasted_annotations.append(svg_item)
 
@@ -618,7 +663,7 @@ class ClipboardMixin:
                         conn.update_route()
                     elif entry.get("vertices"):
                         conn.vertices = [
-                            QPointF(v[0] + PASTE_OFFSET, v[1] + PASTE_OFFSET)
+                            QPointF(v[0] + off_x, v[1] + off_y)
                             for v in entry["vertices"]
                         ]
                     # Restore direction arrows (route-relative fractions)

@@ -347,6 +347,32 @@ def point_distance(a: QPointF, b: QPointF) -> float:
     return (dx * dx + dy * dy) ** 0.5
 
 
+def is_redundant_bend(
+    prev: QPointF, mid: QPointF, nxt: QPointF, tol: float = 0.5
+) -> bool:
+    """True when *mid* adds no bend to the run ``prev -> mid -> nxt``.
+
+    That covers three cases, all of which a route is better off without:
+
+    * *mid* sits on (or within *tol* of) the straight line through its
+      neighbours, so dropping it leaves the drawn wire unchanged;
+    * *mid* coincides with a neighbour, a zero-length segment;
+    * *prev* and *nxt* coincide, so the run is a spur that doubles back
+      on itself.
+
+    Distance to the line is measured perpendicular, which keeps the test
+    scale-free: a waypoint 0.4 px off a 600 px run is still redundant.
+    """
+    if point_distance(prev, mid) <= tol or point_distance(mid, nxt) <= tol:
+        return True
+    base = point_distance(prev, nxt)
+    if base <= tol:
+        return True
+    cross = ((mid.x() - prev.x()) * (nxt.y() - prev.y())
+             - (mid.y() - prev.y()) * (nxt.x() - prev.x()))
+    return abs(cross) / base <= tol
+
+
 def segment_intersection(
     p1: QPointF, p2: QPointF, q1: QPointF, q2: QPointF,
     *, endpoint_exclusion: float = 0.0,

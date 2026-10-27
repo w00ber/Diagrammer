@@ -233,10 +233,10 @@ def _apply_internal_wire_shapes(undo_stack, snapshots, transform) -> None:
     class _SetAnchorsCommand(QUndoCommand):
         """Atomic install/restore of a wire's port-local anchors.
 
-        EditWaypointsCommand goes scene→port-local on each redo, which
-        re-binds against whatever the port frames are at that moment.
-        Installing verbatim is exact: the macro's redo replays the item
-        transforms first, so the frames match the ones bound here.
+        Installing the anchors verbatim is exact: the macro's redo
+        replays the item transforms first, so the port frames match the
+        ones bound here. Re-deriving them from scene coordinates would
+        bind against whatever the frames happen to be at that moment.
         """
 
         def __init__(self, wire, new_anchors, old_anchors):
@@ -336,7 +336,7 @@ class TransformMixin:
         """Rotate closed polygon waypoints around *pivot* (default: centroid)."""
         import math
         from diagrammer.commands.add_command import MoveComponentCommand
-        from diagrammer.commands.connect_command import EditWaypointsCommand
+        from diagrammer.commands.connect_command import SetWaypointAnchorsCommand
         from diagrammer.items.junction_item import JunctionItem
 
         for conn in conns:
@@ -355,8 +355,15 @@ class TransformMixin:
             new_wps = [QPointF(cx + (w.x() - cx) * cos_a - (w.y() - cy) * sin_a,
                                cy + (w.x() - cx) * sin_a + (w.y() - cy) * cos_a)
                        for w in wps]
-            cmd = EditWaypointsCommand(conn, [QPointF(w) for w in wps], new_wps)
-            self._scene.undo_stack.push(cmd)
+            # Anchors: the junction move below shares this macro, and
+            # Qt undoes macro children in reverse push order, so scene
+            # coordinates would re-bind against a port that has not
+            # been put back yet.
+            old_anchors = conn.waypoint_anchor_snapshot()
+            conn._set_waypoints_from_scene(new_wps)
+            conn.update_route()
+            self._scene.undo_stack.push(SetWaypointAnchorsCommand(
+                conn, old_anchors, conn.waypoint_anchor_snapshot()))
 
             # Move the junction to track rotation
             junc = conn.source_port.component

@@ -8,51 +8,77 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 def _terminal_junctions_to_auto_include(scene_items, selected_items) -> list:
     """Return junctions that should be dragged along with *selected_items*.
 
-    A junction qualifies when:
+    Junctions are not selectable (see ``JunctionItem``), so which ones
+    travel with a drag has to be inferred from the wiring. The rule is
+    the one a user would state: **the connected sub-circuit you selected
+    moves, up to the first component you did not select.**
 
-    * Every wire that touches it has its OTHER endpoint in
-      ``selected_items`` (so we never tear off an unselected branch).
-    * At least one of those wires is on the OTHER end of a selected
-      item (otherwise the junction is unrelated).
+    Computed in two sweeps over the wire graph:
 
-    This handles the "free terminal" case (single wire from a selected
-    component to a junction that has no other connections) and the
-    fully-internal case (junction whose every wire connects to selected
-    items). Hub junctions with at least one wire to an unselected item
-    are intentionally skipped — pulling them would corrupt the
-    unselected branch.
+    1. *Reach* — every junction wired directly to a selected item, then
+       every junction wired to one of those, and so on along the
+       junction-to-junction wires that make up a rail or a bend.
+    2. *Prune* — drop any reached junction with a wire to an unselected
+       component, then any junction whose neighbour was just dropped,
+       until nothing changes. A rail that continues on to something the
+       user left out stays where it is; one that ends on the selection
+       comes along, free ends included.
+
+    The earlier single pass judged each junction alone and required all
+    of its neighbours to be *selected* items. On a rail the neighbours
+    are other junctions, which can never be selected, so even with the
+    whole circuit boxed every rail junction looked like a hub with an
+    unselected branch and stayed behind while the components moved.
     """
     from diagrammer.items.connection_item import ConnectionItem
     from diagrammer.items.junction_item import JunctionItem
 
     selected_ids = set(id(i) for i in selected_items)
-    # junction_id -> list of (junction, other_endpoint_component)
-    junction_edges: dict[int, list] = {}
+    # junction id -> (junction, [neighbour items])
+    neighbours: dict[int, tuple] = {}
     for it in scene_items:
         if not isinstance(it, ConnectionItem):
             continue
-        src_comp = it.source_port.component
-        tgt_comp = it.target_port.component
-        for jct, other in (
-            (tgt_comp, src_comp) if isinstance(tgt_comp, JunctionItem) else (None, None),
-            (src_comp, tgt_comp) if isinstance(src_comp, JunctionItem) else (None, None),
-        ):
-            if jct is None or id(jct) in selected_ids:
+        a = it.source_port.component
+        b = it.target_port.component
+        for jct, other in ((a, b), (b, a)):
+            if not isinstance(jct, JunctionItem) or id(jct) in selected_ids:
                 continue
-            junction_edges.setdefault(id(jct), []).append((jct, other))
+            entry = neighbours.setdefault(id(jct), (jct, []))
+            entry[1].append(other)
 
-    out = []
-    for edges in junction_edges.values():
-        junction = edges[0][0]
-        # Skip hub junctions that touch at least one unselected item.
-        if not all(id(other) in selected_ids for _, other in edges):
-            continue
-        # And require at least one selected neighbour, otherwise the
-        # junction is unrelated to this drag.
-        if not any(id(other) in selected_ids for _, other in edges):
-            continue
-        out.append(junction)
-    return out
+    # 1. Reach outward from the selection along junction chains.
+    reached: set[int] = {
+        jid for jid, (_, others) in neighbours.items()
+        if any(id(o) in selected_ids for o in others)
+    }
+    frontier = set(reached)
+    while frontier:
+        nxt = set()
+        for jid in frontier:
+            for o in neighbours[jid][1]:
+                oid = id(o)
+                if oid in neighbours and oid not in reached:
+                    reached.add(oid)
+                    nxt.add(oid)
+        frontier = nxt
+
+    # 2. Prune anything whose neighbourhood is not entirely moving.
+    def _covered(o) -> bool:
+        oid = id(o)
+        return oid in selected_ids or oid in reached
+
+    changed = True
+    while changed:
+        changed = False
+        for jid in list(reached):
+            if not all(_covered(o) for o in neighbours[jid][1]):
+                reached.discard(jid)
+                changed = True
+
+    return [neighbours[jid][0] for jid in reached]
+
+
 from PySide6.QtGui import QBrush, QColor, QPainter, QPen
 from PySide6.QtWidgets import QGraphicsView, QWidget
 
@@ -99,6 +125,14 @@ class DiagramView(QGraphicsView):
         self._drag_conn_waypoints: dict = {}  # conn instance_id -> initial waypoints
         self._drag_auto_junctions: list = []  # junctions auto-included (need manual move)
         self._drag_ext_conn_orig_wps: dict = {}  # external conn instance_id -> original waypoints
+        # Scene-space waypoints to hold fixed on wires that straddle the
+        # drag set (one endpoint moving, one staying). See
+        # _hold_external_conn_waypoints.
+        self._drag_ext_conn_hold_wps: dict = {}
+        # conn instance_id -> port-local anchor snapshot taken at drag
+        # start; the single source of truth for the drag's wire undo
+        # entries. See _snapshot_connection_anchors.
+        self._drag_conn_anchor_starts: dict = {}
         self._drag_mouse_start: QPointF | None = None
         # Unified waypoint+component drag state
         self._selected_waypoint_set: dict[str, set[int]] = {}  # conn instance_id → selected wp indices
@@ -1419,6 +1453,7 @@ class DiagramView(QGraphicsView):
                 conn.update_route()
 
             # Update external connections
+            self._hold_external_conn_waypoints()
             internal_ids = set(id(c) for c in self._drag_internal_conns)
             unified_ids = set(
                 id(self._selected_waypoint_conns[cid])
@@ -1488,6 +1523,7 @@ class DiagramView(QGraphicsView):
                     conn.update_route()
 
                 # Update non-internal connections (external wires to the group)
+                self._hold_external_conn_waypoints()
                 internal_ids = set(id(c) for c in self._drag_internal_conns)
                 for item in self._diagram_scene.items():
                     if isinstance(item, ConnectionItem) and id(item) not in internal_ids:
@@ -1589,7 +1625,6 @@ class DiagramView(QGraphicsView):
 
             # Record move end for undo for all dragged items
             if self._dragging_components:
-                from diagrammer.commands.connect_command import EditWaypointsCommand
                 # Only open an undo macro when something actually changed.
                 # Qt keeps empty macros on the stack, and beginMacro()
                 # unconditionally deletes all redoable commands — so a
@@ -1619,34 +1654,21 @@ class DiagramView(QGraphicsView):
                     # with the move.
                     for comp in moved_components:
                         self._diagram_scene.auto_join_overlapping_ports(comp)
-                    # Record waypoint changes for unified-selected connections
-                    if self._unified_drag_active:
-                        for conn_id, orig_wps in self._unified_drag_waypoint_starts.items():
-                            conn = self._selected_waypoint_conns.get(conn_id)
-                            if conn is None:
-                                continue
-                            new_wps = [QPointF(w) for w in conn.vertices]
-                            if orig_wps != new_wps:
-                                cmd = EditWaypointsCommand(conn, orig_wps, new_wps)
-                                self._diagram_scene.undo_stack.push(cmd)
-                    # Record waypoint changes for internal connections
-                    for conn in self._drag_internal_conns:
-                        orig_wps = self._drag_conn_waypoints.get(conn.instance_id, [])
-                        new_wps = [QPointF(w) for w in conn.vertices]
-                        if orig_wps != new_wps:
-                            cmd = EditWaypointsCommand(conn, orig_wps, new_wps)
-                            self._diagram_scene.undo_stack.push(cmd)
-                    # Record waypoint changes for external connections whose
-                    # stale endpoint waypoints were trimmed at drag start
-                    if self._drag_ext_conn_orig_wps:
-                        for inst_id, orig_wps in self._drag_ext_conn_orig_wps.items():
-                            for item in self._diagram_scene.items():
-                                if isinstance(item, ConnectionItem) and item.instance_id == inst_id:
-                                    new_wps = [QPointF(w) for w in item.vertices]
-                                    if orig_wps != new_wps:
-                                        cmd = EditWaypointsCommand(item, orig_wps, new_wps)
-                                        self._diagram_scene.undo_stack.push(cmd)
-                                    break
+                    # Heal wires the move straightened out. A waypoint
+                    # that no longer bends the route is invisible, but it
+                    # still splits a draggable run in two and pins a point
+                    # the grid snap can't move — so moving parts around
+                    # would otherwise make the wiring progressively harder
+                    # to edit. Changes land inside the same macro, so a
+                    # plain selection click (changed == False) never
+                    # touches the undo stack.
+                    if changed:
+                        self._simplify_dragged_connections()
+                        # One pass records every wire the drag reshaped
+                        # — internal, external and unified-selected
+                        # alike — against the anchors snapshotted at
+                        # drag start.
+                        self._record_dragged_connection_routes()
                 finally:
                     if changed:
                         self._diagram_scene.undo_stack.endMacro()
@@ -1656,6 +1678,8 @@ class DiagramView(QGraphicsView):
                     self._drag_internal_conns = []
                     self._drag_conn_waypoints = {}
                     self._drag_ext_conn_orig_wps = {}
+                    self._drag_ext_conn_hold_wps = {}
+                    self._drag_conn_anchor_starts = {}
                     self._drag_anchor_start_pos = None
                     self._drag_auto_junctions = []
                     self._drag_mouse_start = None
@@ -1703,7 +1727,17 @@ class DiagramView(QGraphicsView):
                 if not isinstance(item, ConnectionItem):
                     continue
                 item._selected_waypoints.clear()
+                pinned = item.junction_handle_indices()
                 for idx, wp in enumerate(item.vertices):
+                    if idx in pinned:
+                        # This waypoint *is* a free end's junction, not a
+                        # bend the user placed. Dragging it on its own
+                        # tears the wire off the junction and leaves the
+                        # rest of the circuit hanging from a point that
+                        # is no longer there; whether it travels is the
+                        # junction's own business, decided by the
+                        # junction-selection rule above.
+                        continue
                     if rect.contains(wp):
                         item._selected_waypoints.add(idx)
                 if item._selected_waypoints:
@@ -1878,7 +1912,10 @@ class DiagramView(QGraphicsView):
         the originals for undo.
         """
         from diagrammer.utils.geometry import point_distance
+        # Before anything in this drag mutates a route.
+        self._snapshot_connection_anchors()
         self._drag_ext_conn_orig_wps = {}
+        self._drag_ext_conn_hold_wps = {}
         for si in self._diagram_scene.items():
             if not isinstance(si, ConnectionItem) or id(si) in seen_conn_ids:
                 continue
@@ -1904,9 +1941,112 @@ class DiagramView(QGraphicsView):
                     changed = True
             if changed:
                 self._drag_ext_conn_orig_wps[si.instance_id] = orig
+            # Pin what survives, in scene space. Waypoints are stored
+            # relative to whichever endpoint port is nearer, so a plain
+            # update_route() during the drag would carry the bends on the
+            # moving half of the wire along with the component and leave
+            # the rest behind — the wire shears into a staircase. The
+            # moving end should rubber-band into bends that stay put.
+            # A wire whose waypoints the user explicitly rubber-banded
+            # is driven by the unified drag instead — holding it here
+            # would undo that move on every mouse event.
+            if si._waypoints and si.instance_id not in self._selected_waypoint_set:
+                self._drag_ext_conn_hold_wps[si.instance_id] = [
+                    QPointF(w) for w in si._waypoints
+                ]
+
+    def _snapshot_connection_anchors(self) -> None:
+        """Record every wire's port-local anchors at the start of a drag.
+
+        One snapshot covers internal, external and unified-selected
+        wires alike, so the release handler has a before-state for any
+        route the drag touches without three dicts having to agree on
+        which category a wire fell into.
+        """
+        self._drag_conn_anchor_starts = {
+            item.instance_id: item.waypoint_anchor_snapshot()
+            for item in self._diagram_scene.items()
+            if isinstance(item, ConnectionItem)
+        }
+
+    @staticmethod
+    def _anchors_differ(a: list, b: list, tol: float = 0.01) -> bool:
+        """True when two anchor snapshots describe different routes.
+
+        Compared with a tolerance because holding a wire's waypoints in
+        scene space during a drag round-trips them through the port
+        frames once per mouse event, which leaves float dust behind.
+        """
+        if len(a) != len(b):
+            return True
+        for (sa, dxa, dya), (sb, dxb, dyb) in zip(a, b):
+            if sa != sb or abs(dxa - dxb) > tol or abs(dya - dyb) > tol:
+                return True
+        return False
+
+    def _record_dragged_connection_routes(self) -> None:
+        """Push undo entries for wires this drag reshaped.
+
+        Anchors rather than scene points: this runs inside the "Move
+        group" macro alongside the item moves, and Qt undoes macro
+        children in reverse push order, so a scene-coordinate entry
+        would be replayed while the components are still at their
+        dragged positions and bring the wire back displaced by the drag
+        delta.
+        """
+        from diagrammer.commands.connect_command import SetWaypointAnchorsCommand
+
+        for item in self._diagram_scene.items():
+            if not isinstance(item, ConnectionItem):
+                continue
+            old_anchors = self._drag_conn_anchor_starts.get(item.instance_id)
+            if old_anchors is None:
+                continue  # created during this drag (auto-join)
+            new_anchors = item.waypoint_anchor_snapshot()
+            if self._anchors_differ(old_anchors, new_anchors):
+                self._diagram_scene.undo_stack.push(
+                    SetWaypointAnchorsCommand(item, old_anchors, new_anchors)
+                )
+
+    def _hold_external_conn_waypoints(self) -> None:
+        """Re-pin held waypoints to their scene positions, then re-route.
+
+        Called on every drag move for wires that straddle the drag set.
+        Rebinding through ``_set_waypoints_from_scene`` recomputes the
+        port-relative offsets against the ports' *current* positions, so
+        the bend stays where the user left it on screen.
+        """
+        if not self._drag_ext_conn_hold_wps:
+            return
+        for item in self._diagram_scene.items():
+            if not isinstance(item, ConnectionItem):
+                continue
+            held = self._drag_ext_conn_hold_wps.get(item.instance_id)
+            if held is None:
+                continue
+            item._set_waypoints_from_scene([QPointF(w) for w in held])
+
+    def _simplify_dragged_connections(self) -> None:
+        """Prune no-op waypoints on every wire this drag touched.
+
+        Recording is left to :meth:`_record_dragged_connection_routes`,
+        which compares against the drag-start anchors and so captures
+        the prune and the move's own reshaping in one entry.
+        """
+        drag_ids = set(id(c) for c in self._dragging_components)
+        for item in self._diagram_scene.items():
+            if not isinstance(item, ConnectionItem) or not item.vertices:
+                continue
+            src = item.source_port.component if item.source_port else None
+            tgt = item.target_port.component if item.target_port else None
+            if id(src) not in drag_ids and id(tgt) not in drag_ids:
+                continue
+            if item.simplify_waypoints():
+                item.update_route()
 
     def _setup_unified_drag(self, scene_pos: QPointF) -> None:
         """Set up a drag that moves both components and selected waypoints."""
+        self._snapshot_connection_anchors()
         # Gather selected components/junctions/annotations
         selected_components = [
             i for i in self._diagram_scene.selectedItems()
@@ -2252,7 +2392,6 @@ class DiagramView(QGraphicsView):
     def _nudge_selected(self, items, key, *, fine: bool = False) -> None:
         """Move selected items by 20% of grid (or 10% with Shift held)."""
         from diagrammer.commands.add_command import MoveComponentCommand
-        from diagrammer.commands.connect_command import EditWaypointsCommand
 
         from diagrammer.panels.settings_dialog import app_settings
         frac = app_settings.nudge_fraction
@@ -2275,6 +2414,10 @@ class DiagramView(QGraphicsView):
             return
 
         self._diagram_scene.undo_stack.beginMacro("Nudge")
+        # Wire routes are recorded at the end, from anchors: this macro
+        # also moves the ports those routes hang off, and Qt undoes its
+        # children in reverse push order.
+        self._snapshot_connection_anchors()
 
         # Move items (components, junctions, annotations, shapes)
         for item in movable:
@@ -2292,9 +2435,9 @@ class DiagramView(QGraphicsView):
                     id(si.target_port.component) in item_ids):
                 old_wps = [QPointF(w) for w in si.vertices]
                 if old_wps:
-                    new_wps = [QPointF(w.x() + dx, w.y() + dy) for w in old_wps]
-                    cmd = EditWaypointsCommand(si, old_wps, new_wps)
-                    self._diagram_scene.undo_stack.push(cmd)
+                    si._set_waypoints_from_scene(
+                        [QPointF(w.x() + dx, w.y() + dy) for w in old_wps])
+                    si.update_route()
 
         # Shift waypoints of explicitly selected connections. For free
         # wires, also nudge the endpoint JunctionItems so they stay
@@ -2306,9 +2449,9 @@ class DiagramView(QGraphicsView):
         for conn in selected_conns:
             old_wps = [QPointF(w) for w in conn.vertices]
             if old_wps:
-                new_wps = [QPointF(w.x() + dx, w.y() + dy) for w in old_wps]
-                cmd = EditWaypointsCommand(conn, old_wps, new_wps)
-                self._diagram_scene.undo_stack.push(cmd)
+                conn._set_waypoints_from_scene(
+                    [QPointF(w.x() + dx, w.y() + dy) for w in old_wps])
+                conn.update_route()
             for port_item in (conn.source_port, conn.target_port):
                 pc = port_item.component if port_item else None
                 if isinstance(pc, JunctionItem) and id(pc) not in already_moved_ids:
@@ -2319,6 +2462,8 @@ class DiagramView(QGraphicsView):
                     )
                     already_moved_ids.add(id(pc))
 
+        self._record_dragged_connection_routes()
+        self._drag_conn_anchor_starts = {}
         self._diagram_scene.undo_stack.endMacro()
         self._diagram_scene.update_connections()
 
