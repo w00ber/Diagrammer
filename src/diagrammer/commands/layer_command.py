@@ -76,3 +76,68 @@ class ChangeZOrderCommand(QUndoCommand):
     def undo(self) -> None:
         for item, old_z, _new_z in self._states:
             item.setZValue(old_z)
+
+
+class SetLayerStateCommand(QUndoCommand):
+    """Set a layer's ``visible`` / ``locked`` flag (undoable).
+
+    These flags used to be mutated in place by the Edit-menu actions and by
+    the Layers panel, so hiding a layer — once reachable from a bare "H" —
+    looked exactly like losing the diagram, and Ctrl+Z had nothing to
+    reverse. Routing both flags through a command keeps the project rule
+    that every canvas mutation is undoable.
+
+    ``on_change`` is called after each redo/undo so the caller can refresh
+    the panel and re-apply the state to the scene's items.
+    """
+
+    def __init__(
+        self,
+        layer_manager,
+        layer_index: int,
+        *,
+        visible: bool | None = None,
+        locked: bool | None = None,
+        on_change=None,
+        label: str | None = None,
+        parent: QUndoCommand | None = None,
+    ) -> None:
+        super().__init__(parent)
+        if visible is None and locked is None:
+            raise ValueError("SetLayerStateCommand needs visible= or locked=")
+        self._manager = layer_manager
+        self._index = layer_index
+        self._on_change = on_change
+        self._new: dict[str, bool] = {}
+        if visible is not None:
+            self._new["visible"] = bool(visible)
+        if locked is not None:
+            self._new["locked"] = bool(locked)
+        layer = layer_manager.layers[layer_index]
+        self._old = {attr: bool(getattr(layer, attr)) for attr in self._new}
+        self.setText(label or self._describe(layer.name))
+
+    def _describe(self, name: str) -> str:
+        verbs = []
+        if "visible" in self._new:
+            verbs.append("Show" if self._new["visible"] else "Hide")
+        if "locked" in self._new:
+            verbs.append("Lock" if self._new["locked"] else "Unlock")
+        return f"{' + '.join(verbs)} layer \"{name}\""
+
+    def _apply(self, state: dict[str, bool]) -> None:
+        # The layer can be gone if it was removed after this command was
+        # pushed (layer removal is not itself undoable), so don't assume.
+        if not (0 <= self._index < len(self._manager.layers)):
+            return
+        layer = self._manager.layers[self._index]
+        for attr, value in state.items():
+            setattr(layer, attr, value)
+        if self._on_change is not None:
+            self._on_change()
+
+    def redo(self) -> None:
+        self._apply(self._new)
+
+    def undo(self) -> None:
+        self._apply(self._old)

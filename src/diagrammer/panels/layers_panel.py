@@ -138,6 +138,9 @@ class LayersPanel(QDockWidget):
     def __init__(self, layer_manager: LayerManager, parent=None):
         super().__init__("Layers", parent)
         self._manager = layer_manager
+        # Set by MainWindow so visibility/lock toggles become undoable.
+        # Unset (standalone panel) falls back to mutating in place.
+        self._undo_stack = None
 
         container = QWidget()
         layout = QVBoxLayout(container)
@@ -189,6 +192,32 @@ class LayersPanel(QDockWidget):
 
         self.refresh()
 
+    def set_undo_stack(self, stack) -> None:
+        """Route visibility/lock toggles through ``stack`` so they undo."""
+        self._undo_stack = stack
+
+    def _set_layer_state(self, idx: int, *, visible=None, locked=None) -> None:
+        """Change a layer flag, undoably when an undo stack is attached."""
+        if not (0 <= idx < len(self._manager.layers)):
+            return
+        if self._undo_stack is not None:
+            from diagrammer.commands.layer_command import SetLayerStateCommand
+            self._undo_stack.push(SetLayerStateCommand(
+                self._manager, idx, visible=visible, locked=locked,
+                on_change=self._emit_layers_changed,
+            ))
+            return
+        layer = self._manager.layers[idx]
+        if visible is not None:
+            layer.visible = visible
+        if locked is not None:
+            layer.locked = locked
+        self._emit_layers_changed()
+
+    def _emit_layers_changed(self) -> None:
+        self.refresh()
+        self.layers_changed.emit()
+
     def refresh(self) -> None:
         """Rebuild the list from the layer manager."""
         self._list.blockSignals(True)
@@ -220,9 +249,7 @@ class LayersPanel(QDockWidget):
         idx = item.data(Qt.ItemDataRole.UserRole)
         if idx is not None and 0 <= idx < len(self._manager.layers):
             layer = self._manager.layers[idx]
-            layer.visible = not layer.visible
-            self.refresh()
-            self.layers_changed.emit()
+            self._set_layer_state(idx, visible=not layer.visible)
 
     def _add_layer(self) -> None:
         self._manager.add_layer()
@@ -272,13 +299,9 @@ class LayersPanel(QDockWidget):
 
         action = menu.exec(event.globalPos())
         if action is vis_act:
-            layer.visible = not layer.visible
-            self.refresh()
-            self.layers_changed.emit()
+            self._set_layer_state(idx, visible=not layer.visible)
         elif action is lock_act:
-            layer.locked = not layer.locked
-            self.refresh()
-            self.layers_changed.emit()
+            self._set_layer_state(idx, locked=not layer.locked)
         elif action is rename_act:
             from PySide6.QtWidgets import QInputDialog
             name, ok = QInputDialog.getText(self, "Rename Layer", "Name:", text=layer.name)

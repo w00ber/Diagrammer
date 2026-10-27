@@ -387,6 +387,7 @@ class DiagramScene(QGraphicsScene):
         from diagrammer.items.annotation_item import AnnotationItem
         from diagrammer.items.component_item import ComponentItem
         from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.junction_item import JunctionItem
         from diagrammer.items.shape_item import LineItem, ShapeItem
         from diagrammer.items.svg_image_item import SvgImageItem
 
@@ -399,6 +400,16 @@ class DiagramScene(QGraphicsScene):
                 layer_idx = 0
 
             layer = self._layer_manager.layers[layer_idx]
+
+            # Junctions are wire anchors, so they follow their layer's
+            # visibility but never take the movable/selectable flags: their
+            # position is owned by the wires meeting there. Leaving them out
+            # of this loop entirely is what left a wire end dot painted on an
+            # otherwise blank canvas when a layer was hidden, which reads as
+            # "everything was deleted" rather than "a layer is off".
+            if isinstance(item, JunctionItem):
+                item.setVisible(layer.visible)
+                continue
 
             # Visibility
             if isinstance(item, (ComponentItem, ConnectionItem, ShapeItem, LineItem, SvgImageItem, AnnotationItem)):

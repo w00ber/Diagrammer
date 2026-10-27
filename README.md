@@ -124,10 +124,8 @@ defaults:
 | T | Toggle trace routing mode |
 | Shift (while routing) | Constrain to H/V |
 | **Layers** | |
-| H | Hide active layer |
-| Shift+H | Show active layer |
-| L | Lock active layer |
-| Shift+L | Unlock active layer |
+| Shift+H | Show / hide active layer |
+| Shift+L | Lock / unlock active layer |
 | **Selection & Alignment** | |
 | Shift+click | Multi-select components |
 | Ctrl+click port | Select port for alignment |

@@ -209,25 +209,15 @@ class MenuMixin:
 
         edit_menu.addSeparator()
 
-        hide_layer_act = QAction("&Hide Active Layer", self)
-        self._register_shortcut(hide_layer_act, "edit.hide_layer")
-        hide_layer_act.triggered.connect(self._hide_active_layer)
-        edit_menu.addAction(hide_layer_act)
+        toggle_vis_act = QAction("Show / &Hide Active Layer", self)
+        self._register_shortcut(toggle_vis_act, "edit.toggle_layer_visible")
+        toggle_vis_act.triggered.connect(self._toggle_active_layer_visible)
+        edit_menu.addAction(toggle_vis_act)
 
-        show_layer_act = QAction("S&how Active Layer", self)
-        self._register_shortcut(show_layer_act, "edit.show_layer")
-        show_layer_act.triggered.connect(self._show_active_layer)
-        edit_menu.addAction(show_layer_act)
-
-        lock_layer_act = QAction("&Lock Active Layer", self)
-        self._register_shortcut(lock_layer_act, "edit.lock_layer")
-        lock_layer_act.triggered.connect(self._lock_active_layer)
-        edit_menu.addAction(lock_layer_act)
-
-        unlock_layer_act = QAction("&Unlock Active Layer", self)
-        self._register_shortcut(unlock_layer_act, "edit.unlock_layer")
-        unlock_layer_act.triggered.connect(self._unlock_active_layer)
-        edit_menu.addAction(unlock_layer_act)
+        toggle_lock_act = QAction("&Lock / Unlock Active Layer", self)
+        self._register_shortcut(toggle_lock_act, "edit.toggle_layer_lock")
+        toggle_lock_act.triggered.connect(self._toggle_active_layer_lock)
+        edit_menu.addAction(toggle_lock_act)
 
         edit_menu.addSeparator()
 

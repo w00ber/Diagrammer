@@ -172,10 +172,12 @@ _reg("edit.align_v",
      linux=_ks("Ctrl+Shift+I"),
      description="Align Vertically", category="Edit")
 
-_reg("edit.hide_layer",   _ks("H"),                        description="Hide Active Layer",   category="Edit")
-_reg("edit.show_layer",   _ks("Shift+H"),                  description="Show Active Layer",   category="Edit")
-_reg("edit.lock_layer",   _ks("L"),                        description="Lock Active Layer",   category="Edit")
-_reg("edit.unlock_layer", _ks("Shift+L"),                  description="Unlock Active Layer", category="Edit")
+# Layer visibility and lock are single toggles behind Shift. They used to be
+# four actions with bare "H"/"L" for hide/lock, which put "make the whole
+# active layer vanish" one stray keystroke away from an unmodified letter --
+# indistinguishable from losing the diagram. Keep a modifier on both.
+_reg("edit.toggle_layer_visible", _ks("Shift+H"),          description="Show / Hide Active Layer",   category="Edit")
+_reg("edit.toggle_layer_lock",    _ks("Shift+L"),          description="Lock / Unlock Active Layer", category="Edit")
 
 _reg("edit.bring_fwd",    _ks("Ctrl+]"),                   description="Bring Forward",     category="Edit")
 _reg("edit.send_bwd",     _ks("Ctrl+["),                   description="Send Backward",     category="Edit")

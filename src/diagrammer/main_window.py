@@ -141,6 +141,12 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         self._pos_label = QLabel("X: 0.0  Y: 0.0")
         self.statusBar().addWidget(self._pos_label)
 
+        # Standing warning for hidden/locked layers (see _refresh_layer_warning).
+        self._layer_warning_label = QLabel("")
+        self._layer_warning_label.setStyleSheet(
+            "color: #b36b00; font-weight: bold;")
+        self.statusBar().addPermanentWidget(self._layer_warning_label)
+
         self._scene.cursor_scene_pos_changed.connect(self._update_pos_label)
         self._scene.mode_changed.connect(self._update_mode_label)
 
@@ -193,6 +199,8 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         self._layers_panel.layers_reordered.connect(self._scene.remap_layer_swap)
         self._layers_panel.layer_removed.connect(self._scene.remap_layer_removed)
         self._layers_panel.active_layer_switched.connect(self._on_layer_switched)
+        # The panel's eye / lock toggles are canvas mutations like any other.
+        self._layers_panel.set_undo_stack(self._scene.undo_stack)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._layers_panel)
 
         # Stack Properties (top, ~65%) and Layers (bottom, ~35%) vertically
@@ -930,34 +938,72 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
     def _on_layers_changed(self) -> None:
         """Apply layer visibility/lock state to all scene items."""
         self._scene.apply_layer_state()
+        self._refresh_layer_warning()
 
     def _on_layer_switched(self, layer_index: int) -> None:
         """Flash items on the newly selected layer."""
         self._scene.flash_layer(layer_index)
 
-    def _hide_active_layer(self) -> None:
-        lm = self._scene.layer_manager
-        lm.active_layer.visible = False
+    def _after_layer_state_change(self) -> None:
+        """Re-sync panel, items and warning after a layer flag changed."""
         self._layers_panel.refresh()
         self._scene.apply_layer_state()
+        self._refresh_layer_warning()
+
+    def _set_active_layer_state(self, *, visible=None, locked=None) -> None:
+        """Push an undoable change to the active layer's visible/lock flag."""
+        from diagrammer.commands.layer_command import SetLayerStateCommand
+        lm = self._scene.layer_manager
+        self._scene.undo_stack.push(SetLayerStateCommand(
+            lm, lm.active_index, visible=visible, locked=locked,
+            on_change=self._after_layer_state_change,
+        ))
+
+    def _toggle_active_layer_visible(self) -> None:
+        self._set_active_layer_state(
+            visible=not self._scene.layer_manager.active_layer.visible)
+
+    def _toggle_active_layer_lock(self) -> None:
+        self._set_active_layer_state(
+            locked=not self._scene.layer_manager.active_layer.locked)
+
+    def _hide_active_layer(self) -> None:
+        self._set_active_layer_state(visible=False)
 
     def _show_active_layer(self) -> None:
-        lm = self._scene.layer_manager
-        lm.active_layer.visible = True
-        self._layers_panel.refresh()
-        self._scene.apply_layer_state()
+        self._set_active_layer_state(visible=True)
 
     def _lock_active_layer(self) -> None:
-        lm = self._scene.layer_manager
-        lm.active_layer.locked = True
-        self._layers_panel.refresh()
-        self._scene.apply_layer_state()
+        self._set_active_layer_state(locked=True)
 
     def _unlock_active_layer(self) -> None:
-        lm = self._scene.layer_manager
-        lm.active_layer.locked = False
-        self._layers_panel.refresh()
-        self._scene.apply_layer_state()
+        self._set_active_layer_state(locked=False)
+
+    def _refresh_layer_warning(self) -> None:
+        """Keep a standing status-bar warning while a layer is hidden/locked.
+
+        A hidden layer is indistinguishable from an empty canvas, and a
+        locked one from a canvas that has stopped responding — which is how
+        a stray keystroke gets read as data loss. Say so permanently rather
+        than with a message that times out.
+        """
+        label = getattr(self, "_layer_warning_label", None)
+        if label is None:
+            return
+        layers = self._scene.layer_manager.layers
+        hidden = [lyr for lyr in layers if not lyr.visible]
+        locked = [lyr for lyr in layers if lyr.locked]
+        parts = []
+        if hidden:
+            parts.append(f"{len(hidden)} layer{'s' if len(hidden) != 1 else ''} hidden")
+        if locked:
+            parts.append(f"{len(locked)} locked")
+        if not parts:
+            label.setText("")
+            return
+        keys = get_shortcut("edit.toggle_layer_visible").display_text
+        suffix = f" \u2014 {keys} to show" if hidden and keys else ""
+        label.setText(f"\u26a0 {', '.join(parts)}{suffix}")
 
     def _toggle_zoom_window(self, enabled: bool) -> None:
         v = self._active_view()
@@ -1280,6 +1326,7 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             self._layers_panel._manager = self._scene._layer_manager
             self._layers_panel.refresh()
             self._scene.apply_layer_state()
+            self._refresh_layer_warning()
             # If restoring from autosave, don't set _current_file (it's unsaved)
             if restore_path != str(auto_save):
                 self._current_file = restore_path
@@ -1413,6 +1460,7 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         self._layers_panel._manager = self._scene._layer_manager
         self._layers_panel.refresh()
         self._scene.apply_layer_state()
+        self._refresh_layer_warning()
         self._current_file = path
         self._update_title()
         self._track_file(path)
@@ -1448,6 +1496,7 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         self._scene._layer_manager = LayerManager()
         self._layers_panel._manager = self._scene._layer_manager
         self._layers_panel.refresh()
+        self._refresh_layer_warning()
         self._current_file = None
         self._update_title()
 

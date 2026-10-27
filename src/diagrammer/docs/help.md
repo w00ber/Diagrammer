@@ -230,10 +230,12 @@ Layers let you organize diagram elements and control their visibility and editab
 
 | Key | Action |
 |-----|--------|
-| **H** | Hide active layer |
-| **Shift+H** | Show active layer |
-| **L** | Lock active layer |
-| **Shift+L** | Unlock active layer |
+| **Shift+H** | Show / hide active layer |
+| **Shift+L** | Lock / unlock active layer |
+
+Both toggles are undoable, and the status bar carries a standing
+⚠ warning for as long as any layer is hidden or locked — a hidden
+layer otherwise looks exactly like an empty canvas.
 
 **Hidden layers** — items are invisible but preserved. Wires to hidden items remain in the file.
 
