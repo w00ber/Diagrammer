@@ -19,30 +19,25 @@ class ClipboardMixin:
 
     # -------------------------------------------------------------- helpers
 
+    # -------------------------------------------------------------- helpers
+
     def _gather_connected_junctions(self, selected_items) -> list:
-        """Find JunctionItems connected to selected items but not explicitly selected.
+        """Junctions that belong with *selected_items* for a copy-like
+        operation (copy, duplicate, group, rotate, flip).
 
-        Only gathers junctions where a connection has one end on a selected
-        item and the other end on the junction.  Does NOT chain through
-        junctions (which would pull in the entire circuit).
+        A wrapper over the one connectivity rule,
+        :func:`diagrammer.canvas.closure.movable_closure`, with
+        ``include_touching`` — nothing stays behind to pin a junction
+        in these operations, so every junction wired to a selected item
+        travels, plus any rail that ends on the selection. Step D of
+        ``docs/wiring-interaction-redesign.md`` is expected to move the
+        transforms onto the drag rule instead.
         """
-        from diagrammer.items.connection_item import ConnectionItem
-        from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.canvas.closure import movable_closure
 
-        selected_ids = set(id(i) for i in selected_items)
-        extra_juncs = []
-        for item in self._scene.items():
-            if not isinstance(item, ConnectionItem):
-                continue
-            src_comp = item.source_port.component
-            tgt_comp = item.target_port.component
-            if id(src_comp) in selected_ids and isinstance(tgt_comp, JunctionItem) and id(tgt_comp) not in selected_ids:
-                extra_juncs.append(tgt_comp)
-                selected_ids.add(id(tgt_comp))
-            elif id(tgt_comp) in selected_ids and isinstance(src_comp, JunctionItem) and id(src_comp) not in selected_ids:
-                extra_juncs.append(src_comp)
-                selected_ids.add(id(src_comp))
-        return extra_juncs
+        return movable_closure(
+            self._scene.items(), selected_items, include_touching=True,
+        ).junctions
 
     # ---------------------------------------------------------- delete
 
@@ -93,33 +88,27 @@ class ClipboardMixin:
             if isinstance(item, ConnectionItem)
         ]
 
-        # Auto-include endpoint junctions for selected connections
-        # (free wires have invisible junctions the user can't select directly)
-        for conn in selected_conns_direct:
-            for port in (conn.source_port, conn.target_port):
-                comp = port.component
-                if isinstance(comp, JunctionItem) and comp not in selected_juncs:
-                    selected_juncs.append(comp)
-
-        if (not selected_comps and not selected_juncs
+        if (not selected_comps and not selected_juncs and not selected_conns_direct
                 and not selected_annots and not selected_shapes
                 and not selected_svg_images):
             return
 
-        # Auto-include connected junctions (invisible T-junction markers)
+        # One rule for which junctions and wires belong to the selection
+        # (docs/wiring-interaction-redesign.md, I4). A copy takes every
+        # junction touching a selected item — nothing stays behind to
+        # pin it — plus any rail that ends on the selection, and the
+        # wires between all of those.
+        from diagrammer.canvas.closure import movable_closure
+        closure = movable_closure(
+            self._scene.items(),
+            selected_comps + selected_juncs + selected_conns_direct,
+            include_touching=True,
+        )
+        for j in closure.junctions:
+            if j not in selected_juncs:
+                selected_juncs.append(j)
         all_selected = selected_comps + selected_juncs
-        extra_juncs = self._gather_connected_junctions(all_selected)
-        selected_juncs.extend(extra_juncs)
-        all_selected = selected_comps + selected_juncs
-        item_set = set(id(c) for c in all_selected)
-
-        # Collect connections where both endpoints are in the selection
-        selected_conns = []
-        for item in self._scene.items():
-            if isinstance(item, ConnectionItem):
-                if (id(item.source_port.component) in item_set and
-                        id(item.target_port.component) in item_set):
-                    selected_conns.append(item)
+        selected_conns = list(closure.internal_wires)
 
         # Serialize to clipboard
         self._clipboard = []

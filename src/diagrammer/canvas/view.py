@@ -6,77 +6,13 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 
 
 def _terminal_junctions_to_auto_include(scene_items, selected_items) -> list:
-    """Return junctions that should be dragged along with *selected_items*.
+    """Junctions that travel with *selected_items*.
 
-    Junctions are not selectable (see ``JunctionItem``), so which ones
-    travel with a drag has to be inferred from the wiring. The rule is
-    the one a user would state: **the connected sub-circuit you selected
-    moves, up to the first component you did not select.**
-
-    Computed in two sweeps over the wire graph:
-
-    1. *Reach* — every junction wired directly to a selected item, then
-       every junction wired to one of those, and so on along the
-       junction-to-junction wires that make up a rail or a bend.
-    2. *Prune* — drop any reached junction with a wire to an unselected
-       component, then any junction whose neighbour was just dropped,
-       until nothing changes. A rail that continues on to something the
-       user left out stays where it is; one that ends on the selection
-       comes along, free ends included.
-
-    The earlier single pass judged each junction alone and required all
-    of its neighbours to be *selected* items. On a rail the neighbours
-    are other junctions, which can never be selected, so even with the
-    whole circuit boxed every rail junction looked like a hub with an
-    unselected branch and stayed behind while the components moved.
+    Thin wrapper kept for the tests; the rule lives in
+    :func:`diagrammer.canvas.closure.movable_closure`.
     """
-    from diagrammer.items.connection_item import ConnectionItem
-    from diagrammer.items.junction_item import JunctionItem
-
-    selected_ids = set(id(i) for i in selected_items)
-    # junction id -> (junction, [neighbour items])
-    neighbours: dict[int, tuple] = {}
-    for it in scene_items:
-        if not isinstance(it, ConnectionItem):
-            continue
-        a = it.source_port.component
-        b = it.target_port.component
-        for jct, other in ((a, b), (b, a)):
-            if not isinstance(jct, JunctionItem) or id(jct) in selected_ids:
-                continue
-            entry = neighbours.setdefault(id(jct), (jct, []))
-            entry[1].append(other)
-
-    # 1. Reach outward from the selection along junction chains.
-    reached: set[int] = {
-        jid for jid, (_, others) in neighbours.items()
-        if any(id(o) in selected_ids for o in others)
-    }
-    frontier = set(reached)
-    while frontier:
-        nxt = set()
-        for jid in frontier:
-            for o in neighbours[jid][1]:
-                oid = id(o)
-                if oid in neighbours and oid not in reached:
-                    reached.add(oid)
-                    nxt.add(oid)
-        frontier = nxt
-
-    # 2. Prune anything whose neighbourhood is not entirely moving.
-    def _covered(o) -> bool:
-        oid = id(o)
-        return oid in selected_ids or oid in reached
-
-    changed = True
-    while changed:
-        changed = False
-        for jid in list(reached):
-            if not all(_covered(o) for o in neighbours[jid][1]):
-                reached.discard(jid)
-                changed = True
-
-    return [neighbours[jid][0] for jid in reached]
+    from diagrammer.canvas.closure import movable_closure
+    return movable_closure(scene_items, selected_items).junctions
 
 
 from PySide6.QtGui import QBrush, QColor, QPainter, QPen
@@ -177,7 +113,7 @@ class DiagramView(QGraphicsView):
         self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
         self.rubberBandChanged.connect(self._on_rubber_band_changed)
         self.setAcceptDrops(True)
-        scene.selectionChanged.connect(self._on_scene_selection_changed)
+        self._watch_scene_selection(scene)
         # Accept native gestures (pinch-to-zoom on trackpad)
         self.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
         self.grabGesture(Qt.GestureType.PinchGesture)
@@ -340,6 +276,30 @@ class DiagramView(QGraphicsView):
         if not value and self._diagram_scene.is_connecting:
             self._diagram_scene._cancel_connection()
         self._update_cursor()
+
+    def _watch_scene_selection(self, scene) -> None:
+        self._watched_scene = scene
+        if scene is not None:
+            scene.selectionChanged.connect(self._on_scene_selection_changed)
+
+    def setScene(self, scene) -> None:  # noqa: N802
+        """Swap scenes, letting go of the old one's selection signal first.
+
+        A QGraphicsScene emits ``selectionChanged`` from its destructor
+        as it deletes selected items. If this view is still connected,
+        the slot runs against a half-destroyed scene and the process
+        segfaults before any Python guard can fire. Disconnecting here
+        means ``view.setScene(None)`` is a safe way to tear a canvas
+        down in any order, which the tests rely on.
+        """
+        old = getattr(self, "_watched_scene", None)
+        if old is not None:
+            try:
+                old.selectionChanged.disconnect(self._on_scene_selection_changed)
+            except (RuntimeError, TypeError):
+                pass
+        super().setScene(scene)
+        self._watch_scene_selection(scene)
 
     def setDragMode(self, mode) -> None:  # noqa: N802, ANN001
         """Override to re-apply the mode-appropriate cursor after Qt resets it."""
@@ -1094,52 +1054,15 @@ class DiagramView(QGraphicsView):
                         for s in selected:
                             if s is not anchor and hasattr(s, '_skip_snap'):
                                 s._skip_snap = True
-                        # Same auto-include pass as the multi-select branch
-                        # below — see _terminal_junctions_to_auto_include.
-                        self._drag_auto_junctions = _terminal_junctions_to_auto_include(
-                            self._diagram_scene.items(), selected,
-                        )
-                        selected.extend(self._drag_auto_junctions)
-                        self._dragging_components = selected
-                        self._drag_anchor_item = anchor
-                        self._drag_anchor_start_pos = QPointF(anchor.pos())
+                        group_wires = [
+                            m for m in self._diagram_scene.get_group_members(gid)
+                            if isinstance(m, ConnectionItem)
+                        ]
+                        self._begin_item_drag(anchor, selected, scene_pos,
+                                              group_wires=group_wires)
                         # Qt didn't receive press on anchor, so we must track
                         # mouse delta ourselves (same mechanism as alt-drag)
                         anchor._alt_drag_clone = True
-                        self._drag_mouse_start = QPointF(scene_pos)
-                        for comp in selected:
-                            self._diagram_scene.record_move_start(comp.instance_id, comp.pos())
-                        # Capture group connections
-                        comp_ids = set(id(c) for c in selected)
-                        self._drag_internal_conns = []
-                        self._drag_conn_waypoints = {}
-                        seen_conn_ids = set()
-                        for si in self._diagram_scene.get_group_members(gid):
-                            if isinstance(si, ConnectionItem) and id(si) not in seen_conn_ids:
-                                self._drag_internal_conns.append(si)
-                                self._drag_conn_waypoints[si.instance_id] = [
-                                    QPointF(w) for w in si.vertices
-                                ]
-                                seen_conn_ids.add(id(si))
-                                for port_item in (si.source_port, si.target_port):
-                                    pc = port_item.component
-                                    if isinstance(pc, JunctionItem) and id(pc) not in comp_ids:
-                                        selected.append(pc)
-                                        comp_ids.add(id(pc))
-                                        self._drag_auto_junctions.append(pc)
-                                        self._diagram_scene.record_move_start(pc.instance_id, pc.pos())
-                        for si in self._diagram_scene.items():
-                            if isinstance(si, ConnectionItem) and id(si) not in seen_conn_ids:
-                                src_in = id(si.source_port.component) in comp_ids
-                                tgt_in = id(si.target_port.component) in comp_ids
-                                if src_in and tgt_in:
-                                    self._drag_internal_conns.append(si)
-                                    self._drag_conn_waypoints[si.instance_id] = [
-                                        QPointF(w) for w in si.vertices
-                                    ]
-                                    seen_conn_ids.add(id(si))
-                        self._trim_external_conn_endpoint_wps(comp_ids, seen_conn_ids)
-                        self.setDragMode(QGraphicsView.DragMode.NoDrag)
                         event.accept()
                         return
 
@@ -1182,69 +1105,14 @@ class DiagramView(QGraphicsView):
                         if s is not item and hasattr(s, '_skip_snap'):
                             s._skip_snap = True
 
-                    # Auto-include connected junctions not in the selection.
-                    # Free-terminal and fully-internal junctions ride along
-                    # with their wired components — leaving them behind
-                    # detaches the wire and is never what the user wants.
-                    # Hub junctions with at least one wire to an unselected
-                    # item are skipped: see _terminal_junctions_to_auto_include.
-                    # The previous code short-circuited this for explicit
-                    # multi-select, which combined with the rubber-band
-                    # junction-deselect (below) stranded terminal junctions
-                    # after rubber-band-then-drag.
-                    self._drag_auto_junctions = _terminal_junctions_to_auto_include(
-                        self._diagram_scene.items(), selected,
-                    )
-                    selected.extend(self._drag_auto_junctions)
-
-                    self._dragging_components = selected
-                    self._drag_anchor_item = item
-                    self._drag_anchor_start_pos = QPointF(item.pos())
-                    self._drag_mouse_start = QPointF(scene_pos)
-                    for comp in selected:
-                        self._diagram_scene.record_move_start(comp.instance_id, comp.pos())
-
-                    # Capture internal connections: group-member connections first,
-                    # then endpoint-detected connections for non-grouped selections
-                    comp_ids = set(id(c) for c in selected)
-                    self._drag_internal_conns = []
-                    self._drag_conn_waypoints = {}
-                    seen_conn_ids = set()
-
-                    # 1) Connections that are group members
                     from diagrammer.commands.group_command import get_top_group
                     gid = get_top_group(item)
-                    if gid:
-                        for si in self._diagram_scene.get_group_members(gid):
-                            if isinstance(si, ConnectionItem) and id(si) not in seen_conn_ids:
-                                self._drag_internal_conns.append(si)
-                                self._drag_conn_waypoints[si.instance_id] = [
-                                    QPointF(w) for w in si.vertices
-                                ]
-                                seen_conn_ids.add(id(si))
-                                # Also ensure the connection's endpoint junctions are in the drag set
-                                for port_item in (si.source_port, si.target_port):
-                                    pc = port_item.component
-                                    if isinstance(pc, JunctionItem) and id(pc) not in comp_ids:
-                                        selected.append(pc)
-                                        comp_ids.add(id(pc))
-                                        self._drag_auto_junctions.append(pc)
-                                        self._diagram_scene.record_move_start(pc.instance_id, pc.pos())
-
-                    # 2) Endpoint-detected connections (for non-grouped multi-select)
-                    for si in self._diagram_scene.items():
-                        if isinstance(si, ConnectionItem) and id(si) not in seen_conn_ids:
-                            src_in = id(si.source_port.component) in comp_ids
-                            tgt_in = id(si.target_port.component) in comp_ids
-                            if src_in and tgt_in:
-                                self._drag_internal_conns.append(si)
-                                self._drag_conn_waypoints[si.instance_id] = [
-                                    QPointF(w) for w in si.vertices
-                                ]
-                                seen_conn_ids.add(id(si))
-
-                    self._trim_external_conn_endpoint_wps(comp_ids, seen_conn_ids)
-                    self.setDragMode(QGraphicsView.DragMode.NoDrag)
+                    group_wires = [
+                        m for m in self._diagram_scene.get_group_members(gid)
+                        if isinstance(m, ConnectionItem)
+                    ] if gid else []
+                    self._begin_item_drag(item, selected, scene_pos,
+                                          group_wires=group_wires)
 
                     # If waypoints are also selected, activate unified drag
                     if self._selected_waypoint_set:
@@ -1901,6 +1769,41 @@ class DiagramView(QGraphicsView):
         else:
             item.setSelected(False)
 
+    def _begin_item_drag(self, anchor, selected: list, scene_pos: QPointF,
+                         *, group_wires=()) -> None:
+        """Arm a drag of *selected* plus whatever the closure pulls along.
+
+        One entry point for every item drag (plain, multi-select, grouped
+        wire). The closure decides which junctions travel and which
+        wires are internal (translated rigidly) versus boundary
+        (re-routed); nothing else in the drag code reasons about
+        junctions. *group_wires* are a group's own wires: not movers,
+        but their endpoint junctions seed the closure so a grouped free
+        wire moves with its group.
+        """
+        from diagrammer.canvas.closure import movable_closure
+
+        closure = movable_closure(
+            self._diagram_scene.items(), list(selected) + list(group_wires),
+        )
+        self._drag_auto_junctions = list(closure.junctions)
+        movers = closure.movers
+        self._dragging_components = movers
+        self._drag_anchor_item = anchor
+        self._drag_anchor_start_pos = QPointF(anchor.pos())
+        self._drag_mouse_start = QPointF(scene_pos)
+        for comp in movers:
+            self._diagram_scene.record_move_start(comp.instance_id, comp.pos())
+        self._drag_internal_conns = list(closure.internal_wires)
+        self._drag_conn_waypoints = {
+            c.instance_id: [QPointF(w) for w in c.vertices]
+            for c in closure.internal_wires
+        }
+        self._trim_external_conn_endpoint_wps(
+            closure.mover_ids(), {id(c) for c in closure.internal_wires},
+        )
+        self.setDragMode(QGraphicsView.DragMode.NoDrag)
+
     def _trim_external_conn_endpoint_wps(self, comp_ids: set[int],
                                             seen_conn_ids: set[int]) -> None:
         """Trim stale waypoints near moving endpoints on external connections.
@@ -2045,49 +1948,50 @@ class DiagramView(QGraphicsView):
                 item.update_route()
 
     def _setup_unified_drag(self, scene_pos: QPointF) -> None:
-        """Set up a drag that moves both components and selected waypoints."""
+        """Set up a drag that moves both components and selected waypoints.
+
+        Same closure as every other drag; the only difference is that
+        wires whose waypoints are in the unified selection are driven by
+        that selection rather than translated as internal wires.
+        """
+        from diagrammer.canvas.closure import movable_closure
+
         self._snapshot_connection_anchors()
-        # Gather selected components/junctions/annotations
-        selected_components = [
+        selected = [
             i for i in self._diagram_scene.selectedItems()
             if isinstance(i, (ComponentItem, JunctionItem, AnnotationItem))
         ]
-        for comp in selected_components:
+        closure = movable_closure(self._diagram_scene.items(), selected)
+        movers = closure.movers
+        for comp in movers:
             if hasattr(comp, '_skip_snap'):
                 comp._skip_snap = True
             self._diagram_scene.record_move_start(comp.instance_id, comp.pos())
 
-        # Snapshot waypoint start positions
-        self._unified_drag_waypoint_starts = {}
-        for conn_id, conn in self._selected_waypoint_conns.items():
-            self._unified_drag_waypoint_starts[conn_id] = [QPointF(w) for w in conn.vertices]
-
-        self._dragging_components = selected_components
+        self._unified_drag_waypoint_starts = {
+            conn_id: [QPointF(w) for w in conn.vertices]
+            for conn_id, conn in self._selected_waypoint_conns.items()
+        }
+        self._drag_auto_junctions = list(closure.junctions)
+        self._dragging_components = movers
         self._drag_anchor_item = None
         self._drag_anchor_start_pos = None
         self._drag_mouse_start = QPointF(scene_pos)
         self._unified_drag_active = True
 
-        # Capture internal connections (both endpoints in component set,
-        # excluding connections being waypoint-dragged)
-        comp_ids = set(id(c) for c in selected_components)
         unified_conn_ids = set(self._selected_waypoint_set.keys())
-        self._drag_internal_conns = []
-        self._drag_conn_waypoints = {}
-        for si in self._diagram_scene.items():
-            if isinstance(si, ConnectionItem) and si.instance_id not in unified_conn_ids:
-                src_in = id(si.source_port.component) in comp_ids
-                tgt_in = id(si.target_port.component) in comp_ids
-                if src_in and tgt_in:
-                    self._drag_internal_conns.append(si)
-                    self._drag_conn_waypoints[si.instance_id] = [
-                        QPointF(w) for w in si.vertices
-                    ]
-        seen_ids = set(id(c) for c in self._drag_internal_conns)
+        self._drag_internal_conns = [
+            c for c in closure.internal_wires if c.instance_id not in unified_conn_ids
+        ]
+        self._drag_conn_waypoints = {
+            c.instance_id: [QPointF(w) for w in c.vertices]
+            for c in self._drag_internal_conns
+        }
+        seen_ids = {id(c) for c in closure.internal_wires}
         seen_ids.update(id(self._selected_waypoint_conns[cid])
                         for cid in unified_conn_ids
                         if cid in self._selected_waypoint_conns)
-        self._trim_external_conn_endpoint_wps(comp_ids, seen_ids)
+        self._trim_external_conn_endpoint_wps(closure.mover_ids(), seen_ids)
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
 
     def _expand_group_selection(self, clicked_item) -> list:
@@ -2172,13 +2076,15 @@ class DiagramView(QGraphicsView):
                 if m not in selected and not isinstance(m, ConnectionItem):
                     selected.append(m)
 
-        # Auto-include connected junctions (invisible T-junction markers)
-        main_win = self.window()
-        if hasattr(main_win, '_gather_connected_junctions'):
-            extra_juncs = main_win._gather_connected_junctions(selected)
-            for j in extra_juncs:
-                if j not in selected:
-                    selected.append(j)
+        # Same rule as copy: junctions touching the selection travel
+        # with the duplicate, plus any rail that ends on it.
+        from diagrammer.canvas.closure import movable_closure
+        closure = movable_closure(
+            self._diagram_scene.items(), selected, include_touching=True,
+        )
+        for j in closure.junctions:
+            if j not in selected:
+                selected.append(j)
 
         if not selected:
             return [], []
@@ -2407,11 +2313,16 @@ class DiagramView(QGraphicsView):
             dy = step
 
         # Split into movable items and selected connections
+        from diagrammer.canvas.closure import movable_closure
         movable = [i for i in items if not isinstance(i, ConnectionItem)]
         selected_conns = [i for i in items if isinstance(i, ConnectionItem)]
 
         if not movable and not selected_conns:
             return
+        # Selected wires seed the closure so a free wire's junctions
+        # nudge with it; the rest is the same rule as a drag.
+        closure = movable_closure(self._diagram_scene.items(), movable + selected_conns)
+        movable = closure.movers
 
         self._diagram_scene.undo_stack.beginMacro("Nudge")
         # Wire routes are recorded at the end, from anchors: this macro
@@ -2426,41 +2337,13 @@ class DiagramView(QGraphicsView):
             cmd = MoveComponentCommand(item, old_pos, new_pos)
             self._diagram_scene.undo_stack.push(cmd)
 
-        # Shift waypoints of internal connections (both ends in movable set)
-        item_ids = set(id(i) for i in movable)
-        for si in self._diagram_scene.items():
-            if not isinstance(si, ConnectionItem):
-                continue
-            if (id(si.source_port.component) in item_ids and
-                    id(si.target_port.component) in item_ids):
-                old_wps = [QPointF(w) for w in si.vertices]
-                if old_wps:
-                    si._set_waypoints_from_scene(
-                        [QPointF(w.x() + dx, w.y() + dy) for w in old_wps])
-                    si.update_route()
-
-        # Shift waypoints of explicitly selected connections. For free
-        # wires, also nudge the endpoint JunctionItems so they stay
-        # anchored to the wire — otherwise arrow-key nudging leaves
-        # trailing stubs because the junctions don't move with the
-        # waypoints.
-        from diagrammer.items.junction_item import JunctionItem
-        already_moved_ids = set(id(i) for i in movable)
-        for conn in selected_conns:
-            old_wps = [QPointF(w) for w in conn.vertices]
+        # Internal wires translate rigidly with their endpoints.
+        for si in closure.internal_wires:
+            old_wps = [QPointF(w) for w in si.vertices]
             if old_wps:
-                conn._set_waypoints_from_scene(
+                si._set_waypoints_from_scene(
                     [QPointF(w.x() + dx, w.y() + dy) for w in old_wps])
-                conn.update_route()
-            for port_item in (conn.source_port, conn.target_port):
-                pc = port_item.component if port_item else None
-                if isinstance(pc, JunctionItem) and id(pc) not in already_moved_ids:
-                    old_pos = pc.pos()
-                    new_pos = QPointF(old_pos.x() + dx, old_pos.y() + dy)
-                    self._diagram_scene.undo_stack.push(
-                        MoveComponentCommand(pc, old_pos, new_pos)
-                    )
-                    already_moved_ids.add(id(pc))
+                si.update_route()
 
         self._record_dragged_connection_routes()
         self._drag_conn_anchor_starts = {}
