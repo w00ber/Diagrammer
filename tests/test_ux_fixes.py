@@ -77,11 +77,7 @@ class TestNoOpClickUndoSafety:
         view = _make_view(scene)
         # Prime the drag state exactly as mousePressEvent does for a
         # click on a movable item, then release without any movement.
-        view._dragging_components = [rect]
-        view._drag_anchor_item = rect
-        view._drag_anchor_start_pos = QPointF(rect.pos())
-        view._drag_mouse_start = QPointF(rect.pos())
-        scene.record_move_start(rect.instance_id, rect.pos())
+        view._begin_item_drag(rect, [rect], rect.pos())
 
         view.mouseReleaseEvent(_release_event(view, rect.pos()))
 
@@ -102,12 +98,8 @@ class TestNoOpClickUndoSafety:
         count_before = scene.undo_stack.count()
 
         view = _make_view(scene)
-        view._dragging_components = [rect]
-        view._drag_anchor_item = rect
-        view._drag_anchor_start_pos = QPointF(rect.pos())
-        view._drag_mouse_start = QPointF(rect.pos())
-        scene.record_move_start(rect.instance_id, rect.pos())
-        rect.setPos(QPointF(140, 140))  # simulate the drag
+        view._begin_item_drag(rect, [rect], rect.pos())
+        view._drag.move_to(QPointF(100, 100))  # simulate the drag
 
         view.mouseReleaseEvent(_release_event(view, rect.pos()))
 
@@ -142,14 +134,8 @@ class TestAutoJoinOnMove:
         current = b.ports[0].scene_center()
         delta = target - current
 
-        view._dragging_components = [b]
-        view._drag_anchor_item = b
-        view._drag_anchor_start_pos = QPointF(b.pos())
-        view._drag_mouse_start = QPointF(b.pos())
-        scene.record_move_start(b.instance_id, b.pos())
-        b._skip_snap = True
-        b.setPos(b.pos() + delta)
-        b._skip_snap = False
+        view._begin_item_drag(b, [b], b.pos())
+        view._drag.move_to(delta)
 
         view.mouseReleaseEvent(_release_event(view, b.pos()))
 

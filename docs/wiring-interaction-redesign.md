@@ -239,3 +239,15 @@ decision; C does.
   through the port's frame. Clipboard and compound manifests likewise.
   Rotating one component now rubber-bands its wires (I2); group
   transforms map internal wires explicitly as before.
+- 2026-10-27: **Step D1 landed.** `DragSession` (`canvas/drag.py`) is
+  the one drag pipeline: snapshot at construction, idempotent
+  `move_to(delta)` against the snapshot, `commit(label)` diffs the
+  scene into a single macro (item moves, auto-join, healing, wire
+  edits) or does nothing for a click. Plain, multi-select, grouped-
+  wire, Alt-clone and unified-waypoint drags and the arrow-key nudge
+  all drive it; the view keeps one `_drag` field and decides only the
+  movers and the snapped delta (`_snapped_drag_delta`). Deleted: the
+  second move branch, `_drag_changed_anything`, the hand-assembled
+  release macro, scene `record_move_start/end`, ten drag-state fields
+  and the vestigial `_alt_drag_clone`. D2 (next) takes snapping out of
+  `itemChange` so `_skip_snap` and `ItemIsMovable` can go.

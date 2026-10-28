@@ -54,22 +54,16 @@ class DiagramView(QGraphicsView):
         self._snap_enabled = True
         self._panning = False
         self._pan_start = QPointF()
-        self._dragging_components: list = []  # ComponentItem and/or JunctionItem
-        self._drag_anchor_item = None  # the specific item clicked to start the drag
-        self._drag_anchor_start_pos: QPointF | None = None  # scene pos of anchor at drag start
-        self._drag_internal_conns: list = []  # connections with both ends in drag selection
-        self._drag_conn_waypoints: dict = {}  # conn instance_id -> initial waypoints
-        self._drag_auto_junctions: list = []  # junctions auto-included (need manual move)
-        # conn instance_id -> waypoints at drag start, for every wire in
-        # the scene; the single source of truth for the drag's wire undo
-        # entries. See _snapshot_connection_routes.
-        self._drag_conn_starts: dict = {}
+        # The in-progress move, if any: one DragSession whatever started
+        # it (plain drag, grouped wire, Alt-clone, unified waypoints).
+        # The view decides the movers and the delta; the session owns
+        # the snapshot, the per-move placement and the undo macro.
+        self._drag = None
         self._drag_mouse_start: QPointF | None = None
-        # Unified waypoint+component drag state
+        # Waypoint selection (rubber band / shift-click), shared by the
+        # wires' own handlers and the unified drag.
         self._selected_waypoint_set: dict[str, set[int]] = {}  # conn instance_id → selected wp indices
         self._selected_waypoint_conns: dict = {}  # conn instance_id → ConnectionItem
-        self._unified_drag_active = False
-        self._unified_drag_waypoint_starts: dict[str, list[QPointF]] = {}
         self._trace_routing = False
         self._trace_vertices: list[QPointF] = []
         self._extending_wire = None      # ConnectionItem being extended
@@ -112,6 +106,15 @@ class DiagramView(QGraphicsView):
         # Accept native gestures (pinch-to-zoom on trackpad)
         self.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
         self.grabGesture(Qt.GestureType.PinchGesture)
+
+    @property
+    def _dragging_components(self) -> list:
+        """Items being moved right now (empty when idle).
+
+        Read by ``ConnectionItem._build_expanded`` to suppress render
+        stubs on wires whose endpoints are mid-drag.
+        """
+        return list(self._drag.movers) if self._drag is not None else []
 
     # -- Rubber-band tracking --
 
@@ -1002,25 +1005,14 @@ class DiagramView(QGraphicsView):
                 if isinstance(item, ConnectionItem) and not getattr(item, '_group_id', None):
                     pass  # handled inside _duplicate_selection
                 result = self._duplicate_selection(item, scene_pos)
-                clones, cloned_conns = result if result else ([], [])
+                clones, _cloned_conns = result if result else ([], [])
                 if clones:
-                    anchor = clones[0]
                     self._diagram_scene.clearSelection()
                     for c in clones:
                         c.setSelected(True)
-                    self._dragging_components = clones
-                    self._drag_anchor_item = anchor
-                    self._drag_anchor_start_pos = QPointF(anchor.pos())
-                    for c in clones:
-                        self._diagram_scene.record_move_start(c.instance_id, c.pos())
-                    # Track cloned connections so their waypoints shift during drag
-                    self._drag_internal_conns = cloned_conns
-                    self._drag_conn_waypoints = {
-                        conn.instance_id: [QPointF(w) for w in conn.vertices]
-                        for conn in cloned_conns
-                    }
-                    self._drag_mouse_start = QPointF(scene_pos)
-                    self.setDragMode(QGraphicsView.DragMode.NoDrag)
+                    # The clones' own wires are internal to the closure;
+                    # nothing else is attached to them yet.
+                    self._begin_item_drag(clones[0], clones, scene_pos)
                 event.accept()
                 return
 
@@ -1058,9 +1050,6 @@ class DiagramView(QGraphicsView):
                         ]
                         self._begin_item_drag(anchor, selected, scene_pos,
                                               group_wires=group_wires)
-                        # Qt didn't receive press on anchor, so we must track
-                        # mouse delta ourselves (same mechanism as alt-drag)
-                        anchor._alt_drag_clone = True
                         event.accept()
                         return
 
@@ -1112,20 +1101,11 @@ class DiagramView(QGraphicsView):
                     self._begin_item_drag(item, selected, scene_pos,
                                           group_wires=group_wires)
 
-                    # If waypoints are also selected, activate unified drag
-                    if self._selected_waypoint_set:
-                        self._unified_drag_active = True
-                        self._unified_drag_waypoint_starts = {}
-                        for conn_id, conn in self._selected_waypoint_conns.items():
-                            self._unified_drag_waypoint_starts[conn_id] = [
-                                QPointF(w) for w in conn.vertices
-                            ]
-
         # Save selection before Qt's default handler clears it (Qt deselects
         # everything on a plain click, but we need multi-select to survive).
         _saved_selection = (
             list(self._diagram_scene.selectedItems())
-            if len(self._dragging_components) > 1
+            if self._drag is not None and len(self._drag.movers) > 1
             else None
         )
 
@@ -1277,155 +1257,14 @@ class DiagramView(QGraphicsView):
             return
 
         # Update connections if components are being dragged
-        if self._dragging_components and self._unified_drag_active:
-            # Unified drag: move components + selected waypoints together
+        if self._drag is not None:
             mouse_scene = self.mapToScene(event.position().toPoint())
             if self._drag_mouse_start is None:
                 self._drag_mouse_start = mouse_scene
-            snapped_pos = self._snap_if_enabled(mouse_scene)
-            snapped_start = self._snap_if_enabled(self._drag_mouse_start)
-            delta = snapped_pos - snapped_start
-
-            # Move components
-            for item in self._dragging_components:
-                start = self._diagram_scene._drag_start_positions.get(item.instance_id)
-                if start is not None:
-                    item._skip_snap = True
-                    item.setPos(start + delta)
-                    item._skip_snap = False
-
-            # Move unified-selected waypoints
-            for conn_id, orig_wps in self._unified_drag_waypoint_starts.items():
-                conn = self._selected_waypoint_conns.get(conn_id)
-                if conn is None:
-                    continue
-                sel_indices = self._selected_waypoint_set.get(conn_id, set())
-                for idx in sel_indices:
-                    if 0 <= idx < len(conn._waypoints) and idx < len(orig_wps):
-                        conn._set_waypoint_at(idx, QPointF(
-                            orig_wps[idx].x() + delta.x(),
-                            orig_wps[idx].y() + delta.y(),
-                        ))
-                conn.update_route()
-
-            # Shift internal connection waypoints
-            for conn in self._drag_internal_conns:
-                orig_wps = self._drag_conn_waypoints.get(conn.instance_id, [])
-                if orig_wps:
-                    conn._set_waypoints_from_scene([
-                        QPointF(w.x() + delta.x(), w.y() + delta.y())
-                        for w in orig_wps
-                    ])
-                conn.update_route()
-
-            # Update external connections
-            internal_ids = set(id(c) for c in self._drag_internal_conns)
-            unified_ids = set(
-                id(self._selected_waypoint_conns[cid])
-                for cid in self._selected_waypoint_conns
-            )
-            for item in self._diagram_scene.items():
-                if isinstance(item, ConnectionItem):
-                    if id(item) not in internal_ids and id(item) not in unified_ids:
-                        item.update_route()
-            from diagrammer.items.component_item import ComponentItem as _UCItem
-            for item in self._diagram_scene.items():
-                if isinstance(item, _UCItem):
-                    item.refresh_lead_shortening()
-
-            scene_pos = self.mapToScene(event.position().toPoint())
-            self._diagram_scene.cursor_scene_pos_changed.emit(scene_pos.x(), scene_pos.y())
-            return
-
-        if self._dragging_components:
-            if self._drag_anchor_start_pos and self._drag_anchor_item:
-                # Always compute delta from mouse position — don't rely on
-                # Qt moving the anchor, which fails after save/reload and
-                # when clicking grouped connections.
-                mouse_scene = self.mapToScene(event.position().toPoint())
-                if self._drag_mouse_start is None:
-                    self._drag_mouse_start = mouse_scene
-                raw_delta = mouse_scene - self._drag_mouse_start
-
-                # Snap the delta to grid via the anchor's snap logic
-                anchor = self._drag_anchor_item
-                anchor_start = self._drag_anchor_start_pos
-                tentative_pos = anchor_start + raw_delta
-
-                # Snap: use the anchor's port-based snap offset if available,
-                # so the PORT lands on grid (not the item's origin)
-                from diagrammer.canvas.grid import snap_to_grid
-                views = self._diagram_scene.views()
-                if views and getattr(views[0], '_snap_enabled', True):
-                    spacing = views[0].grid_spacing
-                    snap_offset = getattr(anchor, '_snap_anchor_offset', None)
-                    if snap_offset is not None:
-                        # Snap the port position, then derive item position
-                        port_pos = tentative_pos + snap_offset
-                        snapped_port = snap_to_grid(port_pos, spacing)
-                        snapped_pos = tentative_pos + (snapped_port - port_pos)
-                    else:
-                        snapped_pos = snap_to_grid(tentative_pos, spacing)
-                else:
-                    snapped_pos = tentative_pos
-                delta = snapped_pos - anchor_start
-
-                # Reposition ALL items (including anchor) using the snapped delta
-                for item in self._dragging_components:
-                    start = self._diagram_scene._drag_start_positions.get(item.instance_id)
-                    if start is not None:
-                        item._skip_snap = True
-                        item.setPos(start + delta)
-                        item._skip_snap = False
-                # Shift internal connection waypoints and rebuild their routes
-                for conn in self._drag_internal_conns:
-                    orig_wps = self._drag_conn_waypoints.get(conn.instance_id, [])
-                    if orig_wps:
-                        conn._set_waypoints_from_scene([
-                            QPointF(w.x() + delta.x(), w.y() + delta.y())
-                            for w in orig_wps
-                        ])
-                    conn.update_route()
-
-                # Update non-internal connections (external wires to the group)
-                internal_ids = set(id(c) for c in self._drag_internal_conns)
-                for item in self._diagram_scene.items():
-                    if isinstance(item, ConnectionItem) and id(item) not in internal_ids:
-                        item.update_route()
-                # Refresh lead shortening
-                from diagrammer.items.component_item import ComponentItem
-                for item in self._diagram_scene.items():
-                    if isinstance(item, ComponentItem):
-                        item.refresh_lead_shortening()
+            self._drag.move_to(self._snapped_drag_delta(mouse_scene))
 
         scene_pos = self.mapToScene(event.position().toPoint())
         self._diagram_scene.cursor_scene_pos_changed.emit(scene_pos.x(), scene_pos.y())
-
-    def _drag_changed_anything(self) -> bool:
-        """True if the in-progress drag moved any item or edited any waypoints.
-
-        Used to decide whether mouseReleaseEvent may touch the undo stack:
-        opening a macro for a no-op click would wipe the redo history.
-        """
-        starts = self._diagram_scene._drag_start_positions
-        for comp in self._dragging_components:
-            start = starts.get(comp.instance_id)
-            if start is not None and start != comp.pos():
-                return True
-        if self._unified_drag_active:
-            for conn_id, orig_wps in self._unified_drag_waypoint_starts.items():
-                conn = self._selected_waypoint_conns.get(conn_id)
-                if conn is not None and orig_wps != list(conn.vertices):
-                    return True
-        for conn in self._drag_internal_conns:
-            if self._drag_conn_waypoints.get(conn.instance_id, []) != list(conn.vertices):
-                return True
-        for item in self._diagram_scene.items():
-            if isinstance(item, ConnectionItem):
-                orig = self._drag_conn_starts.get(item.instance_id)
-                if orig is not None and orig != list(item.vertices):
-                    return True
-        return False
 
     def mouseReleaseEvent(self, event) -> None:
         # Zoom window — complete
@@ -1486,69 +1325,13 @@ class DiagramView(QGraphicsView):
                 event.accept()
                 return
 
-            # Record move end for undo for all dragged items
-            if self._dragging_components:
-                # Only open an undo macro when something actually changed.
-                # Qt keeps empty macros on the stack, and beginMacro()
-                # unconditionally deletes all redoable commands — so a
-                # plain selection click (which also lands here) must not
-                # touch the undo stack at all.
-                changed = self._drag_changed_anything()
-                if changed:
-                    self._diagram_scene.undo_stack.beginMacro("Move group")
-                try:
-                    moved_components = [
-                        comp for comp in self._dragging_components
-                        if isinstance(comp, ComponentItem)
-                        and self._diagram_scene._drag_start_positions.get(comp.instance_id)
-                        not in (None, comp.pos())
-                    ]
-                    # Record each item's move WITHOUT triggering per-item updates
-                    for comp in self._dragging_components:
-                        if hasattr(comp, '_alt_drag_clone'):
-                            del comp._alt_drag_clone
-                        if hasattr(comp, '_skip_snap'):
-                            comp._skip_snap = False
-                        self._diagram_scene.record_move_end(comp, update=False)
-                        if hasattr(comp, 'clear_snap_anchor'):
-                            comp.clear_snap_anchor()
-                    # Auto-join ports that were dropped onto other ports —
-                    # inside the macro so the created wire undoes together
-                    # with the move.
-                    for comp in moved_components:
-                        self._diagram_scene.auto_join_overlapping_ports(comp)
-                    # Heal wires the move straightened out. A waypoint
-                    # that no longer bends the route is invisible, but it
-                    # still splits a draggable run in two and pins a point
-                    # the grid snap can't move — so moving parts around
-                    # would otherwise make the wiring progressively harder
-                    # to edit. Changes land inside the same macro, so a
-                    # plain selection click (changed == False) never
-                    # touches the undo stack.
-                    if changed:
-                        self._simplify_dragged_connections()
-                        # One pass records every wire the drag reshaped
-                        # — internal, external and unified-selected
-                        # alike — against the anchors snapshotted at
-                        # drag start.
-                        self._record_dragged_connection_routes()
-                finally:
-                    if changed:
-                        self._diagram_scene.undo_stack.endMacro()
-                    # Clear drag state BEFORE update so approach segments aren't suppressed
-                    self._dragging_components = []
-                    self._drag_anchor_item = None
-                    self._drag_internal_conns = []
-                    self._drag_conn_waypoints = {}
-                    self._drag_conn_starts = {}
-                    self._drag_anchor_start_pos = None
-                    self._drag_auto_junctions = []
-                    self._drag_mouse_start = None
-                    self._unified_drag_active = False
-                    self._unified_drag_waypoint_starts = {}
-                    # Now update with drag state cleared
-                    self._diagram_scene.update_connections()
-                    self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
+            # Finish the move: one macro from the session's diff, or
+            # nothing at all for a click that moved nothing.
+            if self._drag is not None:
+                session, self._drag = self._drag, None
+                self._drag_mouse_start = None
+                session.commit("Move group")
+                self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
 
         super().mouseReleaseEvent(event)
 
@@ -1754,147 +1537,68 @@ class DiagramView(QGraphicsView):
 
     def _begin_item_drag(self, anchor, selected: list, scene_pos: QPointF,
                          *, group_wires=()) -> None:
-        """Arm a drag of *selected* plus whatever the closure pulls along.
+        """Start a DragSession for *selected* plus whatever the closure pulls along.
 
-        One entry point for every item drag (plain, multi-select, grouped
-        wire). The closure decides which junctions travel and which
-        wires are internal (translated rigidly) versus boundary
-        (re-routed); nothing else in the drag code reasons about
-        junctions. *group_wires* are a group's own wires: not movers,
-        but their endpoint junctions seed the closure so a grouped free
-        wire moves with its group.
+        One entry point for every item drag (plain, multi-select,
+        grouped wire, Alt-clone). The closure decides which junctions
+        travel and which wires are internal versus boundary; the session
+        does the moving. *group_wires* are a group's own wires: not
+        movers, but their endpoint junctions seed the closure so a
+        grouped free wire moves with its group. Waypoints the user has
+        selected ride along, driven directly.
         """
         from diagrammer.canvas.closure import movable_closure
+        from diagrammer.canvas.drag import DragSession
 
         closure = movable_closure(
             self._diagram_scene.items(), list(selected) + list(group_wires),
         )
-        self._drag_auto_junctions = list(closure.junctions)
-        movers = closure.movers
-        self._dragging_components = movers
-        self._drag_anchor_item = anchor
-        self._drag_anchor_start_pos = QPointF(anchor.pos())
+        self._drag = DragSession(
+            self._diagram_scene, closure, anchor=anchor,
+            waypoint_selection=self._selected_waypoint_set,
+            wires_by_id=self._selected_waypoint_conns,
+        )
         self._drag_mouse_start = QPointF(scene_pos)
-        for comp in movers:
-            self._diagram_scene.record_move_start(comp.instance_id, comp.pos())
-        self._drag_internal_conns = list(closure.internal_wires)
-        self._drag_conn_waypoints = {
-            c.instance_id: [QPointF(w) for w in c.vertices]
-            for c in closure.internal_wires
-        }
-        self._snapshot_connection_routes()
-        self._tidy_boundary_wires(closure.boundary_wires)
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
 
-    def _tidy_boundary_wires(self, wires) -> None:
-        """Prune a boundary wire's redundant waypoints before it stretches.
-
-        A waypoint sitting on the port that is about to move would stay
-        behind as a stub; it is redundant by construction and goes now,
-        after the snapshot so the undo entry puts it back.
-        """
-        for wire in wires:
-            if wire.simplify_waypoints():
-                wire.update_route()
-
-    def _snapshot_connection_routes(self) -> None:
-        """Record every wire's waypoints at the start of a drag.
-
-        One snapshot covers internal, boundary and unified-selected
-        wires alike, so the release handler has a before-state for any
-        route the drag touches.
-        """
-        self._drag_conn_starts = {
-            item.instance_id: [QPointF(w) for w in item.vertices]
-            for item in self._diagram_scene.items()
-            if isinstance(item, ConnectionItem)
-        }
-
-    @staticmethod
-    def _routes_differ(a: list, b: list, tol: float = 0.01) -> bool:
-        if len(a) != len(b):
-            return True
-        return any(abs(p.x() - q.x()) > tol or abs(p.y() - q.y()) > tol
-                   for p, q in zip(a, b))
-
-    def _record_dragged_connection_routes(self) -> None:
-        """Push undo entries for wires this drag reshaped."""
-        from diagrammer.commands.connect_command import EditWaypointsCommand
-
-        for item in self._diagram_scene.items():
-            if not isinstance(item, ConnectionItem):
-                continue
-            before = self._drag_conn_starts.get(item.instance_id)
-            if before is None:
-                continue  # created during this drag (auto-join)
-            after = [QPointF(w) for w in item.vertices]
-            if self._routes_differ(before, after):
-                self._diagram_scene.undo_stack.push(
-                    EditWaypointsCommand(item, before, after)
-                )
-
-    def _simplify_dragged_connections(self) -> None:
-        """Prune no-op waypoints on every wire this drag touched.
-
-        Recording is left to :meth:`_record_dragged_connection_routes`,
-        which compares against the drag-start anchors and so captures
-        the prune and the move's own reshaping in one entry.
-        """
-        drag_ids = set(id(c) for c in self._dragging_components)
-        for item in self._diagram_scene.items():
-            if not isinstance(item, ConnectionItem) or not item.vertices:
-                continue
-            src = item.source_port.component if item.source_port else None
-            tgt = item.target_port.component if item.target_port else None
-            if id(src) not in drag_ids and id(tgt) not in drag_ids:
-                continue
-            if item.simplify_waypoints():
-                item.update_route()
-
     def _setup_unified_drag(self, scene_pos: QPointF) -> None:
-        """Set up a drag that moves both components and selected waypoints.
+        """A drag started on a selected waypoint: same session, no anchor.
 
-        Same closure as every other drag; the only difference is that
-        wires whose waypoints are in the unified selection are driven by
-        that selection rather than translated as internal wires.
+        With no anchor item the delta snaps the mouse positions
+        themselves (see ``_snapped_drag_delta``).
         """
-        from diagrammer.canvas.closure import movable_closure
-
         selected = [
             i for i in self._diagram_scene.selectedItems()
             if isinstance(i, (ComponentItem, JunctionItem, AnnotationItem))
         ]
-        closure = movable_closure(self._diagram_scene.items(), selected)
-        movers = closure.movers
-        for comp in movers:
-            if hasattr(comp, '_skip_snap'):
-                comp._skip_snap = True
-            self._diagram_scene.record_move_start(comp.instance_id, comp.pos())
+        self._begin_item_drag(None, selected, scene_pos)
 
-        self._unified_drag_waypoint_starts = {
-            conn_id: [QPointF(w) for w in conn.vertices]
-            for conn_id, conn in self._selected_waypoint_conns.items()
-        }
-        self._drag_auto_junctions = list(closure.junctions)
-        self._dragging_components = movers
-        self._drag_anchor_item = None
-        self._drag_anchor_start_pos = None
-        self._drag_mouse_start = QPointF(scene_pos)
-        self._unified_drag_active = True
+    def _snapped_drag_delta(self, mouse_scene: QPointF) -> QPointF:
+        """The delta a drag should apply for the cursor at *mouse_scene*.
 
-        unified_conn_ids = set(self._selected_waypoint_set.keys())
-        self._drag_internal_conns = [
-            c for c in closure.internal_wires if c.instance_id not in unified_conn_ids
-        ]
-        self._drag_conn_waypoints = {
-            c.instance_id: [QPointF(w) for w in c.vertices]
-            for c in self._drag_internal_conns
-        }
-        self._snapshot_connection_routes()
-        self._tidy_boundary_wires(
-            w for w in closure.boundary_wires if w.instance_id not in unified_conn_ids
-        )
-        self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        Snapping is an input concern, decided here once: with an anchor
+        item the delta is whatever lands the anchor's snap point (its
+        nearest port, for a component) on the grid; without one, the
+        snapped mouse displacement.
+        """
+        from diagrammer.canvas.grid import snap_to_grid
+
+        raw = mouse_scene - self._drag_mouse_start
+        session = self._drag
+        anchor = session.anchor if session is not None else None
+        if anchor is None:
+            return self._snap_if_enabled(mouse_scene) - self._snap_if_enabled(self._drag_mouse_start)
+        start = session.item_starts.get(id(anchor), QPointF(anchor.pos()))
+        tentative = start + raw
+        if not self._snap_enabled:
+            return tentative - start
+        offset = getattr(anchor, '_snap_anchor_offset', None)
+        if offset is not None:
+            snap_point = tentative + offset
+            snapped = tentative + (snap_to_grid(snap_point, self._grid_spacing) - snap_point)
+        else:
+            snapped = snap_to_grid(tentative, self._grid_spacing)
+        return snapped - start
 
     def _expand_group_selection(self, clicked_item) -> list:
         """Expand selection to include all group members of the clicked item.
@@ -2077,7 +1781,6 @@ class DiagramView(QGraphicsView):
     def _duplicate_item(self, item):
         """Create an exact clone of an item at the same position (for Alt+drag).
 
-        The clone is flagged with ``_alt_drag_clone = True`` so that
         mouseMoveEvent manually positions it (Qt's built-in drag won't
         track an item that didn't receive the original press event).
         """
@@ -2192,15 +1895,10 @@ class DiagramView(QGraphicsView):
             from diagrammer.commands.shape_command import AddShapeCommand
             cmd = AddShapeCommand(self._diagram_scene, clone, item.pos())
             self._diagram_scene.undo_stack.push(cmd)
-            clone._alt_drag_clone = True
-        elif clone is not None:
-            clone._alt_drag_clone = True
         return clone
 
     def _nudge_selected(self, items, key, *, fine: bool = False) -> None:
         """Move selected items by 20% of grid (or 10% with Shift held)."""
-        from diagrammer.commands.add_command import MoveComponentCommand
-
         from diagrammer.panels.settings_dialog import app_settings
         frac = app_settings.nudge_fraction
         step = self._grid_spacing * (frac * 0.5 if fine else frac)
@@ -2214,40 +1912,19 @@ class DiagramView(QGraphicsView):
         elif key == Qt.Key.Key_Down:
             dy = step
 
-        # Split into movable items and selected connections
         from diagrammer.canvas.closure import movable_closure
+        from diagrammer.canvas.drag import DragSession
+
         movable = [i for i in items if not isinstance(i, ConnectionItem)]
         selected_conns = [i for i in items if isinstance(i, ConnectionItem)]
-
         if not movable and not selected_conns:
             return
         # Selected wires seed the closure so a free wire's junctions
         # nudge with it; the rest is the same rule as a drag.
         closure = movable_closure(self._diagram_scene.items(), movable + selected_conns)
-        movable = closure.movers
-
-        self._diagram_scene.undo_stack.beginMacro("Nudge")
-        self._snapshot_connection_routes()
-
-        # Move items (components, junctions, annotations, shapes)
-        for item in movable:
-            old_pos = item.pos()
-            new_pos = QPointF(old_pos.x() + dx, old_pos.y() + dy)
-            cmd = MoveComponentCommand(item, old_pos, new_pos)
-            self._diagram_scene.undo_stack.push(cmd)
-
-        # Internal wires translate rigidly with their endpoints.
-        for si in closure.internal_wires:
-            old_wps = [QPointF(w) for w in si.vertices]
-            if old_wps:
-                si._set_waypoints_from_scene(
-                    [QPointF(w.x() + dx, w.y() + dy) for w in old_wps])
-                si.update_route()
-
-        self._record_dragged_connection_routes()
-        self._drag_conn_starts = {}
-        self._diagram_scene.undo_stack.endMacro()
-        self._diagram_scene.update_connections()
+        session = DragSession(self._diagram_scene, closure)
+        session.move_to(QPointF(dx, dy))
+        session.commit("Nudge")
 
     def mouseDoubleClickEvent(self, event) -> None:
         """Double-click in trace routing mode terminates the wire at the cursor."""

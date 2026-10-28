@@ -180,22 +180,8 @@ class TestUndoAfterMoveRestoresWireShape:
 
         # Prime the drag the way mousePressEvent does for res + j_left,
         # then move and release.
-        dragged = [res, j_left]
-        j_left._skip_snap = True
-        view._dragging_components = dragged
-        view._drag_anchor_item = res
-        view._drag_anchor_start_pos = QPointF(res.pos())
-        view._drag_mouse_start = QPointF(0, 120)
-        for item in dragged:
-            scene.record_move_start(item.instance_id, item.pos())
-        view._drag_internal_conns = []
-        view._drag_conn_waypoints = {}
-        view._snapshot_connection_routes()
-        for item in dragged:
-            item._skip_snap = True
-            item.setPos(item.pos() + QPointF(200, 0))
-            item._skip_snap = False
-        scene.update_connections()
+        view._begin_item_drag(res, [res, j_left], QPointF(0, 120))
+        view._drag.move_to(QPointF(200, 0))
 
         view.mouseReleaseEvent(_release(view, QPointF(200, 120)))
         assert rail.all_points()[0].x() == pytest.approx(200.0)
