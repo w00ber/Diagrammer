@@ -106,9 +106,7 @@ class TestHopRendering:
         shift = QPointF(30, 0) if loser is v else QPointF(0, 30)
         for port in (loser.source_port, loser.target_port):
             comp = port.component
-            comp._skip_snap = True
             comp.setPos(comp.pos() + shift)
-            comp._skip_snap = False
         scene.update_connections()
 
         new_hops = owner._compute_hops()

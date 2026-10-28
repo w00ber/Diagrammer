@@ -61,9 +61,7 @@ def _place(scene, cdef, port_at: QPointF) -> ComponentItem:
     """Place *cdef* with its first port exactly on *port_at*."""
     comp = ComponentItem(cdef)
     scene.addItem(comp)
-    comp._skip_snap = True
     comp.setPos(port_at - (comp.ports[0].scene_center() - comp.pos()))
-    comp._skip_snap = False
     return comp
 
 
@@ -392,9 +390,7 @@ class TestReviewFindingsPR36:
         for x in (200, 220):
             comp = ComponentItem(cdef)
             scene.addItem(comp)
-            comp._skip_snap = True
             comp.setPos(QPointF(x, 200) - (_scene_center(comp) - comp.pos()))
-            comp._skip_snap = False
             parts.append(comp)
         _select_all(scene)
         _make_transform_host(scene, library)._rotate_selected(90)

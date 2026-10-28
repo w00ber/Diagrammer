@@ -1062,7 +1062,6 @@ class AnnotationItem(QGraphicsTextItem):
         self._group_id: str | None = None
         self._group_ids: list[str] = []
         self._editing = False
-        self._skip_snap = False
         self._source_text: str = text  # plain-text source (with $..$ math)
         self._math_renderer: QSvgRenderer | None = None  # vector math renderer
         self._math_image = None  # pre-rasterized QImage of the math SVG
@@ -1090,8 +1089,8 @@ class AnnotationItem(QGraphicsTextItem):
         self.setPlainText(text)
         self._try_render_math()
 
-        # Item flags — movable and selectable, but NOT editable by default
-        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        # Item flags — selectable but NOT editable by default; moved by
+        # the view's DragSession, never by Qt
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
@@ -1455,13 +1454,6 @@ class AnnotationItem(QGraphicsTextItem):
         super().focusOutEvent(event)
 
     def itemChange(self, change, value):
-        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
-            if self._skip_snap:
-                return value
-            from diagrammer.canvas.grid import snap_to_grid
-            views = self.scene().views()
-            if views and getattr(views[0], '_snap_enabled', True):
-                return snap_to_grid(value, views[0].grid_spacing)
         if change == QGraphicsItem.GraphicsItemChange.ItemSelectedHasChanged:
             if not value and self._editing:
                 self.finish_editing()

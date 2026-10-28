@@ -19,11 +19,17 @@ class AddComponentCommand(QUndoCommand):
         component_def: ComponentDef,
         pos: QPointF,
         parent: QUndoCommand | None = None,
+        *,
+        snap_port_to_grid: bool = False,
     ) -> None:
+        """*snap_port_to_grid*: a library drop lands a *port* on the grid,
+        not the item's origin. Paste and duplicate place at exact
+        positions and leave this off."""
         super().__init__(parent)
         self._scene = scene
         self._component_def = component_def
         self._pos = pos
+        self._snap_port_to_grid = snap_port_to_grid
         self._item: ComponentItem | None = None
         self._z: float | None = None
         self.setText(f"Add {component_def.name}")
@@ -38,6 +44,12 @@ class AddComponentCommand(QUndoCommand):
             # Assign to active layer
             if hasattr(self._scene, 'assign_active_layer'):
                 self._scene.assign_active_layer(self._item)
+            # Decided once, on first creation; redo after undo keeps it.
+            views = self._scene.views()
+            spacing = getattr(views[0], 'grid_spacing', None) if views else None
+            if (self._snap_port_to_grid and spacing
+                    and getattr(views[0], '_snap_enabled', True)):
+                self._pos = self._item.grid_aligned_pos(self._pos, spacing)
         self._item.setPos(self._pos)
         self._scene.addItem(self._item)
         # Place on top of its (layer, type) band. Cache so undo/redo is stable.
@@ -124,12 +136,7 @@ class MoveComponentCommand(QUndoCommand):
         self.setText(f"Move {label}")
 
     def redo(self) -> None:
-        # Bypass snap to place at exact position (alignment, etc.)
-        self._item._skip_snap = True
         self._item.setPos(self._new_pos)
-        self._item._skip_snap = False
 
     def undo(self) -> None:
-        self._item._skip_snap = True
         self._item.setPos(self._old_pos)
-        self._item._skip_snap = False

@@ -579,10 +579,6 @@ class DiagramView(QGraphicsView):
                 continue
 
             # 1) Restore original state so we can measure correctly
-            if hasattr(m, '_skip_snap'):
-                m._skip_snap = True
-            elif hasattr(m, '_skip_snap_once'):
-                m._skip_snap_once = True
             m.setPos(orig_pos)
             m.setScale(orig_scale)
             if isinstance(m, SvgImageItem) and isinstance(orig_w, (int, float)):
@@ -622,8 +618,6 @@ class DiagramView(QGraphicsView):
             nudge_y = desired_cy - current_center.y()
             m.setPos(orig_pos.x() + nudge_x, orig_pos.y() + nudge_y)
 
-            if hasattr(m, '_skip_snap'):
-                m._skip_snap = False
             m.update()
 
         self._diagram_scene.update_connections()
@@ -655,12 +649,8 @@ class DiagramView(QGraphicsView):
             def redo(self):
                 for (m, _, _, _, _, _,
                      a_pos, a_scale, a_w, a_h, a_verts) in self._states:
-                    if hasattr(m, '_skip_snap'):
-                        m._skip_snap = True
                     m.setPos(a_pos)
                     m.setScale(a_scale)
-                    if hasattr(m, '_skip_snap'):
-                        m._skip_snap = False
                     if isinstance(m, SvgImageItem) and a_w is not None:
                         m.prepareGeometryChange()
                         m._width = a_w
@@ -674,12 +664,8 @@ class DiagramView(QGraphicsView):
             def undo(self):
                 for (m, o_pos, o_scale, o_w, o_h, o_verts,
                      _, _, _, _, _) in self._states:
-                    if hasattr(m, '_skip_snap'):
-                        m._skip_snap = True
                     m.setPos(o_pos)
                     m.setScale(o_scale)
-                    if hasattr(m, '_skip_snap'):
-                        m._skip_snap = False
                     if isinstance(m, SvgImageItem) and isinstance(o_w, (int, float)):
                         m.prepareGeometryChange()
                         m._width = o_w
@@ -1041,9 +1027,6 @@ class DiagramView(QGraphicsView):
                         if isinstance(anchor, ComponentItem):
                             anchor.set_snap_anchor_closest_to(scene_pos)
                         selected = self._expand_group_selection(anchor)
-                        for s in selected:
-                            if s is not anchor and hasattr(s, '_skip_snap'):
-                                s._skip_snap = True
                         group_wires = [
                             m for m in self._diagram_scene.get_group_members(gid)
                             if isinstance(m, ConnectionItem)
@@ -1086,11 +1069,6 @@ class DiagramView(QGraphicsView):
 
                     # Expand selection to include group members
                     selected = self._expand_group_selection(item)
-
-                    # Only the clicked item should snap — disable snap on group siblings
-                    for s in selected:
-                        if s is not item and hasattr(s, '_skip_snap'):
-                            s._skip_snap = True
 
                     from diagrammer.commands.group_command import get_top_group
                     gid = get_top_group(item)
@@ -1792,7 +1770,6 @@ class DiagramView(QGraphicsView):
             self._diagram_scene.undo_stack.push(cmd)
             clone = cmd.item
             if clone:
-                clone._skip_snap = True
                 if item.rotation_angle:
                     clone.rotate_by(item.rotation_angle)
                 if item.flip_h:
@@ -1806,7 +1783,6 @@ class DiagramView(QGraphicsView):
                     clone.set_style_overrides(copy.deepcopy(item.style_overrides))
                 clone.setPos(item.pos())
                 clone.setZValue(item.zValue() + 0.01)
-                clone._skip_snap = False
         elif isinstance(item, JunctionItem):
             clone = JunctionItem()
             clone.setVisible(item.isVisible())

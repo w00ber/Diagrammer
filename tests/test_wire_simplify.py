@@ -54,9 +54,7 @@ def _segment_drag(conn: ConnectionItem, seg_idx: int, dx: float, dy: float) -> N
     for comp, pt in ((conn.source_port.component, new[0]),
                      (conn.target_port.component, new[-1])):
         if isinstance(comp, JunctionItem):
-            comp._skip_snap = True
             comp.setPos(pt)
-            comp._skip_snap = False
     conn._store_expanded_as_waypoints(new)
 
 
@@ -195,9 +193,7 @@ class TestBoundaryWireDoesNotShear:
         w = _connect(scene, a.port, b.port)
         w.vertices = [QPointF(200, -100), QPointF(400, -100)]
 
-        a._skip_snap = True
         a.setPos(QPointF(0, 300))
-        a._skip_snap = False
         w.update_route()
 
         assert _xy(w.vertices) == [(200.0, -100.0), (400.0, -100.0)]

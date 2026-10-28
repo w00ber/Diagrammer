@@ -1521,14 +1521,10 @@ class ConnectionItem(QGraphicsPathItem):
             tgt_comp = self._target_port.component if self._target_port else None
             junctions_moved = False
             if isinstance(src_comp, JunctionItem) and new_expanded:
-                src_comp._skip_snap = True
                 src_comp.setPos(new_expanded[0])
-                src_comp._skip_snap = False
                 junctions_moved = True
             if isinstance(tgt_comp, JunctionItem) and new_expanded:
-                tgt_comp._skip_snap = True
                 tgt_comp.setPos(new_expanded[-1])
-                tgt_comp._skip_snap = False
                 junctions_moved = True
             self._store_expanded_as_waypoints(new_expanded)
             # Update other connections attached to moved junctions
@@ -1694,9 +1690,7 @@ class ConnectionItem(QGraphicsPathItem):
 
         def _apply_junction_move():
             if junction is not None:
-                junction._skip_snap = True
                 junction.setPos(junction_new_pos)
-                junction._skip_snap = False
 
         if undo_stack is None:
             # No undo stack (e.g. detached item) — mutate directly.

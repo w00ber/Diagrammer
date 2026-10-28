@@ -77,7 +77,6 @@ class SvgImageItem(QGraphicsItem):
         self._resize_start_mouse: QPointF | None = None
         self._resize_start_pos: QPointF | None = None
 
-        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setAcceptHoverEvents(True)
@@ -387,7 +386,6 @@ class SvgImageItem(QGraphicsItem):
             self._height = new_h
             self._apply_transform()
             scene_off = self._to_scene_delta(QPointF(off_x, off_y))
-            self._skip_snap_once = True
             self.setPos(start_pos + scene_off)
             self.update()
             event.accept()
@@ -423,17 +421,4 @@ class SvgImageItem(QGraphicsItem):
             return
         super().mouseReleaseEvent(event)
 
-    _skip_snap_once = False
 
-    def itemChange(self, change, value):
-        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
-            if self._skip_snap_once:
-                self._skip_snap_once = False
-                return value
-            if getattr(self, '_skip_snap', False):
-                return value
-            from diagrammer.canvas.grid import snap_to_grid
-            views = self.scene().views()
-            if views and getattr(views[0], '_snap_enabled', True):
-                return snap_to_grid(value, views[0].grid_spacing)
-        return super().itemChange(change, value)

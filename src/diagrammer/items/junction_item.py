@@ -55,7 +55,6 @@ class JunctionItem(QGraphicsItem):
         self._id = instance_id or uuid.uuid4().hex[:12]
         self._group_id: str | None = None
         self._group_ids: list[str] = []
-        self._skip_snap = False
         self._end_marker: str = "none"  # "none" | "filled" | "open"
 
         port_def = PortDef(name="center", x=0.0, y=0.0)

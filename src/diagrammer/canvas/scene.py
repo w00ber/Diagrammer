@@ -400,22 +400,15 @@ class DiagramScene(QGraphicsScene):
 
             layer = self._layer_manager.layers[layer_idx]
 
-            # Junctions follow their layer's visibility (leaving them out
-            # of this loop is what once left a wire end dot painted on an
-            # otherwise blank canvas when a layer was hidden) and its lock,
-            # like any other item. They are never ItemIsMovable: the view
-            # moves them explicitly, as it does components.
-            if isinstance(item, JunctionItem):
+            # Visibility and lock. Nothing is ever ItemIsMovable — the
+            # view moves items through DragSession — so a lock is just
+            # "not selectable", which keeps it out of every drag.
+            # (Junctions must be in this loop: leaving them out once left
+            # a wire end dot painted on an otherwise blank canvas when a
+            # layer was hidden.)
+            if isinstance(item, (ComponentItem, ConnectionItem, ShapeItem, LineItem,
+                                 SvgImageItem, AnnotationItem, JunctionItem)):
                 item.setVisible(layer.visible)
-                item.setFlag(item.GraphicsItemFlag.ItemIsSelectable, not layer.locked)
-                continue
-
-            # Visibility
-            if isinstance(item, (ComponentItem, ConnectionItem, ShapeItem, LineItem, SvgImageItem, AnnotationItem)):
-                item.setVisible(layer.visible)
-                # Lock: prevent selection and movement
-                movable = not layer.locked
-                item.setFlag(item.GraphicsItemFlag.ItemIsMovable, movable)
                 item.setFlag(item.GraphicsItemFlag.ItemIsSelectable, not layer.locked)
 
     def assign_active_layer(self, item) -> None:
@@ -576,7 +569,7 @@ class DiagramScene(QGraphicsScene):
                                 "Unlock the layer or switch to a different one.")
             return
         from diagrammer.commands.add_command import AddComponentCommand
-        cmd = AddComponentCommand(self, component_def, pos)
+        cmd = AddComponentCommand(self, component_def, pos, snap_port_to_grid=True)
         self._undo_stack.push(cmd)
 
     # -- Connection creation --

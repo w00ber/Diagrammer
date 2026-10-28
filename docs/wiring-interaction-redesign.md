@@ -249,5 +249,13 @@ decision; C does.
   movers and the snapped delta (`_snapped_drag_delta`). Deleted: the
   second move branch, `_drag_changed_anything`, the hand-assembled
   release macro, scene `record_move_start/end`, ten drag-state fields
-  and the vestigial `_alt_drag_clone`. D2 (next) takes snapping out of
-  `itemChange` so `_skip_snap` and `ItemIsMovable` can go.
+  and the vestigial `_alt_drag_clone`.
+- 2026-10-27: **Step D2 landed.** Snapping is an input concern. The
+  four `itemChange` position-snap overrides are gone, nothing is
+  `ItemIsMovable` any more (Qt never moves an item; the session does),
+  and every one of the 88 `_skip_snap` sites with them. The two places
+  that snap are `DiagramView._snapped_drag_delta` (a drag lands the
+  anchor's port on the grid) and `AddComponentCommand(snap_port_to_grid=
+  True)` from the library drop. A programmatic `setPos` — move command,
+  alignment, transform, paste — is exact. A locked layer is simply
+  "not selectable".

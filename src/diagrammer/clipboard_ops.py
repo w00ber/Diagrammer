@@ -460,8 +460,6 @@ class ClipboardMixin:
                 if item is None:
                     new_items.append(None)
                     continue
-                # Apply transforms — bypass snap during setup
-                item._skip_snap = True
                 if entry.get("rotation", 0):
                     item.rotate_by(entry["rotation"])
                 if entry.get("flip_h"):
@@ -478,15 +476,12 @@ class ClipboardMixin:
                         ComponentStyleOverrides.from_dict(entry["style_overrides"]))
                 # Set exact position after all transforms
                 item.setPos(pos)
-                item._skip_snap = False
                 _remap_group(item, entry)
                 new_items.append(item)
             elif entry["type"] == "junction":
                 junc = JunctionItem()
                 pos = QPointF(entry["pos"][0] + off_x, entry["pos"][1] + off_y)
-                junc._skip_snap = True
                 junc.setPos(pos)
-                junc._skip_snap = False
                 if entry.get("end_marker", "none") in ("filled", "open"):
                     junc.end_marker = entry["end_marker"]
                 _add_pasted(junc, "Paste junction")
@@ -558,9 +553,7 @@ class ClipboardMixin:
                     shape.stroke_width = entry["stroke_width"]
                 if "dash_style" in entry:
                     shape.dash_style = entry["dash_style"]
-                shape._skip_snap = True
                 shape.setPos(pos)
-                shape._skip_snap = False
                 # Phase C: persistent intrinsic transform fields.
                 if entry.get("flip_h"):
                     shape.set_flip_h(True)
@@ -588,9 +581,7 @@ class ClipboardMixin:
                     svg_item.set_flip_v(True)
                 if entry.get("rotation_angle"):
                     svg_item.rotate_by(entry["rotation_angle"])
-                svg_item._skip_snap = True
                 svg_item.setPos(pos)
-                svg_item._skip_snap = False
                 _add_pasted(svg_item, "Paste image")
                 _remap_group(svg_item, entry)
                 pasted_annotations.append(svg_item)

@@ -325,10 +325,8 @@ class TransformMixin:
                 dx, dy = old_pos.x() - cx, old_pos.y() - cy
                 new_pos = QPointF(cx + dx * cos_a - dy * sin_a,
                                   cy + dx * sin_a + dy * cos_a)
-                junc._skip_snap = True
                 move_cmd = MoveComponentCommand(junc, old_pos, new_pos)
                 self._scene.undo_stack.push(move_cmd)
-                junc._skip_snap = False
 
     # ---------------------------------------------------------- rotate 90
 
@@ -432,11 +430,7 @@ class TransformMixin:
                 if offset.manhattanLength() < 1e-9:
                     continue  # a lone component turning about its centre
                 new_pos = item.pos() + offset
-                if hasattr(item, '_skip_snap'):
-                    item._skip_snap = True
                 self._scene.undo_stack.push(MoveComponentCommand(item, item.pos(), new_pos))
-                if hasattr(item, '_skip_snap'):
-                    item._skip_snap = False
 
             # Rotate the captured routes through the same orbit the
             # items followed and bind them to the now-rotated ports.
@@ -544,11 +538,7 @@ class TransformMixin:
             cur_sc = _scene_center(item)
             offset = orbit(cur_sc) - cur_sc
             new_pos = item.pos() + offset
-            if hasattr(item, '_skip_snap'):
-                item._skip_snap = True
             self._scene.undo_stack.push(MoveComponentCommand(item, item.pos(), new_pos))
-            if hasattr(item, '_skip_snap'):
-                item._skip_snap = False
 
         # Replay the captured wire shapes through the rotation around
         # the pivot, rebound to port-local offsets and pinned to
@@ -652,10 +642,8 @@ class TransformMixin:
                 mirrored_y = 2 * group_cy - old_sc.y()
                 offset_y = mirrored_y - new_sc_after_flip.y()
                 new_pos = QPointF(comp.pos().x(), comp.pos().y() + offset_y)
-            comp._skip_snap = True
             move_cmd = MoveComponentCommand(comp, comp.pos(), new_pos)
             self._scene.undo_stack.push(move_cmd)
-            comp._skip_snap = False
 
         # Flip annotations and shapes internally
         from diagrammer.commands.transform_command import FlipItemCommand
@@ -673,12 +661,8 @@ class TransformMixin:
             else:
                 new_sc_y = 2 * group_cy - sc.y()
                 new_pos = QPointF(old_pos.x(), old_pos.y() + (new_sc_y - sc.y()))
-            if hasattr(item, '_skip_snap'):
-                item._skip_snap = True
             move_cmd = MoveComponentCommand(item, old_pos, new_pos)
             self._scene.undo_stack.push(move_cmd)
-            if hasattr(item, '_skip_snap'):
-                item._skip_snap = False
 
         # Mirror the captured routes through the same axis the items
         # used, so the wire shape flips rigidly along with them.
@@ -737,11 +721,8 @@ class TransformMixin:
                 if abs(dy) > 0.5:
                     old_pos = comp.pos()
                     new_pos = QPointF(old_pos.x(), old_pos.y() + dy)
-                    # Bypass snap so the port lands at the exact target
-                    comp._skip_snap = True
                     cmd = MoveComponentCommand(comp, old_pos, new_pos)
                     self._scene.undo_stack.push(cmd)
-                    comp._skip_snap = False
         elif direction == "vertical":
             avg_x = sum(pos.x() for _, pos in anchors) / len(anchors)
             for comp, anchor_pos in anchors:
@@ -749,10 +730,8 @@ class TransformMixin:
                 if abs(dx) > 0.5:
                     old_pos = comp.pos()
                     new_pos = QPointF(old_pos.x() + dx, old_pos.y())
-                    comp._skip_snap = True
                     cmd = MoveComponentCommand(comp, old_pos, new_pos)
                     self._scene.undo_stack.push(cmd)
-                    comp._skip_snap = False
 
         self._scene.undo_stack.endMacro()
         self._scene.update_connections()

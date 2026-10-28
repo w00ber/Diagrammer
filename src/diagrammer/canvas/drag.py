@@ -69,10 +69,6 @@ class DragSession:
         ]
         self._tidied = False
 
-        for m in self.movers:
-            if hasattr(m, "_skip_snap"):
-                m._skip_snap = True
-
     # ------------------------------------------------------------ moving
 
     def move_to(self, delta: QPointF) -> None:
@@ -90,9 +86,7 @@ class DragSession:
 
         for m in self.movers:
             start = self.item_starts[id(m)]
-            m._skip_snap = True
             m.setPos(QPointF(start.x() + delta.x(), start.y() + delta.y()))
-            m._skip_snap = False
 
         for w in self._rigid:
             start = self.wire_starts[id(w)]
@@ -169,9 +163,7 @@ class DragSession:
         return True
 
     def finish(self) -> None:
-        """Release per-item drag flags. Idempotent."""
+        """Release the anchor's snap choice. Idempotent."""
         for m in self.movers:
-            if hasattr(m, "_skip_snap"):
-                m._skip_snap = False
             if hasattr(m, "clear_snap_anchor"):
                 m.clear_snap_anchor()

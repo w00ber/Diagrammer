@@ -148,9 +148,7 @@ class TestRotateAndFlip:
         """A lone image turns about its own centre, which therefore stays put."""
         item = SvgImageItem(TIDY)
         scene.addItem(item)
-        item._skip_snap = True
         item.setPos(QPointF(200, 200))
-        item._skip_snap = False
         before = item.mapToScene(item.intrinsic_anchor())
         item.setSelected(True)
         host = _make_transform_host(scene, library)
@@ -209,9 +207,7 @@ class TestResizeUndo:
 
         item = SvgImageItem(TIDY)
         scene.addItem(item)
-        item._skip_snap = True
         item.setPos(QPointF(0, 0))
-        item._skip_snap = False
         item.setSelected(True)
 
         def _ev(kind, local, scene_pos):
