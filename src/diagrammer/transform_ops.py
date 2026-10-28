@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from diagrammer.canvas.closure import movable_closure
+
 import logging
 
 from PySide6.QtCore import QPointF
@@ -233,8 +235,7 @@ def _apply_internal_wire_shapes(undo_stack, snapshots, transform) -> None:
 class TransformMixin:
     """Mixin providing rotate, flip, and align operations.
 
-    Expects the host class to have ``_scene`` and ``_gather_connected_junctions()``
-    (provided by :class:`ClipboardMixin`).
+    Expects the host class to have ``_scene``.
     """
 
     # ------------------------------------------------------- grid pivot
@@ -383,15 +384,11 @@ class TransformMixin:
                 self._scene.update_connections()
                 return
 
-        # Auto-include connected junctions and endpoint junctions from
-        # selected connections so they participate in the rotation.
-        extra_juncs = self._gather_connected_junctions(movable)
-        junc_targets.extend(extra_juncs)
-        for conn in conn_targets:
-            for port in (conn.source_port, conn.target_port):
-                junc = port.component
-                if isinstance(junc, JunctionItem) and junc not in junc_targets:
-                    junc_targets.append(junc)
+        # Same rule as a drag: the connected sub-circuit up to the first
+        # unselected component comes along; a tee on a rail that runs on
+        # to something unselected stays, and its wire rubber-bands.
+        junc_targets.extend(
+            movable_closure(self._scene.items(), movable + conn_targets).junctions)
 
         movable = comp_targets + junc_targets + annot_targets + shape_targets + svg_targets
 
@@ -491,13 +488,8 @@ class TransformMixin:
                 self._scene.update_connections()
                 return
 
-        extra_juncs = self._gather_connected_junctions(movable)
-        junc_targets.extend(extra_juncs)
-        for conn in conn_targets:
-            for port in (conn.source_port, conn.target_port):
-                junc = port.component
-                if isinstance(junc, JunctionItem) and junc not in junc_targets:
-                    junc_targets.append(junc)
+        junc_targets.extend(
+            movable_closure(self._scene.items(), movable + conn_targets).junctions)
 
         movable = comp_targets + junc_targets + annot_targets + shape_targets + svg_targets
 
@@ -572,15 +564,8 @@ class TransformMixin:
 
         all_movable = (selected_comps + selected_juncs + selected_annots
                        + selected_shapes + selected_svgs)
-        extra_juncs = self._gather_connected_junctions(all_movable)
-        selected_juncs.extend(extra_juncs)
-
-        # Include endpoint junctions from selected connections
-        for conn in selected_conns:
-            for port in (conn.source_port, conn.target_port):
-                junc = port.component
-                if isinstance(junc, JunctionItem) and junc not in selected_juncs:
-                    selected_juncs.append(junc)
+        selected_juncs.extend(
+            movable_closure(self._scene.items(), all_movable + selected_conns).junctions)
 
         all_movable = (selected_comps + selected_juncs + selected_annots
                        + selected_shapes + selected_svgs)

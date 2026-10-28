@@ -391,10 +391,14 @@ class TestJunctionDotSetting:
 
 
 class TestWireEndMarkers:
-    def _free_end_wire(self, scene):
-        """Wire between two free-end junctions; returns the target end."""
-        end = _add_junction(scene, 200, 0, visible=True)
-        _connect(scene, _add_junction(scene, 0, 0, visible=True).port, end.port)
+    def _free_end_wire(self, scene, y=0):
+        """Wire between two free-end junctions; returns the target end.
+
+        *y* separates wires: junctions on the same point are merged on
+        load, by design, so two wires must not share endpoints.
+        """
+        end = _add_junction(scene, 200, y, visible=True)
+        _connect(scene, _add_junction(scene, 0, y, visible=True).port, end.port)
         return end
 
     def test_default_is_none(self, scene):
@@ -452,7 +456,7 @@ class TestWireEndMarkers:
 
         end_a = self._free_end_wire(scene)
         end_a.end_marker = "filled"
-        end_b = self._free_end_wire(scene)
+        end_b = self._free_end_wire(scene, y=100)
         end_b.end_marker = "open"
         path = tmp_path / "markers.dgm"
         DiagramSerializer.save(scene, path)

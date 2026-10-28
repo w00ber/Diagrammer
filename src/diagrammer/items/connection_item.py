@@ -238,6 +238,18 @@ class ConnectionItem(QGraphicsPathItem):
     def instance_id(self) -> str:
         return self._id
 
+    def rebind_port(self, old: "PortItem", new: "PortItem") -> None:
+        """Swap one endpoint port for another (same scene position).
+
+        Used when coincident junctions are merged: every wire on the
+        dropped junction moves to the kept one. The scene re-registers
+        the wire; the route is unchanged since the ports coincide.
+        """
+        if self._source_port is old:
+            self._source_port = new
+        if self._target_port is old:
+            self._target_port = new
+
     @property
     def source_port(self) -> PortItem:
         return self._source_port
