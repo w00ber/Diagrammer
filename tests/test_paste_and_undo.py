@@ -129,6 +129,28 @@ class TestPastePlacement:
         assert abs(pasted[0].pos().x() - target.x()) <= view.grid_spacing
         assert abs(pasted[0].pos().y() - target.y()) <= view.grid_spacing
 
+    def test_repeated_pastes_step_instead_of_stacking(self, library):
+        """The second paste of the same clipboard must not land on the first."""
+        scene = DiagramScene(library=library)
+        view = DiagramView(scene)
+        view.resize(800, 600)
+        view.grid_spacing = 20
+        host = _Host(scene, library, view)
+        comp = ComponentItem(_any_def(library))
+        comp.setPos(QPointF(0, 0))
+        scene.addItem(comp)
+        comp.setSelected(True)
+        host._copy()
+
+        host._paste()
+        host._paste()
+
+        positions = sorted((c.pos().x(), c.pos().y())
+                           for c in scene.items() if isinstance(c, ComponentItem))
+        assert len(positions) == 3
+        assert len(set(positions)) == 3, "two pastes stacked on each other"
+        view.setScene(None)
+
     def test_paste_without_a_view_falls_back_to_a_nudge(self, host, library):
         comp = ComponentItem(_any_def(library))
         comp.setPos(QPointF(0, 0))

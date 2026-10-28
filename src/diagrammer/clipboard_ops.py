@@ -112,6 +112,7 @@ class ClipboardMixin:
 
         # Serialize to clipboard
         self._clipboard = []
+        self._paste_serial = 0
         id_map: dict[str, int] = {}  # instance_id -> clipboard index
         idx = 0
         for comp in selected_comps:
@@ -377,8 +378,13 @@ class ClipboardMixin:
         dx = round(dx / spacing) * spacing
         dy = round(dy / spacing) * spacing
         if dx == 0 and dy == 0:
-            return fallback, fallback
-        return dx, dy
+            dx = dy = fallback
+        # Pasting the same clipboard again without moving the view would
+        # land exactly on the previous paste — an invisible stack. Step
+        # each repeat one grid cell down and to the right instead.
+        serial = getattr(self, "_paste_serial", 0)
+        self._paste_serial = serial + 1
+        return dx + spacing * serial, dy + spacing * serial
 
     def _paste(self) -> None:
         """Paste clipboard contents, centred on the visible canvas.

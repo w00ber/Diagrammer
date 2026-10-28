@@ -84,6 +84,7 @@ class DiagramScene(QGraphicsScene):
         # Rebuild routes after any undo/redo so waypoints and positions stay in sync
         self._undo_stack.indexChanged.connect(self._on_undo_redo)
         self._suppress_undo_updates = False  # set True during macros to skip route rebuilds
+        self._band_tops: dict[tuple[int, float], float] = {}  # (layer, type base) -> top offset
         self._library = library or ComponentLibrary()
 
         # Drag-tracking for move undo support
@@ -174,6 +175,7 @@ class DiagramScene(QGraphicsScene):
 
     def clear(self) -> None:
         """Clear scene and reset port-connections index."""
+        self._band_tops = {}
         self._port_connections.clear()
         self._crossover_overrides.clear()
         super().clear()
@@ -456,21 +458,33 @@ class DiagramScene(QGraphicsScene):
         layer_idx = getattr(item, '_layer_index', 0)
         band = self._layer_band_base(layer_idx)
         type_base = _type_base_z(item)
-        # Find current max intra-type offset within the same layer & type band.
-        max_offset = 0.0
-        for other in self.items():
-            if other is item:
-                continue
-            if getattr(other, '_layer_index', 0) != layer_idx:
-                continue
-            if _type_base_z(other) != type_base:
-                continue
-            offset = other.zValue() - band - type_base
-            if offset > max_offset:
-                max_offset = offset
-        z = band + type_base + max_offset + 0.001
+        key = (layer_idx, type_base)
+        # The top of each (layer, type) band is cached: scanning every
+        # scene item per added item made a paste O(items x scene), which
+        # on a large diagram was tens of seconds. reflow_z rebuilds the
+        # cache; anything else that writes Z directly invalidates it.
+        max_offset = self._band_tops.get(key)
+        if max_offset is None:
+            max_offset = 0.0
+            for other in self.items():
+                if other is item:
+                    continue
+                if getattr(other, '_layer_index', 0) != layer_idx:
+                    continue
+                if _type_base_z(other) != type_base:
+                    continue
+                offset = other.zValue() - band - type_base
+                if offset > max_offset:
+                    max_offset = offset
+        new_offset = max_offset + 0.001
+        self._band_tops[key] = new_offset
+        z = band + type_base + new_offset
         item.setZValue(z)
         return z
+
+    def invalidate_z_bands(self) -> None:
+        """Forget cached band tops; the next assign_item_z rescans."""
+        self._band_tops = {}
 
     def reflow_z(self) -> None:
         """Recompute Z for every known item from its layer index.
@@ -499,11 +513,13 @@ class DiagramScene(QGraphicsScene):
                 it._layer_index = 0
             key = (layer_idx, _type_base_z(it))
             buckets.setdefault(key, []).append(it)
+        self._band_tops = {}
         for (layer_idx, type_base), items in buckets.items():
             items.sort(key=lambda x: x.zValue())
             band = self._layer_band_base(layer_idx)
             for i, it in enumerate(items):
                 it.setZValue(band + type_base + 0.001 * (i + 1))
+            self._band_tops[(layer_idx, type_base)] = 0.001 * len(items)
 
     def flash_layer(self, layer_index: int) -> None:
         """Briefly highlight all items on the given layer with a selection flash."""
