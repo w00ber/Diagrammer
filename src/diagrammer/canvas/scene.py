@@ -1750,8 +1750,18 @@ class DiagramScene(QGraphicsScene):
         return [item for item in self.items()
                 if get_top_group(item) == group_id]
 
-    def auto_join_overlapping_ports(self, moved_item) -> None:
-        """After a component is moved, auto-create connections if its ports overlap other ports."""
+    def auto_join_overlapping_ports(self, moved_item, *, exclude_ids=frozenset(),
+                                    moved_by: QPointF | None = None) -> None:
+        """After a component is moved, wire up ports it was dropped onto.
+
+        Only a port the move *newly* brought into contact counts: pairs
+        that already overlapped before the move (``moved_by`` is the
+        move's delta) and pairs with another item in the same drag
+        (``exclude_ids``) are left alone. Without that, a stack of
+        coincident copies — which a paste or an undone duplicate can
+        leave behind — got wired together pairwise on every drag, and
+        the count of wires went as the square of the stack.
+        """
         from diagrammer.items.component_item import ComponentItem
         if not isinstance(moved_item, ComponentItem):
             return
@@ -1761,18 +1771,23 @@ class DiagramScene(QGraphicsScene):
         views = self.views()
         grid_spacing = views[0].grid_spacing if views else 20.0
         PORT_OVERLAP_DISTANCE = max(5.0, grid_spacing * 0.6)
+        delta = moved_by if moved_by is not None else QPointF(0, 0)
 
         for my_port in moved_item.ports:
             my_center = my_port.scene_center()
+            was_at = QPointF(my_center.x() - delta.x(), my_center.y() - delta.y())
             for other_comp in self._all_component_items():
-                if other_comp is moved_item:
+                if other_comp is moved_item or id(other_comp) in exclude_ids:
                     continue
                 for other_port in other_comp.ports:
                     other_center = other_port.scene_center()
                     dx = my_center.x() - other_center.x()
                     dy = my_center.y() - other_center.y()
                     dist = (dx * dx + dy * dy) ** 0.5
-                    if dist < PORT_OVERLAP_DISTANCE:
+                    pdx = was_at.x() - other_center.x()
+                    pdy = was_at.y() - other_center.y()
+                    already = (pdx * pdx + pdy * pdy) ** 0.5 < PORT_OVERLAP_DISTANCE
+                    if dist < PORT_OVERLAP_DISTANCE and not already:
                         if not self._connection_exists(my_port, other_port):
                             from diagrammer.commands.connect_command import CreateConnectionCommand
                             cmd = CreateConnectionCommand(self, my_port, other_port)

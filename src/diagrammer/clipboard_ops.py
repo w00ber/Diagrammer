@@ -391,6 +391,9 @@ class ClipboardMixin:
         if not self._clipboard:
             return
 
+        # Every pushed command would otherwise rebuild every route in
+        # the scene; one rebuild after the macro is enough.
+        self._scene._suppress_undo_updates = True
         self._scene.undo_stack.beginMacro("Paste")
         import uuid as _uuid
         from diagrammer.commands.add_command import (
@@ -634,6 +637,7 @@ class ClipboardMixin:
                     _remap_group(conn, entry)
 
         self._scene.undo_stack.endMacro()
+        self._scene._suppress_undo_updates = False
 
         # Update all routes so approach segments and lead shortening are computed
         self._scene.update_connections()

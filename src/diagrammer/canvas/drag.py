@@ -100,10 +100,20 @@ class DragSession:
                     conn._set_waypoint_at(idx, QPointF(
                         start[idx].x() + delta.x(), start[idx].y() + delta.y(),
                     ))
-        # Boundary wires and everything else re-route from the new
-        # endpoint positions; crossovers need every route current
-        # before any path is rebuilt, which update_connections does.
-        self.scene.update_connections()
+        # Re-route only what this drag touches; the full two-pass rebuild
+        # (which also refreshes crossover hops on untouched wires) runs
+        # once at commit. On a large diagram a per-move rebuild of every
+        # wire is what made dragging sluggish.
+        touched = list(self._rigid) + list(self.closure.boundary_wires) + [
+            conn for conn, _ in self._driven.values()
+        ]
+        for w in touched:
+            w.rebuild_expanded()
+        for w in touched:
+            w.rebuild_path()
+        for m in self.movers:
+            if hasattr(m, "refresh_lead_shortening"):
+                m.refresh_lead_shortening()
 
     # ----------------------------------------------------------- committing
 
@@ -143,8 +153,10 @@ class DragSession:
                         moved_components.append(m)
             # Ports dropped onto other ports join — inside the macro so
             # the new wire undoes with the move.
+            mover_ids = frozenset(id(m) for m in self.movers)
             for comp in moved_components:
-                self.scene.auto_join_overlapping_ports(comp)
+                self.scene.auto_join_overlapping_ports(
+                    comp, exclude_ids=mover_ids, moved_by=self.delta)
             # Heal wires the move straightened out: a waypoint that no
             # longer bends the route is invisible but still splits a
             # draggable run and pins a point the grid snap can't move.

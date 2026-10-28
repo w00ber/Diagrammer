@@ -60,6 +60,7 @@ class DiagramView(QGraphicsView):
         # the snapshot, the per-move placement and the undo macro.
         self._drag = None
         self._drag_mouse_start: QPointF | None = None
+        self._drag_macro_open = False  # an Alt-drag's "Duplicate" macro spans the drag
         # Waypoint selection (rubber band / shift-click), shared by the
         # wires' own handlers and the unified drag.
         self._selected_waypoint_set: dict[str, set[int]] = {}  # conn instance_id → selected wp indices
@@ -990,9 +991,17 @@ class DiagramView(QGraphicsView):
                 # _duplicate_selection will auto-include endpoint junctions
                 if isinstance(item, ConnectionItem) and not getattr(item, '_group_id', None):
                     pass  # handled inside _duplicate_selection
-                result = self._duplicate_selection(item, scene_pos)
+                # The clone and the move are one undo entry: the
+                # "Duplicate" macro stays open across the drag and the
+                # release closes it. Undoing just the move used to leave
+                # the clones sitting exactly on their originals — an
+                # invisible stack that the next drag's port auto-join
+                # then wired together pairwise.
+                result = self._duplicate_selection(item, scene_pos,
+                                                   leave_macro_open=True)
                 clones, _cloned_conns = result if result else ([], [])
                 if clones:
+                    self._drag_macro_open = True
                     self._diagram_scene.clearSelection()
                     for c in clones:
                         c.setSelected(True)
@@ -1308,7 +1317,20 @@ class DiagramView(QGraphicsView):
             if self._drag is not None:
                 session, self._drag = self._drag, None
                 self._drag_mouse_start = None
-                session.commit("Move group")
+                if self._drag_macro_open:
+                    # Alt-drag. An Alt-*click* still means "copy": give
+                    # it one grid step so the copy is visible and never
+                    # a stack on the original.
+                    if not session.changed:
+                        g = self._grid_spacing
+                        session.move_to(QPointF(g, g))
+                    try:
+                        session.commit("Move group")
+                    finally:
+                        self._drag_macro_open = False
+                        self._diagram_scene.undo_stack.endMacro()
+                else:
+                    session.commit("Move group")
                 self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
 
         super().mouseReleaseEvent(event)
@@ -1610,7 +1632,7 @@ class DiagramView(QGraphicsView):
             selected = [clicked_item]
         return selected
 
-    def _duplicate_selection(self, clicked_item, scene_pos) -> list:
+    def _duplicate_selection(self, clicked_item, scene_pos, *, leave_macro_open=False) -> list:
         """Duplicate all selected items (or just the clicked item) for Alt+drag.
 
         Clones components, annotations, junctions, shapes (rectangle/
@@ -1751,7 +1773,8 @@ class DiagramView(QGraphicsView):
                                 set_group_ids(conn, new_stack)
                             cloned_conns.append(conn)
         finally:
-            self._diagram_scene.undo_stack.endMacro()
+            if not leave_macro_open:
+                self._diagram_scene.undo_stack.endMacro()
             self._diagram_scene._suppress_undo_updates = False
 
         return clones, cloned_conns

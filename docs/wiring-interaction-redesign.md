@@ -278,6 +278,19 @@ decision; C does.
   no longer stays pinned to every old corner when an endpoint later
   moves.
 
+- 2026-10-27: **Stacked-copy explosion fixed.** A file came in with
+  identical capacitors stacked sixteen deep and C(16, 2) wires per
+  geometry. Seed: undoing an Alt-drag duplicate reverted only the move,
+  leaving the clones exactly on their originals; multiplier: the port
+  auto-join wired every coincident copy to every other on the next
+  drag. Now an Alt-drag is one undo entry (the "Duplicate" macro spans
+  the drag), an Alt-click yields a copy offset by one grid step, and
+  `auto_join_overlapping_ports` only joins ports the move *newly*
+  brought together and never two items of the same drag. Paste no
+  longer rebuilds every route per pushed command, and the drag loop
+  re-routes only the wires it touches. `tools/dedupe_diagram.py`
+  repairs an affected file.
+
 ## What is left
 
 Nothing from the plan. Candidates for a later pass, none of them
