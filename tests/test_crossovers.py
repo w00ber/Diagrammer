@@ -76,7 +76,7 @@ class TestHopRendering:
         assert len(owner._expanded) == 2  # straight route, no hop points
         before = [QPointF(w) for w in owner.vertices]
         # Simulate what a segment drag does on release
-        owner._store_expanded_as_waypoints(list(owner._expanded))
+        owner._adopt_route(list(owner._expanded))
         for w in owner.vertices:
             # every waypoint lies on the straight route (x or y matches)
             assert (abs(w.x() - owner._expanded[0].x()) < 0.5

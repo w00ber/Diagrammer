@@ -10,7 +10,7 @@ User-reported symptoms, all three the same underlying defect:
 3. Grid snapping appears to stop working on such a wire — a segment
    won't straighten because a stranded waypoint pins part of the run.
 
-Root cause: ``_store_expanded_as_waypoints`` wrote the *whole* expanded
+Root cause: ``_adopt_route`` wrote the *whole* expanded
 route back as explicit waypoints after every segment drag, with no
 pruning pass. Those strays split one draggable run into several, pin
 points the snap cannot move, and — because waypoints bind to whichever
@@ -55,7 +55,7 @@ def _segment_drag(conn: ConnectionItem, seg_idx: int, dx: float, dy: float) -> N
                      (conn.target_port.component, new[-1])):
         if isinstance(comp, JunctionItem):
             comp.setPos(pt)
-    conn._store_expanded_as_waypoints(new)
+    conn._adopt_route(new)
 
 
 class TestSimplifyWaypoints:
@@ -332,3 +332,38 @@ class TestRubberBandSelectsJunctions:
         mid = view._item_at_pos(view.mapFromScene(QPointF(150, 100)))
         assert isinstance(mid, ConnectionItem)
         view.setScene(None)
+
+
+class TestSegmentDragStoresOnlyIntent:
+    def test_only_corners_the_router_would_not_place_survive(self, scene):
+        """Drag the vertical leg of an L sideways: the route needs two
+        bends the router can't derive, so exactly those are stored. Drag
+        it back to where the router would put it: nothing is stored."""
+        a = _junction(scene, 0, 0)
+        b = _junction(scene, 400, 200)
+        w = _connect(scene, a.port, b.port)
+        router_route = _xy(w.all_points())
+        assert w.vertices == []
+
+        _segment_drag(w, 1, 40, 0)
+        assert len(w.vertices) <= 2, _xy(w.vertices)
+        # And the drawn route is the dragged one, not re-derived.
+        assert (240.0, 0.0) in _xy(w.all_points())
+
+        _segment_drag(w, 1, -40, 0)
+        assert w.vertices == [], "router reproduces this shape unaided"
+        assert _xy(w.all_points()) == router_route
+
+    def test_route_carries_no_render_stubs(self, scene, library):
+        """all_points() runs port to port; approach stubs are paint only."""
+        cdef = library.get("CRYO_WIRING_6pt/passive/RESISTOR")
+        comp = ComponentItem(cdef)
+        comp.setPos(QPointF(0, 0))
+        scene.addItem(comp)
+        jct = _junction(scene, 400, 120)
+        w = _connect(scene, comp.port_by_name("right"), jct.port)
+        scene.update_connections()
+        pts = w.all_points()
+        assert pts[0] == comp.port_by_name("right").scene_center()
+        assert pts[-1] == QPointF(400, 120)
+        assert w.routed_points() == pts

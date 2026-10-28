@@ -1,7 +1,15 @@
 # Wiring interaction model — redesign
 
-Status: in progress on branch `refactor/wiring-interaction-model`.
-Baseline: `main` at `6852007` (434 tests green).
+Status: **steps A–E landed** on branch `refactor/wiring-interaction-model`
+(443 tests green). Baseline: `main` at `6852007` (434 tests green).
+
+Before → after, same metrics as the "Structural cost" section below:
+`mousePressEvent` 480 → 345 lines; `mouseReleaseEvent` 193 → 125;
+drag implementations 4 (+ nudge + alt-clone) → 1 (`DragSession`);
+drag-state fields on the view 13 → 2; `_skip_snap` sites 94 → 0;
+`itemChange` position-snap overrides 4 → 0; per-operation junction
+policies 9 → 1 (`movable_closure`); `isinstance(..., JunctionItem)`
+55 → 38; `view.py` 2819 → 2398 lines. Net over `src/`: 18 files changed, 859 insertions(+), 1566 deletions(-).
 
 ## Why
 
@@ -259,3 +267,24 @@ decision; C does.
   True)` from the library drop. A programmatic `setPos` — move command,
   alignment, transform, paste — is exact. A locked layer is simply
   "not selectable".
+- 2026-10-27: **Step E landed.** `_expanded` is the route from port
+  to port and nothing else; the render-only approach stubs are added
+  in `rebuild_path` (`_painted_points`), so `routed_points()` is now an
+  alias of `all_points()` and the segment-drag clamp lost its
+  duplicate-point workaround. A segment drag adopts the dragged
+  polyline through `_adopt_route`, which keeps only the corners the
+  router would not place on its own (I3) — a wire dragged back into
+  the router's own shape ends up with no waypoints at all, and a wire
+  no longer stays pinned to every old corner when an endpoint later
+  moves.
+
+## What is left
+
+Nothing from the plan. Candidates for a later pass, none of them
+load-bearing: `ConnectionItem` is still {os.environ['M_CONN']} lines and could lose its
+own segment/waypoint drag in favour of a `DragSession` variant; the
+closed-polygon code paths duplicate the open-wire ones in several
+places; the transforms and grouping still reach the closure through the
+`_gather_connected_junctions` wrapper with `include_touching`, which is
+a second policy in all but name and should become the drag rule once
+someone has decided what a rotation of a boxed tee ought to do.

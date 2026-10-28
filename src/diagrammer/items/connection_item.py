@@ -120,6 +120,20 @@ def _dedup_points(points: list[QPointF]) -> list[QPointF]:
     return out if len(out) >= 2 else [points[0], points[-1]]
 
 
+def _corners_only(points: list[QPointF]) -> list[QPointF]:
+    """*points* with every interior point that adds no bend removed."""
+    pts = _dedup_points(list(points))
+    changed = True
+    while changed and len(pts) > 2:
+        changed = False
+        for i in range(1, len(pts) - 1):
+            if is_redundant_bend(pts[i - 1], pts[i], pts[i + 1], _SIMPLIFY_TOL):
+                del pts[i]
+                changed = True
+                break
+    return pts
+
+
 class ConnectionItem(QGraphicsPathItem):
     """A connection line between two ports with orthogonal routing.
 
@@ -455,7 +469,7 @@ class ConnectionItem(QGraphicsPathItem):
         """Drop waypoints that no longer bend the route. Returns True if any went.
 
         Every segment drag stores the whole expanded route back as
-        explicit waypoints (see :meth:`_store_expanded_as_waypoints`),
+        explicit waypoints (see :meth:`_adopt_route`),
         so a bend the user later straightens out leaves a waypoint
         stranded in the middle of a straight run. Those strays are
         invisible but far from harmless:
@@ -570,13 +584,12 @@ class ConnectionItem(QGraphicsPathItem):
         return ortho_route(p1, p2)
 
     def _build_expanded(self) -> list[QPointF]:
-        """Expand the full route from key-points through ortho_route.
+        """Expand the route from the key-points through the router.
 
-        Adds short lead-extension segments at ports so that right-angle
-        junctions between the wire and component leads get properly rounded
-        by build_rounded_path.
-
-        Returns the complete point list used for rendering.
+        This is the wire from source port to target port and nothing
+        else: hit-testing, segment dragging, arrows and crossovers all
+        work on it. The render-only approach stubs at the ports are
+        added by :meth:`rebuild_path`.
         """
         kps = self._key_points()
         if len(kps) < 2:
@@ -608,36 +621,6 @@ class ConnectionItem(QGraphicsPathItem):
                 result.extend(seg[1:])
             else:
                 result.extend(seg)
-
-        # Add approach segments at ports to fill the gap left by shortened
-        # leads — but only when this connection's endpoints are being dragged,
-        # to avoid route corruption during multi-item moves.
-        ext = self._corner_radius
-        scene = self.scene()
-        is_dragging_this = False
-        if scene:
-            views = scene.views()
-            if views and hasattr(views[0], '_dragging_components'):
-                dragging = views[0]._dragging_components
-                if dragging:
-                    drag_ids = set(id(c) for c in dragging)
-                    src_comp = self._source_port.component if self._source_port else None
-                    tgt_comp = self._target_port.component if self._target_port else None
-                    is_dragging_this = (
-                        (src_comp is not None and id(src_comp) in drag_ids)
-                        or (tgt_comp is not None and id(tgt_comp) in drag_ids)
-                    )
-        if ext > 0 and len(result) >= 2 and not is_dragging_this:
-            self._add_lead_approach(result, self._source_port, at_start=True, ext=ext)
-            self._add_lead_approach(result, self._target_port, at_start=False, ext=ext)
-            # Wire-to-wire junction: extend into the other wire's direction
-            # for smooth corner rounding where two wires meet
-            if scene:
-                self._add_wire_junction_approach(result, self._source_port,
-                                                 at_start=True, ext=ext, scene=scene)
-                self._add_wire_junction_approach(result, self._target_port,
-                                                 at_start=False, ext=ext, scene=scene)
-
         return _dedup_points(result)
 
     @staticmethod
@@ -799,33 +782,18 @@ class ConnectionItem(QGraphicsPathItem):
             points.append(inner)
 
     def all_points(self) -> list[QPointF]:
-        """Full expanded point list used for rendering.
-
-        This is the cached expanded route (rebuilt by :meth:`update_route`).
-        """
+        """The expanded route from source port to target port (cached;
+        rebuilt by :meth:`update_route`)."""
         return list(self._expanded)
 
     def routed_points(self) -> list[QPointF]:
-        """The rendered route trimmed to run from source port to target port.
+        """Alias of :meth:`all_points`.
 
-        ``all_points()`` can extend past either end with render-only stubs
-        (``_add_lead_approach`` / ``_add_wire_junction_approach``) that
-        overlap a component lead or the neighbouring wire. Closed polygons
-        are returned whole.
+        The two used to differ: the painted path once carried render-only
+        stubs past each port inside ``_expanded`` and this stripped them
+        back out. Stubs are paint geometry now (``_painted_points``).
         """
-        pts = list(self._expanded)
-        if self._closed or len(pts) < 2:
-            return pts
-
-        def near(a: QPointF, b: QPointF) -> bool:
-            return abs(a.x() - b.x()) + abs(a.y() - b.y()) < 1e-3
-
-        src = self._source_port.scene_center()
-        tgt = self._target_port.scene_center()
-        first = next((i for i, p in enumerate(pts) if near(p, src)), 0)
-        last = next((i for i in range(len(pts) - 1, -1, -1)
-                     if near(pts[i], tgt)), len(pts) - 1)
-        return pts[first:last + 1] if last > first else pts
+        return list(self._expanded)
 
     def rebuild_expanded(self) -> None:
         """Recompute the expanded route (without touching the painted path)."""
@@ -848,10 +816,42 @@ class ConnectionItem(QGraphicsPathItem):
         """
         hops = self._compute_hops()
         path = build_rounded_path(
-            self._expanded, self._corner_radius, closed=self._closed,
+            self._painted_points(), self._corner_radius, closed=self._closed,
             hops=hops, hop_radius=self._hop_radius(),
         )
         self.setPath(path)
+
+    def _painted_points(self) -> list[QPointF]:
+        """The route plus the render-only approach stubs at each end.
+
+        A stub runs a little way back along a shortened component lead,
+        or along the other wire at a two-wire junction, so the corner
+        there rounds like any other. It is paint geometry only — never
+        part of ``_expanded`` — and is left off while this wire's own
+        endpoints are mid-drag, when the lead it would overlap is moving.
+        """
+        pts = list(self._expanded)
+        ext = self._corner_radius
+        if self._closed or ext <= 0 or len(pts) < 2:
+            return pts
+        scene = self.scene()
+        if scene:
+            views = scene.views()
+            dragging = getattr(views[0], '_dragging_components', []) if views else []
+            if dragging:
+                drag_ids = set(id(c) for c in dragging)
+                for port in (self._source_port, self._target_port):
+                    comp = port.component if port else None
+                    if comp is not None and id(comp) in drag_ids:
+                        return pts
+        self._add_lead_approach(pts, self._source_port, at_start=True, ext=ext)
+        self._add_lead_approach(pts, self._target_port, at_start=False, ext=ext)
+        if scene:
+            self._add_wire_junction_approach(pts, self._source_port,
+                                             at_start=True, ext=ext, scene=scene)
+            self._add_wire_junction_approach(pts, self._target_port,
+                                             at_start=False, ext=ext, scene=scene)
+        return pts
 
     def update_route(self) -> None:
         """Rebuild the expanded route and QPainterPath."""
@@ -929,43 +929,63 @@ class ConnectionItem(QGraphicsPathItem):
                 return ki
         return None
 
-    def _store_expanded_as_waypoints(self, expanded: list[QPointF]) -> None:
-        """Given a modified expanded route, derive new waypoints.
+    def _adopt_route(self, polyline: list[QPointF]) -> None:
+        """Make *polyline* the wire's route, storing only the bends that
+        need storing.
 
-        Strategy: after the user drags a segment, the expanded list has been
-        mutated in place.  We want to preserve all the intermediate bend
-        points as explicit waypoints so the shape is fully captured.
-
-        For open paths we strip the first and last point (port endpoints)
-        and store everything in between.  For closed polygons all expanded
-        points are waypoints — none should be stripped.
-
-        A junction endpoint is an endpoint like a port: the junction is
-        its own item and its own grab handle, so no waypoint stands in
-        for it.
+        After a segment drag the expanded route has been reshaped. The
+        router can re-derive most of it from the endpoints alone; only
+        the corners it would place differently are the user's intent.
+        Starting from every interior corner, each is dropped in turn if
+        routing without it still draws the same polyline (I3: only intent
+        is stored). Keeping every corner instead pinned the whole wire so
+        it never relaxed when an endpoint later moved.
         """
+        target = _dedup_points([QPointF(p) for p in polyline])
         if self._closed:
-            self._set_waypoints_from_scene([QPointF(p) for p in expanded])
+            self._set_waypoints_from_scene(target)
             self.simplify_waypoints()
             self.update_route()
             return
 
         src = self._source_port.scene_center() if self._source_port else QPointF()
         tgt = self._target_port.scene_center() if self._target_port else QPointF()
-        wps = [QPointF(p) for p in expanded[1:-1]] if len(expanded) > 2 else []
-        # Strip waypoints that coincide with an endpoint — approach-
-        # segment artifacts that would leave a stub when the endpoint
-        # later moves.
+        wps = [QPointF(p) for p in target[1:-1]] if len(target) > 2 else []
         while wps and point_distance(wps[0], src) < 1.0:
             wps.pop(0)
         while wps and point_distance(wps[-1], tgt) < 1.0:
             wps.pop()
+
+        if self._route_reproduces([], target):
+            # The router's own shape (e.g. a Z split at the midpoint):
+            # its two bends only go together, which dropping one at a
+            # time below would never find.
+            wps = []
+        i = 0
+        while i < len(wps):
+            trial = wps[:i] + wps[i + 1:]
+            if self._route_reproduces(trial, target):
+                wps = trial
+            else:
+                i += 1
         self._set_waypoints_from_scene(wps)
-        # The expanded route is every bend the router produced, including
-        # the ones this drag has just straightened out. Storing them all
-        # verbatim is what made waypoint lists grow without bound.
-        self.simplify_waypoints()
         self.update_route()
+
+    def _route_reproduces(self, waypoints: list[QPointF], target: list[QPointF]) -> bool:
+        """Would routing through *waypoints* draw exactly *target*?"""
+        kps = [self._source_port.scene_center(), *waypoints,
+               self._target_port.scene_center()]
+        route: list[QPointF] = []
+        for a, b in zip(kps, kps[1:]):
+            seg = self._expand_route(a, b)
+            route.extend(seg[1:] if route else seg)
+        # Compare shapes, not point lists: a dragged polyline can carry
+        # points that sit mid-run (the drag straightened a corner), and
+        # the router never emits those.
+        route, target = _corners_only(route), _corners_only(target)
+        if len(route) != len(target):
+            return False
+        return all(point_distance(p, q) <= _SIMPLIFY_TOL for p, q in zip(route, target))
 
     # =====================================================================
     # Painting
@@ -1287,25 +1307,8 @@ class ConnectionItem(QGraphicsPathItem):
         tgt_comp = self._target_port.component if self._target_port else None
         if not isinstance(src_comp, JunctionItem):
             pts[0] = QPointF(base_expanded[0])
-        else:
-            # Collapse duplicate/zero-length points at the route head so
-            # the junction follows the drag.  Without this, a duplicate
-            # point at index 0 stays static while the dragged segment
-            # moves, creating a trailing stub.
-            for j in range(n - 1):
-                if point_distance(base_expanded[j], base_expanded[j + 1]) < 0.5:
-                    pts[j] = QPointF(pts[j + 1])
-                else:
-                    break
         if not isinstance(tgt_comp, JunctionItem):
             pts[-1] = QPointF(base_expanded[-1])
-        else:
-            for j in range(n - 1, 0, -1):
-                if point_distance(base_expanded[j], base_expanded[j - 1]) < 0.5:
-                    pts[j] = QPointF(pts[j - 1])
-                else:
-                    break
-
         return pts
 
     # =====================================================================
@@ -1514,7 +1517,7 @@ class ConnectionItem(QGraphicsPathItem):
             # in the new expanded route.  _apply_segment_drag now
             # collapses duplicate head/tail points, so [0] and [-1] are
             # the correct junction positions.  Must happen BEFORE
-            # _store_expanded_as_waypoints so that update_route sees the
+            # _adopt_route so that update_route sees the
             # new port positions.
             from diagrammer.items.junction_item import JunctionItem
             src_comp = self._source_port.component if self._source_port else None
@@ -1526,7 +1529,7 @@ class ConnectionItem(QGraphicsPathItem):
             if isinstance(tgt_comp, JunctionItem) and new_expanded:
                 tgt_comp.setPos(new_expanded[-1])
                 junctions_moved = True
-            self._store_expanded_as_waypoints(new_expanded)
+            self._adopt_route(new_expanded)
             # Update other connections attached to moved junctions
             if junctions_moved:
                 scene = self.scene()

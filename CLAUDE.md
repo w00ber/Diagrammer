@@ -47,7 +47,7 @@ conda env, and run headless:
 QT_QPA_PLATFORM=offscreen ~/miniforge3/envs/CMT/bin/python -m pytest tests -q
 ```
 
-As of 2026-10-27 the suite is **fully green — 441 passed, 0 failed**. Any
+As of 2026-10-27 the suite is **fully green — 443 passed, 0 failed**. Any
 failure you see is yours. Earlier notes here claimed 6 then 11 permanent
 failures; both were measurement artifacts, from the two traps below.
 
