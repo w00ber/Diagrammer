@@ -11,6 +11,7 @@ See [README.md](README.md) for what it does and how to install it.
 | SVG components (new parts, ports, leads, stretch) | **[src/diagrammer/docs/svg-component-spec.md](src/diagrammer/docs/svg-component-spec.md)** |
 | LaTeX / math annotations | [docs/math-annotations.md](docs/math-annotations.md) |
 | User-facing behaviour | [docs/tutorial.md](docs/tutorial.md), [src/diagrammer/docs/help.md](src/diagrammer/docs/help.md) |
+| Wire / selection / drag / undo interaction | **[docs/wiring-interaction-redesign.md](docs/wiring-interaction-redesign.md)** — the target model and the staged refactor; do not add another per-operation junction policy |
 
 The component spec lives under `src/diagrammer/docs/` because it ships as in-app
 help — not in the top-level `docs/`. It is the single source of truth for the
@@ -46,7 +47,7 @@ conda env, and run headless:
 QT_QPA_PLATFORM=offscreen ~/miniforge3/envs/CMT/bin/python -m pytest tests -q
 ```
 
-As of 2026-10-27 the suite is **fully green — 434 passed, 0 failed**. Any
+As of 2026-10-27 the suite is **fully green — 450 passed, 0 failed**. Any
 failure you see is yours. Earlier notes here claimed 6 then 11 permanent
 failures; both were measurement artifacts, from the two traps below.
 

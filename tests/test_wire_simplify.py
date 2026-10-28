@@ -10,7 +10,7 @@ User-reported symptoms, all three the same underlying defect:
 3. Grid snapping appears to stop working on such a wire — a segment
    won't straighten because a stranded waypoint pins part of the run.
 
-Root cause: ``_store_expanded_as_waypoints`` wrote the *whole* expanded
+Root cause: ``_adopt_route`` wrote the *whole* expanded
 route back as explicit waypoints after every segment drag, with no
 pruning pass. Those strays split one draggable run into several, pin
 points the snap cannot move, and — because waypoints bind to whichever
@@ -54,10 +54,8 @@ def _segment_drag(conn: ConnectionItem, seg_idx: int, dx: float, dy: float) -> N
     for comp, pt in ((conn.source_port.component, new[0]),
                      (conn.target_port.component, new[-1])):
         if isinstance(comp, JunctionItem):
-            comp._skip_snap = True
             comp.setPos(pt)
-            comp._skip_snap = False
-    conn._store_expanded_as_waypoints(new)
+    conn._adopt_route(new)
 
 
 class TestSimplifyWaypoints:
@@ -70,39 +68,39 @@ class TestSimplifyWaypoints:
                       QPointF(400, 0)]
 
         assert w.simplify_waypoints() is True
-        # Both junction grab handles survive; the two strays do not.
-        assert _xy(w.vertices) == [(0.0, 0.0), (400.0, 0.0)]
+        # The two strays go, and so do the endpoint-coincident pair: a
+        # junction is its own item and its own grab handle.
+        assert _xy(w.vertices) == []
 
     def test_real_bends_survive(self, scene):
         a = _junction(scene, 0, 0)
         b = _junction(scene, 600, 0)
         w = _connect(scene, a.port, b.port)
-        w.vertices = [QPointF(0, 0), QPointF(200, -100), QPointF(400, -100),
-                      QPointF(600, 0)]
+        w.vertices = [QPointF(200, -100), QPointF(400, -100)]
 
         assert w.simplify_waypoints() is False
-        assert len(w.vertices) == 4
+        assert len(w.vertices) == 2
 
     def test_spur_that_doubles_back_is_pruned(self, scene):
         """A -> B -> A is a stub, not a bend (the image-3 symptom)."""
         a = _junction(scene, 0, 0)
         b = _junction(scene, 400, 0)
         w = _connect(scene, a.port, b.port)
-        w.vertices = [QPointF(0, 0), QPointF(200, 0), QPointF(200, 60),
-                      QPointF(200, 0), QPointF(400, 0)]
+        w.vertices = [QPointF(200, 0), QPointF(200, 60), QPointF(200, 0)]
 
         assert w.simplify_waypoints() is True
-        assert _xy(w.vertices) == [(0.0, 0.0), (400.0, 0.0)]
+        assert _xy(w.vertices) == []
 
-    def test_junction_grab_handles_are_kept(self, scene):
-        """A free wire end's only handle is its endpoint waypoint."""
+    def test_legacy_junction_handles_are_pruned(self, scene):
+        """Older files carried a waypoint on every junction endpoint as
+        the free end's grab handle. The junction is the handle now."""
         a = _junction(scene, 0, 0)
         b = _junction(scene, 400, 0)
         w = _connect(scene, a.port, b.port)
         w.vertices = [QPointF(0, 0), QPointF(400, 0)]
 
-        w.simplify_waypoints()
-        assert _xy(w.vertices) == [(0.0, 0.0), (400.0, 0.0)]
+        assert w.simplify_waypoints() is True
+        assert _xy(w.vertices) == []
 
     def test_port_coincident_waypoint_is_pruned(self, scene, library):
         """A waypoint on a real port is an approach artifact, not a bend."""
@@ -117,8 +115,7 @@ class TestSimplifyWaypoints:
         port = comp.port_by_name("right").scene_center()
         w.vertices = [QPointF(port), QPointF(400, 20)]
         w.simplify_waypoints()
-        # The port-side waypoint goes; the junction handle stays.
-        assert _xy(w.vertices) == [(400.0, 20.0)]
+        assert _xy(w.vertices) == []
 
     def test_closed_polygon_keeps_at_least_three_vertices(self, scene):
         a = _junction(scene, 0, 0)
@@ -186,33 +183,21 @@ class TestBoundaryWireDoesNotShear:
     def test_moving_one_endpoint_leaves_the_far_bends_alone(self, scene):
         """The reported "vertices left behind" staircase.
 
-        Waypoints bind to the nearer endpoint port, so re-routing a wire
-        whose far end stayed put used to carry the near half of its bends
-        along with the move. The drag now holds them in scene space.
+        Waypoints used to bind to the nearer endpoint port, so moving one
+        end carried the near half of the bends along. They are scene
+        coordinates now: an endpoint move touches nothing but the last
+        leg, which the router re-draws.
         """
-        from diagrammer.canvas.view import DiagramView
-
-        view = DiagramView(scene)
         a = _junction(scene, 0, 0)
         b = _junction(scene, 600, 0)
         w = _connect(scene, a.port, b.port)
-        w.vertices = [QPointF(0, 0), QPointF(200, -100), QPointF(400, -100),
-                      QPointF(600, 0)]
-        w.update_route()
+        w.vertices = [QPointF(200, -100), QPointF(400, -100)]
 
-        comp_ids = {id(a)}
-        view._dragging_components = [a]
-        view._trim_external_conn_endpoint_wps(comp_ids, set())
-
-        a._skip_snap = True
         a.setPos(QPointF(0, 300))
-        a._skip_snap = False
-        view._hold_external_conn_waypoints()
         w.update_route()
 
-        held = _xy(w.vertices)
-        assert (200.0, -100.0) in held
-        assert (400.0, -100.0) in held
+        assert _xy(w.vertices) == [(200.0, -100.0), (400.0, -100.0)]
+        assert w.routed_points()[0] == QPointF(0, 300)
 
 
 class TestHeldWaypointsSurvive:
@@ -252,16 +237,15 @@ class TestHeldWaypointsSurvive:
         a = _junction(scene, 0, 0)
         b = _junction(scene, 600, 0)
         w = _connect(scene, a.port, b.port)
-        # index:        0             1              2
-        w.vertices = [QPointF(0, 0), QPointF(200, 0), QPointF(400, 0),
-                      QPointF(400, -80), QPointF(600, 0)]
-        #             3                 4
+        # index:        0               1                 2
+        w.vertices = [QPointF(200, 0), QPointF(400, 0), QPointF(400, -80),
+                      QPointF(500, -80)]
+        #             3
         w.update_route()
         w._selected_waypoints = {3}
 
-        assert w.simplify_waypoints() is True  # index 1 is collinear
-        assert _xy(w.vertices) == [(0.0, 0.0), (400.0, 0.0), (400.0, -80.0),
-                                   (600.0, 0.0)]
+        assert w.simplify_waypoints() is True  # index 0 is collinear
+        assert _xy(w.vertices) == [(400.0, 0.0), (400.0, -80.0), (500.0, -80.0)]
         assert w._selected_waypoints == {2}
 
 
@@ -290,39 +274,26 @@ class TestWaypointInsertionSlot:
         assert xs == sorted(xs)
 
 
-class TestRubberBandLeavesJunctionHandlesAlone:
-    """A rubber band must not grab a free end's junction handle.
+class TestRubberBandSelectsJunctions:
+    """A junction is an item: a band that covers it selects it, and the
+    wire passing through keeps only the bends the band covers."""
 
-    ``_store_expanded_as_waypoints`` keeps an endpoint waypoint on a
-    junction-terminated wire as the user's only grab handle for the
-    invisible free end. It sits exactly on the junction. Rubber-band
-    selection used to add it to the draggable waypoint set like any
-    other bend, so boxing a sub-circuit and dragging it tore every rail
-    that merely *passed through* the box off its junctions: the rail's
-    handle travelled with the drag while the junction, excluded as a hub
-    with unselected branches, stayed put. The rails came back as long
-    diagonals doubling back on themselves.
-    """
-
-    def test_handle_on_a_passing_rail_is_not_selected(self, scene):
+    def test_boxed_junction_is_selected_and_its_wire_keeps_real_bends(self, scene):
         from diagrammer.canvas.view import DiagramView
         from PySide6.QtCore import QEvent, QRectF, Qt
         from PySide6.QtGui import QMouseEvent
 
         view = DiagramView(scene)
         view.resize(800, 600)
-
-        # A rail running right across the band, plus a real bend inside it.
         left = _junction(scene, 100, 100)
         right = _junction(scene, 700, 100)
         rail = _connect(scene, left.port, right.port)
-        rail.vertices = [QPointF(100, 100), QPointF(300, 40), QPointF(700, 100)]
+        rail.vertices = [QPointF(300, 40)]
         rail.update_route()
 
         band = QRectF(50, 20, 300, 200)
-        assert band.contains(QPointF(100, 100)), "handle is inside the band"
-        assert band.contains(QPointF(300, 40)), "the real bend is too"
-
+        for it in scene.items(band):
+            it.setSelected(True)
         view._rubber_band_rect = band
         view.mouseReleaseEvent(QMouseEvent(
             QEvent.Type.MouseButtonRelease,
@@ -332,22 +303,67 @@ class TestRubberBandLeavesJunctionHandlesAlone:
             Qt.KeyboardModifier.NoModifier,
         ))
 
-        picked = view._selected_waypoint_set.get(rail.instance_id, set())
-        assert 0 not in picked, "junction grab handle must not be draggable alone"
-        assert 1 in picked, "a real bend inside the band should still be picked"
+        assert left.isSelected(), "the band covers the junction"
+        assert not right.isSelected()
+        assert view._selected_waypoint_set.get(rail.instance_id) == {0}
+        view.setScene(None)
 
-    def test_handles_are_reported(self, scene, library):
-        """Only endpoints that really sit on a junction count."""
+    def test_free_end_is_picked_through_its_wire(self, scene):
+        """Clicking where a wire ends must hit the junction, not the wire.
+
+        Wires stack just above junctions and have a wide hit halo; by
+        z-order alone the free end's own wire would always win the
+        click and the end could never be grabbed.
+        """
+        from diagrammer.canvas.view import DiagramView
+
+        view = DiagramView(scene)
+        view.resize(800, 600)
+        end = _junction(scene, 300, 100)
+        _connect(scene, _junction(scene, 0, 100).port, end.port)
+        scene.update_connections()
+        view.centerOn(QPointF(150, 100))
+
+        hit = view._item_at_pos(view.mapFromScene(QPointF(300, 100)))
+        # The raw hit may be the junction's own port (a child item);
+        # the press handler resolves a port to its parent.
+        assert getattr(hit, "component", hit) is end
+        # Mid-wire, the wire still wins.
+        mid = view._item_at_pos(view.mapFromScene(QPointF(150, 100)))
+        assert isinstance(mid, ConnectionItem)
+        view.setScene(None)
+
+
+class TestSegmentDragStoresOnlyIntent:
+    def test_only_corners_the_router_would_not_place_survive(self, scene):
+        """Drag the vertical leg of an L sideways: the route needs two
+        bends the router can't derive, so exactly those are stored. Drag
+        it back to where the router would put it: nothing is stored."""
+        a = _junction(scene, 0, 0)
+        b = _junction(scene, 400, 200)
+        w = _connect(scene, a.port, b.port)
+        router_route = _xy(w.all_points())
+        assert w.vertices == []
+
+        _segment_drag(w, 1, 40, 0)
+        assert len(w.vertices) <= 2, _xy(w.vertices)
+        # And the drawn route is the dragged one, not re-derived.
+        assert (240.0, 0.0) in _xy(w.all_points())
+
+        _segment_drag(w, 1, -40, 0)
+        assert w.vertices == [], "router reproduces this shape unaided"
+        assert _xy(w.all_points()) == router_route
+
+    def test_route_carries_no_render_stubs(self, scene, library):
+        """all_points() runs port to port; approach stubs are paint only."""
         cdef = library.get("CRYO_WIRING_6pt/passive/RESISTOR")
-        assert cdef is not None
         comp = ComponentItem(cdef)
         comp.setPos(QPointF(0, 0))
         scene.addItem(comp)
-        jct = _junction(scene, 400, 20)
+        jct = _junction(scene, 400, 120)
         w = _connect(scene, comp.port_by_name("right"), jct.port)
-        w.vertices = [QPointF(200, -60), QPointF(400, 20)]
-        w.update_route()
-
-        # Index 1 sits on the junction; index 0 is an ordinary bend and
-        # the component end is a real port, not a junction.
-        assert w.junction_handle_indices() == {1}
+        scene.update_connections()
+        pts = w.all_points()
+        assert pts[0] == comp.port_by_name("right").scene_center()
+        assert pts[-1] == QPointF(400, 120)
+        assert w.routed_points() == pts

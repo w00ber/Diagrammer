@@ -141,18 +141,28 @@ def test_junctions_follow_layer_visibility(scene):
     assert junction.isVisible()
 
 
-def test_locking_a_layer_leaves_junction_flags_alone(scene):
-    """Junction position is owned by its wires, so lock must not touch flags."""
+def test_locking_a_layer_locks_its_junctions_too(scene):
+    """A junction is an item like any other: a locked layer makes it
+    unselectable, and unlocking gives that back. It is never
+    ItemIsMovable — the view moves it explicitly, as it does components."""
+    from PySide6.QtWidgets import QGraphicsItem
     from diagrammer.items.junction_item import JunctionItem
 
+    selectable = QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+    movable = QGraphicsItem.GraphicsItemFlag.ItemIsMovable
     junction = JunctionItem()
     scene.addItem(junction)
     scene.assign_active_layer(junction)
-    before = junction.flags()
+    assert junction.flags() & selectable
 
     scene.layer_manager.active_layer.locked = True
     scene.apply_layer_state()
-    assert junction.flags() == before
+    assert not (junction.flags() & selectable)
+    assert not (junction.flags() & movable)
+
+    scene.layer_manager.active_layer.locked = False
+    scene.apply_layer_state()
+    assert junction.flags() & selectable
 
 
 # ------------------------------------------------------------- the shortcuts

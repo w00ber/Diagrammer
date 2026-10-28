@@ -77,11 +77,7 @@ class TestNoOpClickUndoSafety:
         view = _make_view(scene)
         # Prime the drag state exactly as mousePressEvent does for a
         # click on a movable item, then release without any movement.
-        view._dragging_components = [rect]
-        view._drag_anchor_item = rect
-        view._drag_anchor_start_pos = QPointF(rect.pos())
-        view._drag_mouse_start = QPointF(rect.pos())
-        scene.record_move_start(rect.instance_id, rect.pos())
+        view._begin_item_drag(rect, [rect], rect.pos())
 
         view.mouseReleaseEvent(_release_event(view, rect.pos()))
 
@@ -102,12 +98,8 @@ class TestNoOpClickUndoSafety:
         count_before = scene.undo_stack.count()
 
         view = _make_view(scene)
-        view._dragging_components = [rect]
-        view._drag_anchor_item = rect
-        view._drag_anchor_start_pos = QPointF(rect.pos())
-        view._drag_mouse_start = QPointF(rect.pos())
-        scene.record_move_start(rect.instance_id, rect.pos())
-        rect.setPos(QPointF(140, 140))  # simulate the drag
+        view._begin_item_drag(rect, [rect], rect.pos())
+        view._drag.move_to(QPointF(100, 100))  # simulate the drag
 
         view.mouseReleaseEvent(_release_event(view, rect.pos()))
 
@@ -142,14 +134,8 @@ class TestAutoJoinOnMove:
         current = b.ports[0].scene_center()
         delta = target - current
 
-        view._dragging_components = [b]
-        view._drag_anchor_item = b
-        view._drag_anchor_start_pos = QPointF(b.pos())
-        view._drag_mouse_start = QPointF(b.pos())
-        scene.record_move_start(b.instance_id, b.pos())
-        b._skip_snap = True
-        b.setPos(b.pos() + delta)
-        b._skip_snap = False
+        view._begin_item_drag(b, [b], b.pos())
+        view._drag.move_to(delta)
 
         view.mouseReleaseEvent(_release_event(view, b.pos()))
 
@@ -467,18 +453,21 @@ class TestDeleteWaypointUndo:
         scene.undo_stack.redo()
         assert len(conn.vertices) == 2
 
-    def test_endpoint_delete_moves_junction_undoably(self, scene):
+    def test_first_bend_delete_leaves_the_junction_where_it_is(self, scene):
+        """A junction is its own item; deleting a bend never moves it."""
         conn, j1, j2 = self._wire_with_waypoints(
-            scene, [(0, 0), (150, 80), (300, 0)])
+            scene, [(60, -40), (150, 80), (300, 0)])
         j1_start = QPointF(j1.pos())
 
-        conn._delete_waypoint(0)  # source-junction endpoint
+        conn._delete_waypoint(0)
         assert len(conn.vertices) == 2
-        assert j1.pos() != j1_start, "adjacent junction did not follow the delete"
+        assert j1.pos() == j1_start
+        # The router closes the gap from the junction to the next bend.
+        assert conn.routed_points()[0] == j1_start
 
         scene.undo_stack.undo()
         assert len(conn.vertices) == 3
-        assert j1.pos() == j1_start, "junction position not restored on undo"
+        assert j1.pos() == j1_start
 
         scene.undo_stack.redo()
         assert len(conn.vertices) == 2

@@ -74,7 +74,6 @@ class ComponentItem(QGraphicsItem):
 
         # Port-based snap
         self._snap_anchor_offset: QPointF | None = None
-        self._skip_snap = False
 
         # Stretch state
         self._stretch_dx: float = 0.0
@@ -121,7 +120,8 @@ class ComponentItem(QGraphicsItem):
             self._ports.append(port)
 
         # Interaction flags
-        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        # Never ItemIsMovable: the view moves items through DragSession,
+        # which is also where grid snapping is decided.
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setAcceptHoverEvents(True)
@@ -413,12 +413,9 @@ class ComponentItem(QGraphicsItem):
 
         # After rotating the transform, the port has moved in scene space.
         # Translate the component so the port returns to its original scene position.
-        # Bypass snap-to-grid during this correction to maintain exact port placement.
         new_pivot = port.scene_center()
         delta_pos = pivot - new_pivot
-        self._skip_snap = True
         self.setPos(self.pos() + delta_pos)
-        self._skip_snap = False
 
     def set_flip_h(self, flipped: bool) -> None:
         """Set horizontal flip state."""
@@ -1692,7 +1689,6 @@ class ComponentItem(QGraphicsItem):
                 self._stretch_drag_start_dx = self._stretch_dx
                 self._stretch_drag_start_dy = self._stretch_dy
                 self._stretch_drag_start_comp_pos = QPointF(self.pos())
-                self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
                 event.accept()
                 return
 
@@ -1705,7 +1701,6 @@ class ComponentItem(QGraphicsItem):
                 self._stretch_drag_start_dx = self._stretch_dx
                 self._stretch_drag_start_dy = self._stretch_dy
                 self._stretch_drag_start_comp_pos = QPointF(self.pos())
-                self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
                 event.accept()
                 return
 
@@ -1750,9 +1745,7 @@ class ComponentItem(QGraphicsItem):
                 growth = self._stretch_dx - self._stretch_drag_start_dx
                 scene_offset = QPointF(axis_dir.x() * growth, axis_dir.y() * growth)
                 start_pos = getattr(self, '_stretch_drag_start_comp_pos', self.pos())
-                self._skip_snap = True
                 self.setPos(start_pos - scene_offset)
-                self._skip_snap = False
 
             if self.scene():
                 from diagrammer.canvas.scene import DiagramScene
@@ -1779,9 +1772,7 @@ class ComponentItem(QGraphicsItem):
                 growth = self._stretch_dy - self._stretch_drag_start_dy
                 scene_offset = QPointF(axis_dir.x() * growth, axis_dir.y() * growth)
                 start_pos = getattr(self, '_stretch_drag_start_comp_pos', self.pos())
-                self._skip_snap = True
                 self.setPos(start_pos - scene_offset)
-                self._skip_snap = False
 
             if self.scene():
                 from diagrammer.canvas.scene import DiagramScene
@@ -1804,7 +1795,6 @@ class ComponentItem(QGraphicsItem):
             self._dragging_stretch_h = False
             self._dragging_stretch_v = False
             self._stretch_drag_start_pos = None
-            self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
 
             if old_dx != new_dx or old_dy != new_dy:
                 from diagrammer.commands.stretch_command import StretchComponentCommand
@@ -1818,51 +1808,28 @@ class ComponentItem(QGraphicsItem):
 
         super().mouseReleaseEvent(event)
 
+    def snap_point_offset(self) -> QPointF:
+        """Scene-space offset from ``pos()`` to the point that should sit on
+        the grid: the chosen snap anchor port if one is set, else the first
+        port, else the component's centre."""
+        if self._snap_anchor_offset is not None:
+            return QPointF(self._snap_anchor_offset)
+        if self._ports:
+            return self.transform().map(QPointF(self._ports[0].pos()))
+        return self.transform().map(QPointF(self._width / 2, self._height / 2))
+
+    def grid_aligned_pos(self, pos: QPointF, spacing: float) -> QPointF:
+        """The position nearest *pos* that puts the snap point on the grid.
+
+        Snapping is an input concern: the drag pipeline and the library
+        drop call this; a programmatic ``setPos`` never snaps.
+        """
+        from diagrammer.canvas.grid import snap_to_grid
+        offset = self.snap_point_offset()
+        point = pos + offset
+        return pos + (snap_to_grid(point, spacing) - point)
+
     def itemChange(self, change, value):
-        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
-            if self._skip_snap:
-                return value
-
-            from diagrammer.canvas.grid import snap_to_grid
-
-            views = self.scene().views()
-            if not views:
-                return value
-
-            view = views[0]
-            # Check if snapping is enabled
-            snap_enabled = getattr(view, '_snap_enabled', True)
-            if not snap_enabled:
-                return value
-
-            spacing = view.grid_spacing
-            new_pos = value  # QPointF — the proposed new position
-
-            if self._snap_anchor_offset is not None:
-                # Snap so the anchor port lands on a grid point
-                anchor_scene = new_pos + self._snap_anchor_offset
-                snapped_anchor = snap_to_grid(anchor_scene, spacing)
-                return new_pos + (snapped_anchor - anchor_scene)
-            else:
-                # Default: snap using the first port or center
-                if self._ports:
-                    # Use first port as default anchor
-                    port = self._ports[0]
-                    port_local = QPointF(port.pos())
-                    # Apply item transform to get port offset in scene-relative coords
-                    port_offset = self.transform().map(port_local)
-                    anchor_scene = new_pos + port_offset
-                    snapped_anchor = snap_to_grid(anchor_scene, spacing)
-                    return new_pos + (snapped_anchor - anchor_scene)
-                else:
-                    # No ports: snap component center
-                    center_offset = self.transform().map(
-                        QPointF(self._width / 2, self._height / 2)
-                    )
-                    anchor_scene = new_pos + center_offset
-                    snapped_anchor = snap_to_grid(anchor_scene, spacing)
-                    return new_pos + (snapped_anchor - anchor_scene)
-
         if change == QGraphicsItem.GraphicsItemChange.ItemSelectedHasChanged:
             self._update_port_visibility()
         return super().itemChange(change, value)

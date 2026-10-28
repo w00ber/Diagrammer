@@ -84,10 +84,10 @@ class DiagramScene(QGraphicsScene):
         # Rebuild routes after any undo/redo so waypoints and positions stay in sync
         self._undo_stack.indexChanged.connect(self._on_undo_redo)
         self._suppress_undo_updates = False  # set True during macros to skip route rebuilds
+        self._band_tops: dict[tuple[int, float], float] = {}  # (layer, type base) -> top offset
         self._library = library or ComponentLibrary()
 
         # Drag-tracking for move undo support
-        self._drag_start_positions: dict[str, QPointF] = {}  # instance_id -> start pos
 
         # Connection-in-progress state
         self._connecting_from_port = None  # PortItem or None
@@ -175,6 +175,7 @@ class DiagramScene(QGraphicsScene):
 
     def clear(self) -> None:
         """Clear scene and reset port-connections index."""
+        self._band_tops = {}
         self._port_connections.clear()
         self._crossover_overrides.clear()
         super().clear()
@@ -401,22 +402,15 @@ class DiagramScene(QGraphicsScene):
 
             layer = self._layer_manager.layers[layer_idx]
 
-            # Junctions are wire anchors, so they follow their layer's
-            # visibility but never take the movable/selectable flags: their
-            # position is owned by the wires meeting there. Leaving them out
-            # of this loop entirely is what left a wire end dot painted on an
-            # otherwise blank canvas when a layer was hidden, which reads as
-            # "everything was deleted" rather than "a layer is off".
-            if isinstance(item, JunctionItem):
+            # Visibility and lock. Nothing is ever ItemIsMovable — the
+            # view moves items through DragSession — so a lock is just
+            # "not selectable", which keeps it out of every drag.
+            # (Junctions must be in this loop: leaving them out once left
+            # a wire end dot painted on an otherwise blank canvas when a
+            # layer was hidden.)
+            if isinstance(item, (ComponentItem, ConnectionItem, ShapeItem, LineItem,
+                                 SvgImageItem, AnnotationItem, JunctionItem)):
                 item.setVisible(layer.visible)
-                continue
-
-            # Visibility
-            if isinstance(item, (ComponentItem, ConnectionItem, ShapeItem, LineItem, SvgImageItem, AnnotationItem)):
-                item.setVisible(layer.visible)
-                # Lock: prevent selection and movement
-                movable = not layer.locked
-                item.setFlag(item.GraphicsItemFlag.ItemIsMovable, movable)
                 item.setFlag(item.GraphicsItemFlag.ItemIsSelectable, not layer.locked)
 
     def assign_active_layer(self, item) -> None:
@@ -464,21 +458,33 @@ class DiagramScene(QGraphicsScene):
         layer_idx = getattr(item, '_layer_index', 0)
         band = self._layer_band_base(layer_idx)
         type_base = _type_base_z(item)
-        # Find current max intra-type offset within the same layer & type band.
-        max_offset = 0.0
-        for other in self.items():
-            if other is item:
-                continue
-            if getattr(other, '_layer_index', 0) != layer_idx:
-                continue
-            if _type_base_z(other) != type_base:
-                continue
-            offset = other.zValue() - band - type_base
-            if offset > max_offset:
-                max_offset = offset
-        z = band + type_base + max_offset + 0.001
+        key = (layer_idx, type_base)
+        # The top of each (layer, type) band is cached: scanning every
+        # scene item per added item made a paste O(items x scene), which
+        # on a large diagram was tens of seconds. reflow_z rebuilds the
+        # cache; anything else that writes Z directly invalidates it.
+        max_offset = self._band_tops.get(key)
+        if max_offset is None:
+            max_offset = 0.0
+            for other in self.items():
+                if other is item:
+                    continue
+                if getattr(other, '_layer_index', 0) != layer_idx:
+                    continue
+                if _type_base_z(other) != type_base:
+                    continue
+                offset = other.zValue() - band - type_base
+                if offset > max_offset:
+                    max_offset = offset
+        new_offset = max_offset + 0.001
+        self._band_tops[key] = new_offset
+        z = band + type_base + new_offset
         item.setZValue(z)
         return z
+
+    def invalidate_z_bands(self) -> None:
+        """Forget cached band tops; the next assign_item_z rescans."""
+        self._band_tops = {}
 
     def reflow_z(self) -> None:
         """Recompute Z for every known item from its layer index.
@@ -507,11 +513,13 @@ class DiagramScene(QGraphicsScene):
                 it._layer_index = 0
             key = (layer_idx, _type_base_z(it))
             buckets.setdefault(key, []).append(it)
+        self._band_tops = {}
         for (layer_idx, type_base), items in buckets.items():
             items.sort(key=lambda x: x.zValue())
             band = self._layer_band_base(layer_idx)
             for i, it in enumerate(items):
                 it.setZValue(band + type_base + 0.001 * (i + 1))
+            self._band_tops[(layer_idx, type_base)] = 0.001 * len(items)
 
     def flash_layer(self, layer_index: int) -> None:
         """Briefly highlight all items on the given layer with a selection flash."""
@@ -577,7 +585,7 @@ class DiagramScene(QGraphicsScene):
                                 "Unlock the layer or switch to a different one.")
             return
         from diagrammer.commands.add_command import AddComponentCommand
-        cmd = AddComponentCommand(self, component_def, pos)
+        cmd = AddComponentCommand(self, component_def, pos, snap_port_to_grid=True)
         self._undo_stack.push(cmd)
 
     # -- Connection creation --
@@ -1450,53 +1458,6 @@ class DiagramScene(QGraphicsScene):
             if isinstance(item, ComponentItem):
                 item.refresh_lead_shortening()
 
-    # -- Move tracking for undo --
-
-    def record_move_start(self, instance_id: str, pos: QPointF) -> None:
-        """Record the starting position of a component drag."""
-        self._drag_start_positions[instance_id] = QPointF(pos)
-
-    def record_move_end(self, item, update: bool = True) -> None:
-        """Record the end of a drag and push a MoveCommand if it moved.
-
-        Supports components, junctions, annotations, and shape/line
-        items — anything whose move needs to round-trip through the
-        undo stack. Without the shape/annotation branches, moving a
-        group that mixes components with shapes or annotations would
-        undo only the component moves and leave the other pieces
-        stranded at their new positions, breaking relative alignment.
-
-        Args:
-            update: If True (default), update connections and check
-                auto-join. Set to False during group moves to defer
-                updates.
-        """
-        from diagrammer.items.annotation_item import AnnotationItem
-        from diagrammer.items.component_item import ComponentItem
-        from diagrammer.items.junction_item import JunctionItem
-        from diagrammer.items.shape_item import (
-            EllipseItem,
-            LineItem,
-            RectangleItem,
-        )
-        from diagrammer.items.svg_image_item import SvgImageItem
-        if not isinstance(
-            item,
-            (ComponentItem, JunctionItem, AnnotationItem,
-             RectangleItem, EllipseItem, LineItem, SvgImageItem),
-        ):
-            return
-        old_pos = self._drag_start_positions.pop(item.instance_id, None)
-        if old_pos is None or old_pos == item.pos():
-            return
-        from diagrammer.commands.add_command import MoveComponentCommand
-        cmd = MoveComponentCommand(item, old_pos, item.pos())
-        self._undo_stack.push(cmd)
-        if update:
-            self.update_connections()
-            if isinstance(item, ComponentItem):
-                self.auto_join_overlapping_ports(item)
-
     # -- Rotation pivot port --
 
     @property
@@ -1805,8 +1766,18 @@ class DiagramScene(QGraphicsScene):
         return [item for item in self.items()
                 if get_top_group(item) == group_id]
 
-    def auto_join_overlapping_ports(self, moved_item) -> None:
-        """After a component is moved, auto-create connections if its ports overlap other ports."""
+    def auto_join_overlapping_ports(self, moved_item, *, exclude_ids=frozenset(),
+                                    moved_by: QPointF | None = None) -> None:
+        """After a component is moved, wire up ports it was dropped onto.
+
+        Only a port the move *newly* brought into contact counts: pairs
+        that already overlapped before the move (``moved_by`` is the
+        move's delta) and pairs with another item in the same drag
+        (``exclude_ids``) are left alone. Without that, a stack of
+        coincident copies — which a paste or an undone duplicate can
+        leave behind — got wired together pairwise on every drag, and
+        the count of wires went as the square of the stack.
+        """
         from diagrammer.items.component_item import ComponentItem
         if not isinstance(moved_item, ComponentItem):
             return
@@ -1816,18 +1787,23 @@ class DiagramScene(QGraphicsScene):
         views = self.views()
         grid_spacing = views[0].grid_spacing if views else 20.0
         PORT_OVERLAP_DISTANCE = max(5.0, grid_spacing * 0.6)
+        delta = moved_by if moved_by is not None else QPointF(0, 0)
 
         for my_port in moved_item.ports:
             my_center = my_port.scene_center()
+            was_at = QPointF(my_center.x() - delta.x(), my_center.y() - delta.y())
             for other_comp in self._all_component_items():
-                if other_comp is moved_item:
+                if other_comp is moved_item or id(other_comp) in exclude_ids:
                     continue
                 for other_port in other_comp.ports:
                     other_center = other_port.scene_center()
                     dx = my_center.x() - other_center.x()
                     dy = my_center.y() - other_center.y()
                     dist = (dx * dx + dy * dy) ** 0.5
-                    if dist < PORT_OVERLAP_DISTANCE:
+                    pdx = was_at.x() - other_center.x()
+                    pdy = was_at.y() - other_center.y()
+                    already = (pdx * pdx + pdy * pdy) ** 0.5 < PORT_OVERLAP_DISTANCE
+                    if dist < PORT_OVERLAP_DISTANCE and not already:
                         if not self._connection_exists(my_port, other_port):
                             from diagrammer.commands.connect_command import CreateConnectionCommand
                             cmd = CreateConnectionCommand(self, my_port, other_port)

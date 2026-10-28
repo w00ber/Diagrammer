@@ -72,7 +72,6 @@ class ResizeShapeCommand(QUndoCommand):
 
     def _apply(self, w: float, h: float, pos: QPointF) -> None:
         self._item.resize(w, h)
-        self._item._skip_snap_once = True
         self._item.setPos(pos)
 
     def redo(self) -> None:

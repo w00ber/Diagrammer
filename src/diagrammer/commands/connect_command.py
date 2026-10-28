@@ -222,40 +222,33 @@ class CreateConnectionCommand(QUndoCommand):
             self._scene.removeItem(self._connection)
 
 
-class SetWaypointAnchorsCommand(QUndoCommand):
-    """Record a waypoint edit as port-local anchors (order-independent).
+class EditWaypointsCommand(QUndoCommand):
+    """Record a waypoint edit on a connection for undo/redo.
 
-    This replaced an earlier command that stored scene coordinates and
-    re-bound them to whatever the endpoint ports were doing at the
-    moment it ran. That is fine on its own, but every wire edit that
-    matters shares a macro with a port move — a group drag, an
-    arrow-key nudge, a rotation — and Qt replays macro children in
-    reverse push order, so the wire was restored while the components
-    were still at their dragged positions and came back displaced by
-    the drag delta, as a stub shooting off to one side. Anchors carry
-    their frame with them, so they restore the same way whichever child
-    of the macro goes first.
+    Waypoints are scene coordinates and nothing re-binds them, so this
+    restores the same shape whichever order a macro replays its
+    children in — a port move before or after makes no difference.
     """
 
     def __init__(
         self,
         connection: ConnectionItem,
-        old_anchors: list[tuple[bool, float, float]],
-        new_anchors: list[tuple[bool, float, float]],
+        old_waypoints: list[QPointF],
+        new_waypoints: list[QPointF],
         parent: QUndoCommand | None = None,
     ) -> None:
         super().__init__(parent)
         self._connection = connection
-        self._old = list(old_anchors)
-        self._new = list(new_anchors)
+        self._old = [QPointF(w) for w in old_waypoints]
+        self._new = [QPointF(w) for w in new_waypoints]
         self.setText("Edit connection route")
 
     def redo(self) -> None:
-        self._connection.apply_waypoint_anchor_snapshot(self._new)
+        self._connection._set_waypoints_from_scene(self._new)
         self._connection.update_route()
 
     def undo(self) -> None:
-        self._connection.apply_waypoint_anchor_snapshot(self._old)
+        self._connection._set_waypoints_from_scene(self._old)
         self._connection.update_route()
 
 

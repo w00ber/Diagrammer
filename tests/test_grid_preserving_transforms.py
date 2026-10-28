@@ -61,9 +61,7 @@ def _place(scene, cdef, port_at: QPointF) -> ComponentItem:
     """Place *cdef* with its first port exactly on *port_at*."""
     comp = ComponentItem(cdef)
     scene.addItem(comp)
-    comp._skip_snap = True
     comp.setPos(port_at - (comp.ports[0].scene_center() - comp.pos()))
-    comp._skip_snap = False
     return comp
 
 
@@ -313,12 +311,12 @@ class TestReviewFindingsPR36:
                          QPointF(480, 160), QPointF(400, 160)]
         scene.update_connections()
         before = _geometry(scene)
-        count = len(loop._anchors)
+        count = len(loop.vertices)
         host = _make_transform_host(scene, library)
         for _ in range(4):
             _select_all(scene)
             host._rotate_selected(90)
-            assert len(loop._anchors) == count
+            assert len(loop.vertices) == count
         assert loop.routing_mode == ROUTE_ORTHO
         assert_snapshots_equal(before, _geometry(scene))
 
@@ -392,9 +390,7 @@ class TestReviewFindingsPR36:
         for x in (200, 220):
             comp = ComponentItem(cdef)
             scene.addItem(comp)
-            comp._skip_snap = True
             comp.setPos(QPointF(x, 200) - (_scene_center(comp) - comp.pos()))
-            comp._skip_snap = False
             parts.append(comp)
         _select_all(scene)
         _make_transform_host(scene, library)._rotate_selected(90)

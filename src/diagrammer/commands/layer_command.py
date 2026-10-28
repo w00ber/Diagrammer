@@ -41,11 +41,25 @@ class MoveToLayerCommand(QUndoCommand):
             for it, z in zip(self._items, self._new_z):
                 it._layer_index = self._target
                 it.setZValue(z)
+            self._scene.invalidate_z_bands()
 
     def undo(self) -> None:
         for it, (old_layer, old_z) in zip(self._items, self._old_state):
             it._layer_index = old_layer
             it.setZValue(old_z)
+        self._scene.invalidate_z_bands()
+
+
+def _invalidate(cmd) -> None:
+    """Direct Z writes bypass assign_item_z's band-top cache."""
+    scene = getattr(cmd, "_scene", None)
+    if scene is None:
+        for it in getattr(cmd, "_items", []):
+            scene = it.scene()
+            if scene is not None:
+                break
+    if scene is not None and hasattr(scene, "invalidate_z_bands"):
+        scene.invalidate_z_bands()
 
 
 class ChangeZOrderCommand(QUndoCommand):
@@ -72,10 +86,12 @@ class ChangeZOrderCommand(QUndoCommand):
     def redo(self) -> None:
         for item, _old_z, new_z in self._states:
             item.setZValue(new_z)
+        _invalidate(self)
 
     def undo(self) -> None:
         for item, old_z, _new_z in self._states:
             item.setZValue(old_z)
+        _invalidate(self)
 
 
 class SetLayerStateCommand(QUndoCommand):

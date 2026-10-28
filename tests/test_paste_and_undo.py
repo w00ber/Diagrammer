@@ -129,6 +129,28 @@ class TestPastePlacement:
         assert abs(pasted[0].pos().x() - target.x()) <= view.grid_spacing
         assert abs(pasted[0].pos().y() - target.y()) <= view.grid_spacing
 
+    def test_repeated_pastes_step_instead_of_stacking(self, library):
+        """The second paste of the same clipboard must not land on the first."""
+        scene = DiagramScene(library=library)
+        view = DiagramView(scene)
+        view.resize(800, 600)
+        view.grid_spacing = 20
+        host = _Host(scene, library, view)
+        comp = ComponentItem(_any_def(library))
+        comp.setPos(QPointF(0, 0))
+        scene.addItem(comp)
+        comp.setSelected(True)
+        host._copy()
+
+        host._paste()
+        host._paste()
+
+        positions = sorted((c.pos().x(), c.pos().y())
+                           for c in scene.items() if isinstance(c, ComponentItem))
+        assert len(positions) == 3
+        assert len(set(positions)) == 3, "two pastes stacked on each other"
+        view.setScene(None)
+
     def test_paste_without_a_view_falls_back_to_a_nudge(self, host, library):
         comp = ComponentItem(_any_def(library))
         comp.setPos(QPointF(0, 0))
@@ -180,24 +202,8 @@ class TestUndoAfterMoveRestoresWireShape:
 
         # Prime the drag the way mousePressEvent does for res + j_left,
         # then move and release.
-        dragged = [res, j_left]
-        j_left._skip_snap = True
-        view._dragging_components = dragged
-        view._drag_anchor_item = res
-        view._drag_anchor_start_pos = QPointF(res.pos())
-        view._drag_mouse_start = QPointF(0, 120)
-        for item in dragged:
-            scene.record_move_start(item.instance_id, item.pos())
-        comp_ids = {id(i) for i in dragged}
-        view._drag_internal_conns = []
-        view._drag_conn_waypoints = {}
-        view._trim_external_conn_endpoint_wps(comp_ids, set())
-        for item in dragged:
-            item._skip_snap = True
-            item.setPos(item.pos() + QPointF(200, 0))
-            item._skip_snap = False
-        view._hold_external_conn_waypoints()
-        scene.update_connections()
+        view._begin_item_drag(res, [res, j_left], QPointF(0, 120))
+        view._drag.move_to(QPointF(200, 0))
 
         view.mouseReleaseEvent(_release(view, QPointF(200, 120)))
         assert rail.all_points()[0].x() == pytest.approx(200.0)
@@ -222,9 +228,12 @@ def _release(view, scene_pos: QPointF):
     )
 
 
-class TestAnchorSnapshotRoundTrip:
-    def test_snapshot_survives_a_port_move(self, library):
-        """The property the undo entries rely on."""
+class TestEditWaypointsIsOrderIndependent:
+    def test_undo_with_a_port_elsewhere_still_restores_the_shape(self, library):
+        """The property the move macro relies on: a wire edit's undo gives
+        the same shape whether the ports have been put back yet or not."""
+        from diagrammer.commands.connect_command import EditWaypointsCommand
+
         scene = DiagramScene(library=library)
         a = JunctionItem()
         a.setPos(QPointF(0, 0))
@@ -235,15 +244,16 @@ class TestAnchorSnapshotRoundTrip:
         cmd = CreateConnectionCommand(scene, a.port, b.port)
         scene.undo_stack.push(cmd)
         wire: ConnectionItem = cmd.connection
-        wire.vertices = [QPointF(0, 0), QPointF(200, -80), QPointF(400, 0)]
-        snapshot = wire.waypoint_anchor_snapshot()
+        before = [QPointF(200, -80)]
+        after = [QPointF(200, -160)]
+        wire.vertices = before
+        edit = EditWaypointsCommand(wire, before, after)
+        scene.undo_stack.push(edit)
 
-        # Move a port, restore the snapshot, move the port back.
+        # Undo the edit while a port is somewhere else entirely.
         a.setPos(QPointF(0, 250))
-        wire.apply_waypoint_anchor_snapshot(snapshot)
+        scene.undo_stack.undo()
         a.setPos(QPointF(0, 0))
         wire.update_route()
 
-        assert [(round(w.x(), 3), round(w.y(), 3)) for w in wire.vertices] == [
-            (0.0, 0.0), (200.0, -80.0), (400.0, 0.0),
-        ]
+        assert [(w.x(), w.y()) for w in wire.vertices] == [(200.0, -80.0)]

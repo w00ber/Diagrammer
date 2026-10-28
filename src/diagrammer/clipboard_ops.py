@@ -19,30 +19,25 @@ class ClipboardMixin:
 
     # -------------------------------------------------------------- helpers
 
+    # -------------------------------------------------------------- helpers
+
     def _gather_connected_junctions(self, selected_items) -> list:
-        """Find JunctionItems connected to selected items but not explicitly selected.
+        """Junctions that belong with *selected_items* for a copy-like
+        operation (copy, duplicate, group, rotate, flip).
 
-        Only gathers junctions where a connection has one end on a selected
-        item and the other end on the junction.  Does NOT chain through
-        junctions (which would pull in the entire circuit).
+        A wrapper over the one connectivity rule,
+        :func:`diagrammer.canvas.closure.movable_closure`, with
+        ``include_touching`` — nothing stays behind to pin a junction
+        in these operations, so every junction wired to a selected item
+        travels, plus any rail that ends on the selection. Step D of
+        ``docs/wiring-interaction-redesign.md`` is expected to move the
+        transforms onto the drag rule instead.
         """
-        from diagrammer.items.connection_item import ConnectionItem
-        from diagrammer.items.junction_item import JunctionItem
+        from diagrammer.canvas.closure import movable_closure
 
-        selected_ids = set(id(i) for i in selected_items)
-        extra_juncs = []
-        for item in self._scene.items():
-            if not isinstance(item, ConnectionItem):
-                continue
-            src_comp = item.source_port.component
-            tgt_comp = item.target_port.component
-            if id(src_comp) in selected_ids and isinstance(tgt_comp, JunctionItem) and id(tgt_comp) not in selected_ids:
-                extra_juncs.append(tgt_comp)
-                selected_ids.add(id(tgt_comp))
-            elif id(tgt_comp) in selected_ids and isinstance(src_comp, JunctionItem) and id(src_comp) not in selected_ids:
-                extra_juncs.append(src_comp)
-                selected_ids.add(id(src_comp))
-        return extra_juncs
+        return movable_closure(
+            self._scene.items(), selected_items, include_touching=True,
+        ).junctions
 
     # ---------------------------------------------------------- delete
 
@@ -93,36 +88,31 @@ class ClipboardMixin:
             if isinstance(item, ConnectionItem)
         ]
 
-        # Auto-include endpoint junctions for selected connections
-        # (free wires have invisible junctions the user can't select directly)
-        for conn in selected_conns_direct:
-            for port in (conn.source_port, conn.target_port):
-                comp = port.component
-                if isinstance(comp, JunctionItem) and comp not in selected_juncs:
-                    selected_juncs.append(comp)
-
-        if (not selected_comps and not selected_juncs
+        if (not selected_comps and not selected_juncs and not selected_conns_direct
                 and not selected_annots and not selected_shapes
                 and not selected_svg_images):
             return
 
-        # Auto-include connected junctions (invisible T-junction markers)
+        # One rule for which junctions and wires belong to the selection
+        # (docs/wiring-interaction-redesign.md, I4). A copy takes every
+        # junction touching a selected item — nothing stays behind to
+        # pin it — plus any rail that ends on the selection, and the
+        # wires between all of those.
+        from diagrammer.canvas.closure import movable_closure
+        closure = movable_closure(
+            self._scene.items(),
+            selected_comps + selected_juncs + selected_conns_direct,
+            include_touching=True,
+        )
+        for j in closure.junctions:
+            if j not in selected_juncs:
+                selected_juncs.append(j)
         all_selected = selected_comps + selected_juncs
-        extra_juncs = self._gather_connected_junctions(all_selected)
-        selected_juncs.extend(extra_juncs)
-        all_selected = selected_comps + selected_juncs
-        item_set = set(id(c) for c in all_selected)
-
-        # Collect connections where both endpoints are in the selection
-        selected_conns = []
-        for item in self._scene.items():
-            if isinstance(item, ConnectionItem):
-                if (id(item.source_port.component) in item_set and
-                        id(item.target_port.component) in item_set):
-                    selected_conns.append(item)
+        selected_conns = list(closure.internal_wires)
 
         # Serialize to clipboard
         self._clipboard = []
+        self._paste_serial = 0
         id_map: dict[str, int] = {}  # instance_id -> clipboard index
         idx = 0
         for comp in selected_comps:
@@ -238,14 +228,9 @@ class ClipboardMixin:
                     "src_port": conn.source_port.port_name,
                     "tgt_comp": tgt_idx,
                     "tgt_port": conn.target_port.port_name,
-                    # Port-relative waypoints follow the (offset-pasted)
-                    # endpoint ports automatically; no PASTE_OFFSET shift
-                    # needed on the wire shape itself.
-                    "waypoints": [
-                        {"a": "src" if a.anchor is conn.source_port else "tgt",
-                         "dx": a.dx, "dy": a.dy}
-                        for a in conn._anchors
-                    ],
+                    # Scene coordinates; the paste shifts them by the
+                    # same offset as the items.
+                    "waypoints": [[w.x(), w.y()] for w in conn.vertices],
                     "line_width": conn.line_width,
                     "line_color": conn.line_color.name(),
                     "corner_radius": conn.corner_radius,
@@ -393,8 +378,13 @@ class ClipboardMixin:
         dx = round(dx / spacing) * spacing
         dy = round(dy / spacing) * spacing
         if dx == 0 and dy == 0:
-            return fallback, fallback
-        return dx, dy
+            dx = dy = fallback
+        # Pasting the same clipboard again without moving the view would
+        # land exactly on the previous paste — an invisible stack. Step
+        # each repeat one grid cell down and to the right instead.
+        serial = getattr(self, "_paste_serial", 0)
+        self._paste_serial = serial + 1
+        return dx + spacing * serial, dy + spacing * serial
 
     def _paste(self) -> None:
         """Paste clipboard contents, centred on the visible canvas.
@@ -407,6 +397,9 @@ class ClipboardMixin:
         if not self._clipboard:
             return
 
+        # Every pushed command would otherwise rebuild every route in
+        # the scene; one rebuild after the macro is enough.
+        self._scene._suppress_undo_updates = True
         self._scene.undo_stack.beginMacro("Paste")
         import uuid as _uuid
         from diagrammer.commands.add_command import (
@@ -476,8 +469,6 @@ class ClipboardMixin:
                 if item is None:
                     new_items.append(None)
                     continue
-                # Apply transforms — bypass snap during setup
-                item._skip_snap = True
                 if entry.get("rotation", 0):
                     item.rotate_by(entry["rotation"])
                 if entry.get("flip_h"):
@@ -494,17 +485,12 @@ class ClipboardMixin:
                         ComponentStyleOverrides.from_dict(entry["style_overrides"]))
                 # Set exact position after all transforms
                 item.setPos(pos)
-                item._skip_snap = False
                 _remap_group(item, entry)
                 new_items.append(item)
             elif entry["type"] == "junction":
                 junc = JunctionItem()
                 pos = QPointF(entry["pos"][0] + off_x, entry["pos"][1] + off_y)
-                junc._skip_snap = True
                 junc.setPos(pos)
-                junc._skip_snap = False
-                if not entry.get("visible", True):
-                    junc.setVisible(False)
                 if entry.get("end_marker", "none") in ("filled", "open"):
                     junc.end_marker = entry["end_marker"]
                 _add_pasted(junc, "Paste junction")
@@ -576,9 +562,7 @@ class ClipboardMixin:
                     shape.stroke_width = entry["stroke_width"]
                 if "dash_style" in entry:
                     shape.dash_style = entry["dash_style"]
-                shape._skip_snap = True
                 shape.setPos(pos)
-                shape._skip_snap = False
                 # Phase C: persistent intrinsic transform fields.
                 if entry.get("flip_h"):
                     shape.set_flip_h(True)
@@ -606,9 +590,7 @@ class ClipboardMixin:
                     svg_item.set_flip_v(True)
                 if entry.get("rotation_angle"):
                     svg_item.rotate_by(entry["rotation_angle"])
-                svg_item._skip_snap = True
                 svg_item.setPos(pos)
-                svg_item._skip_snap = False
                 _add_pasted(svg_item, "Paste image")
                 _remap_group(svg_item, entry)
                 pasted_annotations.append(svg_item)
@@ -644,27 +626,10 @@ class ClipboardMixin:
                         conn.routing_mode = entry["routing_mode"]
                     if entry.get("closed"):
                         conn.closed = True
-                    # Restore waypoints. New port-relative form (`waypoints`)
-                    # is bound directly. Legacy absolute form (`vertices`)
-                    # falls back through the rebind helper with the paste
-                    # offset applied — kept for any in-flight clipboard
-                    # data from before the format switch.
-                    wps = entry.get("waypoints") or []
+                    wps = entry.get("waypoints") or entry.get("vertices") or []
                     if wps:
-                        from diagrammer.items.connection_item import Waypoint
-                        anchors = []
-                        for wd in wps:
-                            anchor_port = src_port if wd.get("a", "src") == "src" else tgt_port
-                            anchors.append(Waypoint(anchor_port,
-                                                    float(wd.get("dx", 0.0)),
-                                                    float(wd.get("dy", 0.0))))
-                        conn._anchors = anchors
-                        conn._waypoints = [a.to_scene() for a in anchors]
-                        conn.update_route()
-                    elif entry.get("vertices"):
                         conn.vertices = [
-                            QPointF(v[0] + off_x, v[1] + off_y)
-                            for v in entry["vertices"]
+                            QPointF(v[0] + off_x, v[1] + off_y) for v in wps
                         ]
                     # Restore direction arrows (route-relative fractions)
                     if entry.get("arrows"):
@@ -678,6 +643,7 @@ class ClipboardMixin:
                     _remap_group(conn, entry)
 
         self._scene.undo_stack.endMacro()
+        self._scene._suppress_undo_updates = False
 
         # Update all routes so approach segments and lead shortening are computed
         self._scene.update_connections()

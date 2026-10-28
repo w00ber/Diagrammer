@@ -244,9 +244,9 @@ class TestWireArrowSerialization:
             WireArrow(t=0.5, forward=False),
         ]
 
-    def test_format_version_is_2_4(self, tmp_path, library):
+    def test_format_version_is_2_5(self, tmp_path, library):
         scene, _conn = self._wired_scene(library)
         out = tmp_path / "v.dgm"
         DiagramSerializer.save(scene, out)
         data = json.loads(out.read_text())
-        assert data["version"] == "2.4"
+        assert data["version"] == "2.5"
