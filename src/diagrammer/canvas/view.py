@@ -127,6 +127,14 @@ class DiagramView(QGraphicsView):
 
     # -- Unified waypoint selection helpers --
 
+    def _clear_waypoint_selection(self) -> None:
+        """Drop the waypoint selection now, not on the deferred slot."""
+        for conn in self._selected_waypoint_conns.values():
+            conn._selected_waypoints.clear()
+            conn.update()
+        self._selected_waypoint_set.clear()
+        self._selected_waypoint_conns.clear()
+
     def _sync_waypoint_selection(self) -> None:
         """Rebuild unified waypoint selection from individual ConnectionItems."""
         self._selected_waypoint_set.clear()
@@ -1003,11 +1011,16 @@ class DiagramView(QGraphicsView):
                 if clones:
                     self._drag_macro_open = True
                     self._diagram_scene.clearSelection()
+                    # The waypoint selection belongs to the *originals'*
+                    # wires; handing it to the clone drag moved those
+                    # waypoints along with the copy.
+                    self._clear_waypoint_selection()
                     for c in clones:
                         c.setSelected(True)
                     # The clones' own wires are internal to the closure;
                     # nothing else is attached to them yet.
-                    self._begin_item_drag(clones[0], clones, scene_pos)
+                    self._begin_item_drag(clones[0], clones, scene_pos,
+                                          drive_selected_waypoints=False)
                 event.accept()
                 return
 
@@ -1536,7 +1549,7 @@ class DiagramView(QGraphicsView):
             item.setSelected(False)
 
     def _begin_item_drag(self, anchor, selected: list, scene_pos: QPointF,
-                         *, group_wires=()) -> None:
+                         *, group_wires=(), drive_selected_waypoints=True) -> None:
         """Start a DragSession for *selected* plus whatever the closure pulls along.
 
         One entry point for every item drag (plain, multi-select,
@@ -1555,7 +1568,8 @@ class DiagramView(QGraphicsView):
         )
         self._drag = DragSession(
             self._diagram_scene, closure, anchor=anchor,
-            waypoint_selection=self._selected_waypoint_set,
+            waypoint_selection=(self._selected_waypoint_set
+                                if drive_selected_waypoints else None),
             wires_by_id=self._selected_waypoint_conns,
         )
         self._drag_mouse_start = QPointF(scene_pos)

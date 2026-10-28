@@ -117,3 +117,40 @@ class TestAutoJoinOnlyForNewContact:
         view._drag = None
         assert _count(scene, ConnectionItem) == 1
         view.setScene(None)
+
+
+class TestAltDragLeavesTheOriginalAlone:
+    def test_original_wire_waypoints_do_not_travel_with_the_clone(self, scene, library):
+        """Rubber-band a wired pair (which selects the wire's bend too),
+        then Alt-drag it: the copy moves, the original's bend must not."""
+        from PySide6.QtCore import QRectF
+        from diagrammer.commands.connect_command import CreateConnectionCommand
+
+        view = DiagramView(scene)
+        view.resize(800, 600)
+        a = _place(scene, library, QPointF(0, 0))
+        b = _place(scene, library, QPointF(300, 0))
+        cmd = CreateConnectionCommand(scene, a.ports[-1], b.ports[0])
+        scene.undo_stack.push(cmd)
+        wire = cmd.connection
+        wire.vertices = [QPointF(150, -80)]
+        scene.update_connections()
+
+        band = QRectF(-50, -150, 500, 300)
+        for it in scene.items(band):
+            it.setSelected(True)
+        view._rubber_band_rect = band
+        view.mouseReleaseEvent(_ev(view, QEvent.Type.MouseButtonRelease, band.bottomRight()))
+        assert view._selected_waypoint_set, "band should have picked the bend"
+
+        at = a.sceneBoundingRect().center()
+        view.mousePressEvent(_ev(view, QEvent.Type.MouseButtonPress, at,
+                                 Qt.KeyboardModifier.AltModifier))
+        view.mouseMoveEvent(_ev(view, QEvent.Type.MouseMove, at + QPointF(0, 400)))
+        view.mouseReleaseEvent(_ev(view, QEvent.Type.MouseButtonRelease, at + QPointF(0, 400)))
+
+        assert [(w.x(), w.y()) for w in wire.vertices] == [(150.0, -80.0)]
+        clone_wire = next(c for c in scene.items()
+                          if isinstance(c, ConnectionItem) and c is not wire)
+        assert clone_wire.vertices[0].y() > 200, "clone's bend should have moved with it"
+        view.setScene(None)
