@@ -616,9 +616,10 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
                     selected.append(item)
                     item_ids.add(id(item))
 
-        # Also pull in connected junctions
-        extra_juncs = self._gather_connected_junctions(selected)
-        selected.extend(extra_juncs)
+        # Junctions by the same rule as a drag: the sub-circuit up to
+        # the first unselected component.
+        from diagrammer.canvas.closure import movable_closure
+        selected.extend(movable_closure(self._scene.items(), selected).junctions)
 
         cmd = GroupCommand(selected)
         self._scene.undo_stack.push(cmd)
@@ -1098,7 +1099,7 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
 
     # NOTE: _rotate_closed_polygons, _rotate_selected, _fine_rotate_selected,
     # _flip_selected, and _align_selected are provided by TransformMixin.
-    # _delete_selected, _gather_connected_junctions, _copy, _cut,
+    # _delete_selected, _copy, _cut,
     # _try_paste_external_svg, and _paste are provided by ClipboardMixin.
     # _create_menus, _create_toolbar, _register_shortcut, and
     # _refresh_action_shortcuts are provided by MenuMixin.

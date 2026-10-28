@@ -558,6 +558,9 @@ class DiagramSerializer:
         # band geometry.
         from diagrammer.canvas.scene import DiagramScene
         if isinstance(scene, DiagramScene):
+            merged = scene.merge_coincident_junctions()
+            if merged:
+                logger.info("Merged %d coincident junction(s) on load", merged)
             scene.reflow_z()
             scene.update_connections()
 

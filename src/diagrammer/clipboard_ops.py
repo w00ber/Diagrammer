@@ -19,26 +19,6 @@ class ClipboardMixin:
 
     # -------------------------------------------------------------- helpers
 
-    # -------------------------------------------------------------- helpers
-
-    def _gather_connected_junctions(self, selected_items) -> list:
-        """Junctions that belong with *selected_items* for a copy-like
-        operation (copy, duplicate, group, rotate, flip).
-
-        A wrapper over the one connectivity rule,
-        :func:`diagrammer.canvas.closure.movable_closure`, with
-        ``include_touching`` — nothing stays behind to pin a junction
-        in these operations, so every junction wired to a selected item
-        travels, plus any rail that ends on the selection. Step D of
-        ``docs/wiring-interaction-redesign.md`` is expected to move the
-        transforms onto the drag rule instead.
-        """
-        from diagrammer.canvas.closure import movable_closure
-
-        return movable_closure(
-            self._scene.items(), selected_items, include_touching=True,
-        ).junctions
-
     # ---------------------------------------------------------- delete
 
     def _delete_selected(self) -> None:

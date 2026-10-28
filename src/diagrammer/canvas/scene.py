@@ -1700,6 +1700,58 @@ class DiagramScene(QGraphicsScene):
 
     # -- Deletion with dependents --
 
+    def merge_coincident_junctions(self, tol: float = 0.5) -> int:
+        """Collapse junctions sitting on the same point into one.
+
+        Returns the number of junctions removed. Every wire on a dropped
+        junction is re-pointed at the kept one; a wire that then joins a
+        port to itself (two former copies' wires between them), or that
+        duplicates another wire between the same two ports, is removed.
+
+        Stacks like these were left behind by an earlier paste-undo bug
+        and by undone duplicates; they are invisible, confuse hit-testing
+        and multiply wires on the next drag. Run on load.
+        """
+        from diagrammer.items.connection_item import ConnectionItem
+        from diagrammer.items.junction_item import JunctionItem
+
+        groups: dict[tuple[float, float], list] = {}
+        for it in self.items():
+            if isinstance(it, JunctionItem):
+                key = (round(it.pos().x() / tol) * tol, round(it.pos().y() / tol) * tol)
+                groups.setdefault(key, []).append(it)
+
+        removed = 0
+        for group in groups.values():
+            if len(group) < 2:
+                continue
+            # Prefer a junction that carries an explicit end marker.
+            group.sort(key=lambda j: (getattr(j, "end_marker", "none") == "none", j.zValue()))
+            keep = group[0]
+            for dup in group[1:]:
+                for conn in list(self.connections_on_port(dup.port)):
+                    self.unregister_connection(conn)
+                    conn.rebind_port(dup.port, keep.port)
+                    self.register_connection(conn)
+                self.removeItem(dup)
+                removed += 1
+
+        if removed:
+            seen: set[frozenset] = set()
+            for conn in [i for i in self.items() if isinstance(i, ConnectionItem)]:
+                a, b = conn.source_port, conn.target_port
+                if a is b and not conn.closed:
+                    self.unregister_connection(conn)
+                    self.removeItem(conn)
+                    continue
+                key = frozenset((id(a), id(b)))
+                if key in seen:
+                    self.unregister_connection(conn)
+                    self.removeItem(conn)
+                    continue
+                seen.add(key)
+        return removed
+
     def delete_items_with_dependents(self, items: list) -> None:
         """Delete *items* plus everything that cannot survive without them.
 

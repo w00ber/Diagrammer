@@ -291,13 +291,17 @@ decision; C does.
   re-routes only the wires it touches. `tools/dedupe_diagram.py`
   repairs an affected file.
 
+- 2026-10-27 (post-0.12.0): Transforms and grouping now use the drag
+  rule directly; `_gather_connected_junctions` is gone, and
+  `include_touching` remains only for copy and duplicate, where nothing
+  stays behind to pin a junction. `DiagramScene.merge_coincident_
+  junctions` runs on load and collapses stacked junctions, re-pointing
+  their wires and dropping the self-loops and duplicates that result.
+
 ## What is left
 
-Nothing from the plan. Candidates for a later pass, none of them
-load-bearing: `ConnectionItem` is still {os.environ['M_CONN']} lines and could lose its
+Candidates for a later pass, none of them load-bearing:
+`ConnectionItem` is still {os.environ['M_CONN']} lines and could lose its
 own segment/waypoint drag in favour of a `DragSession` variant; the
 closed-polygon code paths duplicate the open-wire ones in several
-places; the transforms and grouping still reach the closure through the
-`_gather_connected_junctions` wrapper with `include_touching`, which is
-a second policy in all but name and should become the drag rule once
-someone has decided what a rotation of a boxed tee ought to do.
+places.
