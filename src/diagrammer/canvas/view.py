@@ -1068,15 +1068,18 @@ class DiagramView(QGraphicsView):
                     LineItem as _DragLineItem,
                     ShapeItem as _DragShapeItem,
                 )
+                from diagrammer.items.svg_image_item import (
+                    SvgImageItem as _DragSvgItem,
+                )
                 _movable_types = (
                     ComponentItem, JunctionItem, AnnotationItem,
-                    _DragShapeItem, _DragLineItem,
+                    _DragShapeItem, _DragLineItem, _DragSvgItem,
                 )
                 # If the click lands on a shape's resize handle or a
                 # line's endpoint, defer to the item's own mousePress
                 # so resize / endpoint-edit gestures still work.
                 _handle_hit = False
-                if isinstance(item, _DragShapeItem) and item.isSelected():
+                if isinstance(item, (_DragShapeItem, _DragSvgItem)) and item.isSelected():
                     _local = item.mapFromScene(scene_pos)
                     if item._handle_at(_local) is not None:
                         _handle_hit = True
@@ -1623,6 +1626,7 @@ class DiagramView(QGraphicsView):
         """
         from diagrammer.commands.group_command import get_top_group
         from diagrammer.items.shape_item import LineItem, ShapeItem
+        from diagrammer.items.svg_image_item import SvgImageItem
 
         gid = get_top_group(clicked_item)
         if gid:
@@ -1639,7 +1643,7 @@ class DiagramView(QGraphicsView):
             if isinstance(
                 i,
                 (ComponentItem, JunctionItem, AnnotationItem,
-                 ShapeItem, LineItem),
+                 ShapeItem, LineItem, SvgImageItem),
             )
         ]
         if clicked_item not in selected:

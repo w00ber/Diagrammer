@@ -232,3 +232,68 @@ class TestResizeUndo:
         assert scene.undo_stack.count() == before + 1
         scene.undo_stack.undo()
         assert (item.image_width, item.image_height) == (80.0, 60.0)
+
+
+class TestDrag:
+    """A pasted SVG must move, not just resize.
+
+    Nothing on the canvas is ``ItemIsMovable`` — the view moves items
+    through ``DragSession``, and ``SvgImageItem`` was missing from the
+    view's movable-type list. Resize worked (the item handles its own
+    handle drags), so the image looked interactive but was pinned.
+    """
+
+    def _drag(self, view, scene, frm: QPointF, to: QPointF):
+        from PySide6.QtCore import QEvent
+        from PySide6.QtGui import QMouseEvent
+
+        def ev(kind, scene_pos):
+            buttons = (Qt.MouseButton.NoButton
+                       if kind == QEvent.Type.MouseButtonRelease
+                       else Qt.MouseButton.LeftButton)
+            return QMouseEvent(kind, QPointF(view.mapFromScene(scene_pos)),
+                               Qt.MouseButton.LeftButton, buttons,
+                               Qt.KeyboardModifier.NoModifier)
+
+        view.mousePressEvent(ev(QEvent.Type.MouseButtonPress, frm))
+        view.mouseMoveEvent(ev(QEvent.Type.MouseMove, to))
+        view.mouseReleaseEvent(ev(QEvent.Type.MouseButtonRelease, to))
+
+    def test_dragging_the_body_moves_the_image(self, scene, view):
+        item = SvgImageItem(TIDY)
+        scene.addItem(item)
+        item.setPos(QPointF(0, 0))
+        item.setSelected(True)
+
+        centre = item.mapToScene(QPointF(40, 30))
+        self._drag(view, scene, centre, centre + QPointF(100, 60))
+
+        assert item.pos() != QPointF(0, 0)
+        assert item.pos().x() > 50 and item.pos().y() > 20
+        assert (item.image_width, item.image_height) == (80.0, 60.0)
+
+    def test_the_move_is_undoable(self, scene, view):
+        item = SvgImageItem(TIDY)
+        scene.addItem(item)
+        item.setPos(QPointF(0, 0))
+        item.setSelected(True)
+
+        centre = item.mapToScene(QPointF(40, 30))
+        self._drag(view, scene, centre, centre + QPointF(100, 60))
+        assert item.pos() != QPointF(0, 0)
+
+        scene.undo_stack.undo()
+        assert item.pos() == QPointF(0, 0)
+
+    def test_a_handle_drag_still_resizes(self, scene, view):
+        """The view must defer to the item when the press lands on a handle."""
+        item = SvgImageItem(TIDY)
+        scene.addItem(item)
+        item.setPos(QPointF(0, 0))
+        item.setSelected(True)
+
+        corner = item.mapToScene(QPointF(80, 60))
+        self._drag(view, scene, corner, corner + QPointF(20, 10))
+
+        assert (item.image_width, item.image_height) == (100.0, 70.0)
+        assert item.pos() == QPointF(0, 0)
