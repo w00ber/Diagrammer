@@ -1179,7 +1179,7 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
     # ------------------------------------------------- Copy Selection as Image
 
     def _copy_selection_as_image(self) -> None:
-        """Copy selected items (or entire scene) to clipboard as PDF + PNG."""
+        """Copy selected items (or entire scene) to clipboard as PDF + SVG + PNG."""
         from diagrammer.io import exporter as _exp
 
         scene = self._active_scene()
@@ -1187,7 +1187,12 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         if ok:
             method = _exp.last_clipboard_method
             if method.startswith("native") or method.startswith("subprocess"):
-                detail = "as vector (PDF)"
+                vectors = [
+                    name for uti, name in (
+                        (_exp._UTI_PDF, "PDF"), (_exp._UTI_SVG, "SVG"),
+                    ) if uti in _exp.last_clipboard_flavors
+                ]
+                detail = f"as vector ({' + '.join(vectors)})" if vectors else "as vector"
             else:
                 detail = "as image (PNG)"
             self.statusBar().showMessage(
