@@ -83,6 +83,23 @@ class ComponentDef:
     # than loaded from the on-disk component library.
     svg_bytes: bytes | None = None
     is_embedded: bool = False
+    # Provenance, set by ComponentLibrary after parsing. Required rather than a
+    # convenience: build_component_menu is handed only a ComponentDef and has no
+    # library handle, so the def itself must be able to answer "is this mine, or
+    # did it ship with the app?" — which decides whether Remove offers a
+    # reversible tombstone or a real delete.
+    source_root: Path | None = None
+    source_kind: str = ""  # "builtin" | "overlay" | "custom" | "compound" | "embedded"
+
+    @property
+    def is_builtin(self) -> bool:
+        """Shipped with the app: read-only, and replaced by an update."""
+        return self.source_kind == "builtin"
+
+    @property
+    def is_user_owned(self) -> bool:
+        """The user's to edit, move or delete outright."""
+        return self.source_kind in ("overlay", "custom", "compound")
 
     @classmethod
     def from_embedded(cls, metadata: dict, svg_bytes: bytes) -> ComponentDef:

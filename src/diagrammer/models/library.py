@@ -25,25 +25,64 @@ class ComponentLibrary:
     def __init__(self) -> None:
         self._categories: dict[str, list[ComponentDef]] = {}
         self._by_key: dict[str, ComponentDef] = {}  # "category/name" -> def
+        # Paths that lost a key collision. The duplicate-skip in scan() used to
+        # throw this away, but it is exactly what the UI needs: when a user's
+        # overlay shadows a shipped part, the panel has to be able to say so and
+        # to offer "compare with built-in".
+        self._shadowed: dict[str, list[Path]] = {}
+        # Files that failed to parse, and why. Scanning still swallows the
+        # failure so a bad file cannot stop startup, but recording it means the
+        # Library panel can report "3 components failed to load" instead of the
+        # component silently vanishing.
+        self._failures: dict[Path, str] = {}
 
     @property
     def categories(self) -> dict[str, list[ComponentDef]]:
         return self._categories
 
+    @property
+    def failures(self) -> dict[Path, str]:
+        return self._failures
+
     def clear(self) -> None:
         """Remove all loaded categories and definitions."""
         self._categories.clear()
         self._by_key.clear()
+        self._shadowed.clear()
+        self._failures.clear()
+
+    def source_of(self, key: str) -> Path | None:
+        """The file a loaded component came from."""
+        comp = self._by_key.get(key)
+        return comp.svg_path if comp is not None else None
+
+    def shadowed_paths(self, key: str) -> list[Path]:
+        """Files that define ``key`` but lost to the one that won.
+
+        Normally one entry: the shipped component behind a user's fork.
+        """
+        return list(self._shadowed.get(key, ()))
 
     def get(self, key: str) -> ComponentDef | None:
         """Look up a component by its library key (e.g. 'flowchart/process')."""
         return self._by_key.get(key)
 
-    def scan(self, root: Path) -> None:
+    def scan(self, root: Path, *, source_kind: str = "",
+             flat_category: str | None = None) -> None:
         """Scan a directory tree recursively and load all SVG component definitions.
 
         Supports nested directories: electrical/simple/resistor.svg gets
         category 'electrical/simple' and key 'electrical/simple/resistor'.
+
+        **Scan order is precedence.** A duplicate key is skipped, so whichever
+        root is scanned first wins. That is what makes the user's overlay shadow
+        the built-in tree without any extra precedence logic — the overlay
+        mirrors the built-in layout, so the keys collide by construction.
+
+        ``source_kind`` tags every def loaded from this root ("builtin",
+        "overlay", "custom", ...) so the UI can tell the user's own components
+        from the shipped ones. Both new arguments are keyword-only with
+        behaviour-preserving defaults, so existing callers are unaffected.
         """
         if not root.is_dir():
             return
@@ -59,21 +98,74 @@ class ComponentLibrary:
             # as their category, so user libraries with a flat layout
             # still appear in the panel.
             if len(rel.parts) < 2:
-                category = root.name or "user"
+                category = flat_category or root.name or "user"
             else:
                 category = str(rel.parent).replace("\\", "/")
 
             try:
                 comp_def = ComponentDef.from_svg(svg_file, category=category)
+                comp_def.source_root = root
+                comp_def.source_kind = source_kind
                 key = f"{category}/{comp_def.name}"
                 if key in self._by_key:
-                    continue  # already loaded — skip duplicate
+                    # Record what lost rather than dropping it: this is how the
+                    # panel knows a fork is shadowing a shipped component.
+                    self._shadowed.setdefault(key, []).append(svg_file)
+                    continue
                 self._by_key[key] = comp_def
                 if category not in self._categories:
                     self._categories[category] = []
                 self._categories[category].append(comp_def)
-            except Exception:
+            except Exception as exc:
+                self._failures[svg_file] = str(exc)
                 logger.warning("Failed to load %s", svg_file, exc_info=True)
+
+    def remove_key(self, key: str) -> bool:
+        """Unload one component, leaving its file alone.
+
+        Used for a per-component tombstone: the shipped file stays on disk
+        (inside a read-only app bundle, it has to), so hiding is purely a
+        question of what the library reports. That also makes it reversible,
+        which is the right semantics for data the user did not author.
+        """
+        comp = self._by_key.pop(key, None)
+        if comp is None:
+            return False
+        bucket = self._categories.get(comp.category)
+        if bucket is not None:
+            self._categories[comp.category] = [d for d in bucket if d is not comp]
+            if not self._categories[comp.category]:
+                del self._categories[comp.category]
+        return True
+
+    def reload_one(self, key: str) -> ComponentDef | None:
+        """Re-parse a loaded component in place, keeping its panel position.
+
+        ``add_file`` appends, which would make a component the user just edited
+        jump to the end of its category. After an in-place save the only thing
+        that changed is the file's content, so the def is swapped where it sits.
+        """
+        old = self._by_key.get(key)
+        if old is None:
+            return None
+        try:
+            fresh = ComponentDef.from_svg(old.svg_path, category=old.category)
+        except Exception as exc:
+            self._failures[old.svg_path] = str(exc)
+            logger.warning("Failed to reload %s", old.svg_path, exc_info=True)
+            return None
+        fresh.source_root = old.source_root
+        fresh.source_kind = old.source_kind
+        self._by_key[key] = fresh
+        bucket = self._categories.get(old.category, [])
+        for i, d in enumerate(bucket):
+            if d is old:
+                bucket[i] = fresh
+                break
+        else:
+            bucket.append(fresh)
+        self._failures.pop(old.svg_path, None)
+        return fresh
 
     def add_file(self, svg_file: Path, category: str | None = None) -> ComponentDef | None:
         """Load a single SVG file into the library.

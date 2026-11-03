@@ -23,7 +23,9 @@ from diagrammer.canvas.scene import DiagramScene, InteractionMode
 from diagrammer.canvas.view import DiagramView
 from diagrammer.clipboard_ops import ClipboardMixin
 from diagrammer.menu_ops import MenuMixin
+from diagrammer.models import overrides as overrides_mod
 from diagrammer.models.library import ComponentLibrary
+from diagrammer.models.overrides import OverrideIndex
 from diagrammer.panels.library_panel import LibraryPanel
 from diagrammer.panels.settings_dialog import SettingsDialog, app_settings
 from diagrammer.shortcuts import get_shortcut
@@ -72,6 +74,9 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         # -- Component library --
         self._library = ComponentLibrary()
         self._builtin_components_path = _find_builtin_components()
+        self._overlay_root = overrides_mod.default_overlay_root()
+        self._overrides = OverrideIndex.load(self._overlay_root,
+                                             self._builtin_components_path)
         self._rebuild_library()
         # On a fresh install, restrict the visible libraries to a small
         # curated default set so new users aren't overwhelmed.
@@ -416,24 +421,71 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         self._view.grid_spacing = DEFAULT_GRID_SPACING
 
     def _rebuild_library(self) -> None:
-        """Wipe and re-scan: built-ins + enabled custom paths + user compounds."""
+        """Wipe and re-scan: overlay + built-ins + custom paths + compounds.
+
+        **The overlay is scanned first, and that is the whole precedence
+        mechanism.** ``ComponentLibrary.scan`` skips a key that is already
+        loaded, so whichever root is scanned first wins. The overlay mirrors the
+        built-in tree by relative path, so a forked component produces the same
+        key as the shipped one and shadows it — the panel still shows a single
+        component, badged as the user's.
+
+        Until now ``~/.diagrammer/components/`` was created on demand as the
+        default save location but never scanned, so a saved component only ever
+        appeared if the user accepted the "add this library path?" prompt.
+        """
         self._library.clear()
+        if self._overlay_root.is_dir():
+            self._library.scan(self._overlay_root, source_kind="overlay",
+                               flat_category="My Components")
         if self._builtin_components_path.is_dir():
-            self._library.scan(self._builtin_components_path)
+            self._library.scan(self._builtin_components_path,
+                               source_kind="builtin")
         for custom_path in app_settings.enabled_custom_library_paths():
             p = Path(custom_path)
             if p.is_dir():
-                self._library.scan(p)
+                self._library.scan(p, source_kind="custom")
         # Individually-registered user compounds
         surviving: list[str] = []
         for f in app_settings.user_compound_files:
             fp = Path(f)
             if fp.is_file():
-                self._library.add_file(fp)
+                comp = self._library.add_file(fp)
+                if comp is not None:
+                    comp.source_kind = "compound"
                 surviving.append(f)
         if len(surviving) != len(app_settings.user_compound_files):
             app_settings.user_compound_files = surviving
             app_settings.save()
+        self._apply_component_tombstones()
+
+    def _apply_component_tombstones(self) -> None:
+        """Drop components the user has hidden individually.
+
+        Kept separate from ``app_settings.hidden_libraries``, which hides whole
+        libraries and keeps working untouched. Per-component tombstones are
+        numerous and per-file, so they live with the overlay they travel with;
+        hiding a library creates none of them, and un-hiding it restores exactly
+        what its own tombstones allow.
+        """
+        index = self._overrides
+        if index is None or not index.hidden:
+            return
+        builtin_rels = index.hidden_builtin_rels()
+        custom_paths = index.hidden_custom_paths()
+        if not builtin_rels and not custom_paths:
+            return
+
+        from diagrammer.models.overrides import rel_posix
+
+        for key, comp in list(self._library._by_key.items()):
+            path = comp.svg_path
+            hidden = str(path) in custom_paths
+            if not hidden and comp.is_builtin:
+                rel = rel_posix(path, self._builtin_components_path)
+                hidden = rel is not None and rel in builtin_rels
+            if hidden:
+                self._library.remove_key(key)
 
     def _refresh_libraries(self) -> None:
         """Re-scan SVG component sources and refresh the library panel.

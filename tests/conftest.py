@@ -59,6 +59,31 @@ def isolate_app_settings(tmp_path, monkeypatch):
         sd.app_settings.reset_all()
 
 
+@pytest.fixture(autouse=True)
+def isolate_component_overlay(tmp_path, monkeypatch):
+    """Keep tests out of the real ``~/.diagrammer/components/`` overlay.
+
+    The same trap as ``isolate_app_settings``, one layer down. ``MainWindow``
+    now scans the user's copy-on-write overlay *first*, because scan order is
+    what makes a fork shadow the shipped component. Seven test modules build a
+    MainWindow, so without this they would load whatever the developer happens
+    to have forked — and a test asserting on a built-in component would measure
+    that person's edit instead.
+
+    Patched on ``diagrammer.models.overrides``, which MainWindow calls through
+    by module reference for exactly this reason. Patching a name bound inside
+    ``main_window`` would mean importing ``main_window`` in an autouse fixture,
+    which pulls Qt and AppKit in for every test in the run — and that reordering
+    segfaults the ``importorskip("AppKit")`` in test_clipboard_svg_paste.
+    ``overrides`` itself imports no Qt, so this is free.
+    """
+    from diagrammer.models import overrides
+
+    overlay = tmp_path / "overlay-components"
+    monkeypatch.setattr(overrides, "default_overlay_root", lambda: overlay)
+    yield overlay
+
+
 @pytest.fixture
 def scene():
     """Create a fresh DiagramScene for each test."""
