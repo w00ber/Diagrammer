@@ -72,9 +72,18 @@ done
 
 # 2. Validate against the app's parser. Errors mean the part misbehaves on the
 #    canvas, so stop the commit; warnings are advisory and do not block.
-VALIDATOR=".claude/skills/svg-component/scripts/validate_components.py"
-if [ ! -f "$VALIDATOR" ]; then
-    echo "pre-commit: $VALIDATOR missing; skipping validation" >&2
+#
+#    The checks live in src/diagrammer/svglint/, which deliberately imports no
+#    PySide6 so this runs under whatever python3 is to hand. The skill script is
+#    kept as a fallback for a checkout where src/ is not importable.
+SKILL_VALIDATOR=".claude/skills/svg-component/scripts/validate_components.py"
+if PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" -c \
+        'import diagrammer.svglint' 2>/dev/null; then
+    VALIDATOR=""
+elif [ -f "$SKILL_VALIDATOR" ]; then
+    VALIDATOR="$SKILL_VALIDATOR"
+else
+    echo "pre-commit: no component validator available; skipping validation" >&2
     exit 0
 fi
 
@@ -92,7 +101,13 @@ if [ "$#" -eq 0 ]; then
     exit 0
 fi
 
-if ! "$PYTHON" "$VALIDATOR" "$@"; then
+if [ -n "$VALIDATOR" ]; then
+    set -- "$VALIDATOR" "$@"
+else
+    set -- -m diagrammer.svglint "$@"
+fi
+
+if ! PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" "$@"; then
     cat >&2 <<'MSG'
 
 pre-commit: a staged component SVG does not parse as a usable part.
