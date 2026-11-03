@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from diagrammer.models.component_def import ComponentDef
 from diagrammer.models.library import ComponentLibrary
+from diagrammer.panels.open_with import add_open_with_actions
 
 logger = logging.getLogger(__name__)
 
@@ -174,13 +175,19 @@ class LibraryPanel(QDockWidget):
         self._tree.populate(self._library, self._favorites, self._recents)
         self._save_prefs()
 
+    def is_favorite(self, key: str) -> bool:
+        return key in self._favorites
+
     def toggle_favorite(self, key: str) -> None:
         if key in self._favorites:
             self._favorites.discard(key)
         else:
             self._favorites.add(key)
-        self._tree.populate(self._library, self._favorites, self._recents)
         self._save_prefs()
+        # Refresh through _refresh_views so the rebuilt tree keeps the
+        # current visibility filter and category order — repopulating from
+        # self._library directly would resurrect hidden categories.
+        self._refresh_views()
 
     def reload(self, root: Path) -> None:
         self._library.scan(root)
@@ -276,6 +283,31 @@ class LibraryPanel(QDockWidget):
     def open_library_table(self, category: str) -> None:
         """Request the main window to open a library table tab for *category*."""
         self.table_view_requested.emit(category)
+
+
+# =========================================================================
+# Shared component context menu
+# =========================================================================
+
+def build_component_menu(parent, comp_def: ComponentDef, is_favorite: bool):
+    """Build the right-click menu for a single library component.
+
+    Shared by the tree ("List") and grid views so both offer the same
+    entries. Returns ``(menu, favorite_action, show_action)``; the two
+    actions are the ones the caller must handle after ``menu.exec()``.
+    The open-in-an-application entries handle themselves, and are omitted
+    for an embedded compound, which has no file on disk to open.
+    """
+    from PySide6.QtWidgets import QMenu
+    menu = QMenu(parent)
+    fav_act = menu.addAction(
+        "\u2605 Remove from Favorites" if is_favorite else "\u2606 Add to Favorites")
+    show_act = None
+    if comp_def is not None and comp_def.svg_path and not comp_def.is_embedded:
+        menu.addSeparator()
+        add_open_with_actions(menu, comp_def.svg_path, parent)
+        show_act = menu.addAction("Show in File Browser")
+    return menu, fav_act, show_act
 
 
 # =========================================================================
@@ -405,17 +437,12 @@ class _DragTree(QTreeWidget):
         raw_cat = item.data(0, Qt.ItemDataRole.UserRole + 1)
 
         from PySide6.QtWidgets import QMenu
-        menu = QMenu(self)
 
         # Component context menu
         if key is not None:
-            is_fav = key in self._favorites
-            fav_act = menu.addAction("\u2605 Remove from Favorites" if is_fav else "\u2606 Add to Favorites")
-            show_act = None
             comp_def = self._library.get(key) if self._library else None
-            if comp_def and comp_def.svg_path and not comp_def.is_embedded:
-                menu.addSeparator()
-                show_act = menu.addAction("Show in File Browser")
+            menu, fav_act, show_act = build_component_menu(
+                self, comp_def, key in self._favorites)
             action = menu.exec(event.globalPos())
             if action is fav_act:
                 panel = self.parent()
@@ -429,6 +456,7 @@ class _DragTree(QTreeWidget):
 
         # Category context menu (reorder + table view)
         if raw_cat is not None:
+            menu = QMenu(self)
             table_act = menu.addAction("View as Table")
             # "Show in File Browser" — find the directory for this category
             show_act = None
@@ -566,7 +594,7 @@ class _CategorySection(QWidget):
         self._grid_widget = QWidget()
         self._grid_layout = _FlowLayout(self._grid_widget, margin=2, spacing=2)
         for comp_def in defs:
-            thumb = _DragThumbnail(comp_def)
+            thumb = _DragThumbnail(comp_def, panel)
             self._grid_layout.addWidget(thumb)
         layout.addWidget(self._grid_widget)
 
@@ -581,9 +609,11 @@ class _CategorySection(QWidget):
 class _DragThumbnail(QLabel):
     """A single draggable component thumbnail in the grid view."""
 
-    def __init__(self, comp_def: ComponentDef, parent=None):
+    def __init__(self, comp_def: ComponentDef, panel: LibraryPanel | None = None,
+                 parent=None):
         super().__init__(parent)
         self._comp_def = comp_def
+        self._panel = panel
         self._key = f"{comp_def.category}/{comp_def.name}"
         icon = _make_icon(comp_def)
         self.setPixmap(icon.pixmap(DENSE_THUMB_SIZE))
@@ -600,6 +630,20 @@ class _DragThumbnail(QLabel):
             drag.setMimeData(mime)
             drag.setPixmap(self.pixmap())
             drag.exec(Qt.DropAction.CopyAction)
+
+    def build_menu(self):
+        """Return this tile's context menu (see ``build_component_menu``)."""
+        is_fav = self._panel.is_favorite(self._key) if self._panel else False
+        return build_component_menu(self, self._comp_def, is_fav)
+
+    def contextMenuEvent(self, event) -> None:
+        """Same component menu as the tree view, so either view can reach it."""
+        menu, fav_act, show_act = self.build_menu()
+        action = menu.exec(event.globalPos())
+        if action is fav_act and self._panel is not None:
+            self._panel.toggle_favorite(self._key)
+        elif show_act is not None and action is show_act:
+            _show_in_file_browser(self._comp_def.svg_path.parent)
 
 
 # =========================================================================

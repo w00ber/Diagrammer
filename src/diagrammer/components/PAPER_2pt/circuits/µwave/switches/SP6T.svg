@@ -42,8 +42,6 @@
     <circle class="st3" cx="56.2" cy="70" r="4.5"/>
     <circle class="st3" cx="52.6" cy="50" r="4.5"/>
     <circle class="st3" cx="47.2" cy="30" r="4.5"/>
-    <path class="st2" d="M10,79.7"/>
-    <path class="st2" d="M23.8,79.7"/>
     <line class="st4" x1="27" y1="83.5" x2="46.7" y2="104.5"/>
   </g>
   <g id="ports">

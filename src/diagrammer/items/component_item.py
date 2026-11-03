@@ -526,6 +526,9 @@ class ComponentItem(QGraphicsItem):
         # Keep baked lettering readable when the item is flipped or rotated
         ComponentItem._apply_upright(root, flip_h, flip_v, rotation)
 
+        # Drop Illustrator's stray anchor points before anything renders.
+        ComponentItem._strip_degenerate_paths(root)
+
         # Inline CSS url() references (e.g. gradient fills) as direct SVG
         # attributes so that downstream SVG manipulations (style overrides,
         # compound export) can see them without parsing the <style> block.
@@ -536,6 +539,38 @@ class ComponentItem(QGraphicsItem):
             ComponentItem._apply_style_overrides(root, style_overrides)
 
         return ET.tostring(root, encoding="unicode").encode("utf-8")
+
+    # Path commands that actually draw something. A ``d`` with none of
+    # these is a bare anchor point: no geometry, no area, nothing to see.
+    _DRAWING_COMMANDS = set("LlHhVvCcSsQqTtAa")
+
+    @staticmethod
+    def _strip_degenerate_paths(root) -> None:
+        """Remove ``<path>`` elements whose ``d`` draws nothing.
+
+        Illustrator leaves single-moveto paths behind — ``<path d="M40.1,24.1"/>``
+        — wherever an anchor point survived the shape it belonged to. They
+        are invisible under the default butt linecap and a sub-pixel speck
+        under a round one, so they go unnoticed inside Diagrammer. They do
+        not survive the trip out: the exported SVG carries the same empty
+        subpath, and a vector editor turns it into a stray anchor point
+        (VectorCraft and Illustrator render it as a 1x1 rect or a tiny
+        circle), which is visible when the pasted object is selected.
+
+        Dropping them here cleans the canvas, the thumbnails, the clipboard
+        flavors and every export at once, including components from a user's
+        own library folder that this repo's files cannot cover.
+        """
+        def _strip_ns(tag: str) -> str:
+            return tag.split("}", 1)[1] if "}" in tag else tag
+
+        for parent in list(root.iter()):
+            for elem in list(parent):
+                if _strip_ns(elem.tag) != "path":
+                    continue
+                d = elem.get("d") or ""
+                if not any(c in ComponentItem._DRAWING_COMMANDS for c in d):
+                    parent.remove(elem)
 
     @staticmethod
     def _inline_css_url_refs(root) -> None:
@@ -1116,6 +1151,12 @@ class ComponentItem(QGraphicsItem):
             tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
             if tag == "g" and elem.get("id") in ("ports", "labels", "stretch", "snap", "decorative"):
                 elem.set("display", "none")
+
+        # This path re-parses the file instead of going through
+        # _prepare_svg_bytes, so it needs the same cleanup — otherwise a
+        # stretched component is the one kind that still exports Illustrator's
+        # stray anchor points.
+        ComponentItem._strip_degenerate_paths(root)
 
         # Determine stretch mode: gap (single break) or repeat (two breaks)
         v_repeat = cdef.stretch_v_repeat  # (x1, x2) or None

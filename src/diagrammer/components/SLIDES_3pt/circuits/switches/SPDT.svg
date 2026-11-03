@@ -38,8 +38,6 @@
     <circle class="st2" cx="23.8" cy="50" r="4.5"/>
     <circle class="st2" cx="56.2" cy="70" r="4.5"/>
     <circle class="st2" cx="56.2" cy="29.9" r="4.5"/>
-    <path class="st1" d="M10,50"/>
-    <path class="st1" d="M23.8,50"/>
     <line class="st3" x1="27.6" y1="52" x2="50.8" y2="66.5"/>
   </g>
   <g id="ports">

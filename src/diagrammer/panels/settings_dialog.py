@@ -192,6 +192,14 @@ class AppSettings:
         self.auto_add_saved_compounds: bool = True
         self.user_compound_files: list[str] = []
 
+        # External applications offered in the library panel's "Open With"
+        # submenu, most-recently-used first. Each entry is a launchable
+        # app: a bundle path on macOS, an .exe path on Windows, or an
+        # executable name/path elsewhere. Empty by default — the submenu
+        # also offers any well-known editor it detects on disk, and an
+        # app only lands here once the user picks it.
+        self.external_editors: list[str] = []
+
         # Math rendering: when True, ``$$...$$`` display-math annotations
         # are rendered through matplotlib's ``usetex`` mode (requires a
         # system LaTeX install) in preference to the pure-Python ziamath
@@ -282,6 +290,7 @@ class AppSettings:
                 "recent_files": self.recent_files[:10],
                 "auto_add_saved_compounds": self.auto_add_saved_compounds,
                 "user_compound_files": self.user_compound_files,
+                "external_editors": self.external_editors,
                 "prefer_system_latex_for_math": self.prefer_system_latex_for_math,
                 "latex_bin_path": self.latex_bin_path,
                 "latex_arraycolsep_pt": self.latex_arraycolsep_pt,
@@ -375,6 +384,7 @@ class AppSettings:
                 self.auto_add_saved_compounds = data.get(
                     "auto_add_saved_compounds", self.auto_add_saved_compounds)
                 self.user_compound_files = data.get("user_compound_files", [])
+                self.external_editors = data.get("external_editors", [])
                 self.prefer_system_latex_for_math = data.get(
                     "prefer_system_latex_for_math",
                     self.prefer_system_latex_for_math)
@@ -795,6 +805,37 @@ class SettingsDialog(QDialog):
             "Automatically add saved compounds to the library")
         self._auto_add_compounds_cb.setChecked(settings.auto_add_saved_compounds)
         lib_layout.addWidget(self._auto_add_compounds_cb)
+
+        # External editors offered by the library panel's "Open With" submenu.
+        editors_group = QGroupBox("External Editors")
+        editors_layout = QVBoxLayout()
+        editors_hint = QLabel(
+            "Applications offered in the library panel's right-click "
+            "\u201cOpen With\u201d submenu. Well-known SVG editors found on "
+            "this machine are offered automatically; anything you pick is "
+            "remembered here."
+        )
+        editors_hint.setStyleSheet(f"color: {_htc()}; font-size: 11px;")
+        editors_hint.setWordWrap(True)
+        editors_layout.addWidget(editors_hint)
+        self._editors_list = QListWidget()
+        self._editors_list.setMaximumHeight(110)
+        for app in settings.external_editors:
+            self._editors_list.addItem(QListWidgetItem(app))
+        editors_layout.addWidget(self._editors_list)
+        editors_btn_row = QHBoxLayout()
+        add_editor_btn = QPushButton("Add...")
+        add_editor_btn.setAutoDefault(False)
+        add_editor_btn.clicked.connect(self._add_external_editor)
+        remove_editor_btn = QPushButton("Remove")
+        remove_editor_btn.setAutoDefault(False)
+        remove_editor_btn.clicked.connect(self._remove_external_editor)
+        editors_btn_row.addWidget(add_editor_btn)
+        editors_btn_row.addWidget(remove_editor_btn)
+        editors_btn_row.addStretch()
+        editors_layout.addLayout(editors_btn_row)
+        editors_group.setLayout(editors_layout)
+        lib_layout.addWidget(editors_group)
 
         tabs.addTab(_scrollable(lib_tab), "Libraries")
 
@@ -1325,6 +1366,23 @@ class SettingsDialog(QDialog):
         except Exception:
             logger.debug("Failed to clean up hidden_libraries after removing path '%s'", removed_path, exc_info=True)
 
+    def _add_external_editor(self) -> None:
+        from PySide6.QtWidgets import QListWidgetItem
+        from diagrammer.panels.open_with import choose_app
+        app = choose_app(self)
+        if not app:
+            return
+        existing = [self._editors_list.item(i).text()
+                    for i in range(self._editors_list.count())]
+        if app in existing:
+            return
+        self._editors_list.addItem(QListWidgetItem(app))
+
+    def _remove_external_editor(self) -> None:
+        row = self._editors_list.currentRow()
+        if row >= 0:
+            self._editors_list.takeItem(row)
+
     def _reset_to_factory(self) -> None:
         """Reset ALL settings to factory defaults from defaults.yaml."""
         self._settings.reset_all()
@@ -1577,6 +1635,11 @@ class SettingsDialog(QDialog):
         self._settings.custom_library_paths = new_paths
         # Auto-add toggle for compounds saved via "Create Component"
         self._settings.auto_add_saved_compounds = self._auto_add_compounds_cb.isChecked()
+        # External "Open With" applications, in menu order
+        self._settings.external_editors = [
+            self._editors_list.item(i).text()
+            for i in range(self._editors_list.count())
+        ]
         # Prefer system LaTeX over ziamath for display math
         self._settings.prefer_system_latex_for_math = self._prefer_latex_cb.isChecked()
         self._settings.latex_bin_path = self._latex_path_edit.text().strip()

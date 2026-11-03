@@ -57,13 +57,7 @@
     <circle id="port:right" class="st5" cx="30.1" cy="100.1" r="3"/>
   </g>
   <g id="artwork">
-    <path class="st2" d="M6.1,45.4"/>
-    <path class="st2" d="M30,79.3"/>
-    <path class="st2" d="M54,45.4"/>
     <polyline class="st2" points="6.1 45.4 6.1 21.7 54 21.7 54 45.4"/>
-    <path class="st1" d="M54,53.9"/>
-    <path class="st1" d="M30.1,22"/>
-    <path class="st1" d="M6.1,53.9"/>
     <polyline class="st1" points="54 53.9 54 79.6 6.1 79.6 6.1 53.9"/>
     <g>
       <g id="artwork2">

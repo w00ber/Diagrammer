@@ -35,6 +35,8 @@ Diagrammer is a tool for building diagrams using SVG components. Drag components
 - **Favorites** — right-click a component, select "Add to Favorites"
 - **Recently used** — automatically shown at the top of the library
 - **Show in File Browser** — right-click a component or category to open its directory in Finder/Explorer
+- **Open in Default App** — right-click a component to open its SVG in whatever app your system associates with SVG files
+- **Open With** — right-click a component and pick an editor (Inkscape, Illustrator, a text editor…). Editors found on your machine are offered automatically; anything you choose is remembered, and the list is editable under Settings › Libraries › External Editors. Edits to a component file show up after restarting Diagrammer.
 
 Components snap to the grid by default. The nearest port to your click determines which grid point the component snaps to.
 

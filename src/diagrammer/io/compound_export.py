@@ -272,6 +272,11 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
             if tag == "g" and elem.get("id") in ("ports", "labels", "stretch", "snap", "decorative"):
                 elem.set("display", "none")
 
+    # Both branches re-parse the component file, so Illustrator's stray
+    # single-moveto paths would otherwise be copied into the compound and
+    # show up as anchor points wherever the compound is exported next.
+    ComponentItem._strip_degenerate_paths(root)
+
     # Apply per-instance style overrides (bake into export)
     if hasattr(comp, '_style_overrides') and not comp.style_overrides.is_empty():
         ComponentItem._apply_style_overrides(root, comp.style_overrides)

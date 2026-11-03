@@ -37,6 +37,7 @@ class _TableComponentItem(QGraphicsItem):
 
     def __init__(self, comp_def: ComponentDef, parent: QGraphicsItem | None = None):
         super().__init__(parent)
+        self.comp_def = comp_def
         self._width = comp_def.width
         self._height = comp_def.height
         from diagrammer.items.component_item import ComponentItem
@@ -95,6 +96,42 @@ class LibraryTableView(QGraphicsView):
         # Pan state (middle-click or in non-zoom mode)
         self._panning = False
         self._pan_start = QPointF()
+        # Set by the main window so the component context menu can toggle
+        # favorites; None leaves the menu read-only-but-openable.
+        self._library_panel = None
+
+    def set_library_panel(self, panel) -> None:
+        """Give the view the library panel its context menu acts through."""
+        self._library_panel = panel
+
+    def _comp_def_at(self, view_pos) -> ComponentDef | None:
+        """Return the component whose cell is under *view_pos*, if any.
+
+        Every item making up a cell — artwork, label and frame — carries
+        its ComponentDef, so right-clicking the padding inside a cell hits
+        the same component as right-clicking the symbol itself.
+        """
+        for item in self.items(view_pos):
+            comp_def = getattr(item, "comp_def", None) or item.data(0)
+            if isinstance(comp_def, ComponentDef):
+                return comp_def
+        return None
+
+    def contextMenuEvent(self, event) -> None:  # noqa: ANN001
+        comp_def = self._comp_def_at(event.pos())
+        if comp_def is None:
+            return
+        from diagrammer.panels.library_panel import build_component_menu
+        panel = self._library_panel
+        key = f"{comp_def.category}/{comp_def.name}"
+        is_fav = panel.is_favorite(key) if panel is not None else False
+        menu, fav_act, show_act = build_component_menu(self, comp_def, is_fav)
+        action = menu.exec(event.globalPos())
+        if action is fav_act and panel is not None:
+            panel.toggle_favorite(key)
+        elif show_act is not None and action is show_act:
+            from diagrammer.panels.library_panel import _show_in_file_browser
+            _show_in_file_browser(comp_def.svg_path.parent)
 
     # -- Zoom helpers --
 
@@ -416,6 +453,7 @@ def build_library_table(
                 frame = QGraphicsRectItem(x_cursor, y_cursor, cw, ch)
                 frame.setPen(frame_pen)
                 frame.setBrush(Qt.GlobalColor.transparent)
+                frame.setData(0, comp_def)
                 scene.addItem(frame)
 
                 # Label (centered at top of cell)
@@ -424,6 +462,7 @@ def build_library_table(
                 label_x = x_cursor + (cw - cell["label_w"]) / 2
                 label_y = y_cursor + CELL_PADDING * 0.5
                 label_item.setPos(label_x, label_y)
+                label_item.setData(0, comp_def)
                 scene.addItem(label_item)
 
                 # Component artwork (centered below label)

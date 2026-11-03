@@ -48,7 +48,6 @@
     <circle id="port:right" class="st4" cx="100" cy="20" r="3"/>
   </g>
   <g id="artwork">
-    <path class="st1" d="M78.1,20"/>
     <path class="st0" d="M78.3,21.5l-4.9-12.4-9.4,21.9-9.4-21.9-9.4,21.9-9.4-21.9-9.4,21.9-5-12.5"/>
     <line class="st0" x1="50" y1="-4.3" x2="50" y2="44.3"/>
   </g>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 40 40">
+  <defs>
+    <style>
+      .cls-1{display:none}
+      .cls-2{fill:none;stroke:#999999;stroke-width:0.2;stroke-linejoin:round}
+      .cls-3{fill:#cc6666}
+      .cls-4{fill:none;stroke:#000000;stroke-width:1.6;stroke-linejoin:round}
+      .cls-5{fill:none;stroke:#cc0033;stroke-width:0.9;stroke-miterlimit:10}
+      .cls-6{fill:none;stroke:#000000;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+      .cls-7{fill:#cccbcb;stroke:#000000;stroke-width:1.6;stroke-linejoin:round}
+      .cls-8{fill:#ffffff}
+    </style>
+  </defs>
+  <title>COAX1_FAT_LCUT.svg</title>
+  <g id="Layer_1" data-name="Layer 1">
+    <g id="guide" class="cls-1">
+      <line x1="80" y1="0" x2="80" y2="40" class="cls-2"/>
+      <line x1="-40" y1="40" x2="-40" y2="0" class="cls-2"/>
+      <line x1="-20" y1="0" x2="-20" y2="40" class="cls-2"/>
+      <line x1="0" y1="0" x2="0" y2="40" class="cls-2"/>
+      <line x1="20" y1="0" x2="20" y2="40" class="cls-2"/>
+      <line x1="40" y1="0" x2="40" y2="40" class="cls-2"/>
+      <line x1="60" y1="0" x2="60" y2="40" class="cls-2"/>
+      <line x1="-40" y1="0" x2="80" y2="0" class="cls-2"/>
+      <line x1="-40" y1="20" x2="80" y2="20" class="cls-2"/>
+      <line x1="-40" y1="40" x2="80" y2="40" class="cls-2"/>
+    </g>
+    <g id="ports">
+      <circle id="port_right" data-name="port:right" cx="40" cy="20" r="3" class="cls-3"/>
+    </g>
+    <g id="artwork">
+      <g>
+        <path d="M40.2 25.6 C39 33.2 35.4 38.7 31.1 38.7 C26.8 38.7 21.5 30.3 21.5 20 C21.5 9.7 25.8 1.3 31.1 1.3 C36.4 1.3 39.1 6.8 40.2 14.4" class="cls-4"/>
+      </g>
+    </g>
+    <g id="stretch">
+      <line id="stretch_v" data-name="stretch:v" x1="20" y1="0" x2="20" y2="40" class="cls-5"/>
+    </g>
+    <g id="leads">
+      <line x1="40" y1="20" x2="32.2" y2="20" class="cls-6"/>
+    </g>
+    <path d="M19.8 20.5 C19.8 11.261 22.703 9.642 23.152 1.3 L41.1 1.3 C35.8 1.3 31.5 9.7 31.5 20 C31.5 30.3 35.9 38.7 41.1 38.7 L23.075 38.7 C22.662 30.481 19.8 29.975 19.8 20.5 Z" class="cls-7"/>
+    <path d="M9.8 20.5 C9.8 11.261 12.703 9.642 13.152 1.3 L31.1 1.3 C25.8 1.3 21.5 9.7 21.5 20 C21.5 30.3 25.9 38.7 31.1 38.7 L13.075 38.7 C12.662 30.481 9.8 29.975 9.8 20.5 Z" class="cls-7"/>
+    <path d="M-2.325 39.3 C-2.625 30.5 -5.625 30.2 -5.625 20.5 C-5.625 10.8 -2.425 9.5 -2.225 0 L-12.025 0 C-12.225 9.5 -15.225 10.5 -15.225 20.3 C-15.225 30.1 -12.225 30.9 -11.925 40 L-2.325 40 Z" class="cls-8"/>
+    <path d="M8.933 20.617 C8.933 11.378 11.836 9.759 12.285 1.417 L30.233 1.417 C24.933 1.417 20.633 9.817 20.633 20.117 C20.633 30.417 25.033 38.817 30.233 38.817 L12.207 38.817 C11.795 30.598 8.933 30.091 8.933 20.617 Z" class="cls-7"/>
+    <path d="M-5.539 20.617 C-5.539 11.378 -2.635 9.759 -2.187 1.417 L15.761 1.417 C10.461 1.417 6.161 9.817 6.161 20.117 C6.161 30.417 10.561 38.817 15.761 38.817 L-2.264 38.817 C-2.677 30.598 -5.539 30.091 -5.539 20.617 Z" class="cls-7"/>
+  </g>
+</svg>

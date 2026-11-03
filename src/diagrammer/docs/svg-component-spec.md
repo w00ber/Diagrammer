@@ -471,6 +471,26 @@ touched.
 - Most electrical components: `fill: none` (transparent)
 - Flowchart shapes: `fill: white` or light colors for solid backgrounds
 
+### No stray anchor points
+
+Illustrator leaves a path behind wherever an anchor point outlived the shape
+it belonged to:
+
+```xml
+<path class="st0" d="M40.1,24.1"/>   <!-- a moveto and nothing else -->
+```
+
+A `d` with no drawing command (`L H V C S Q T A`) has no geometry. On the
+canvas it is invisible or a sub-pixel speck, so it is easy to miss — but it
+survives into every SVG export and clipboard paste, where a vector editor
+shows it as a stray anchor point on the pasted object.
+
+The app strips these when it loads a component
+(`ComponentItem._strip_degenerate_paths`), so a stray point will not reach an
+export even from a custom library folder. Keep them out of the files anyway:
+`python scripts/strip_stray_anchor_points.py --dry-run` reports them, and
+`tests/test_stray_anchor_points.py` fails if one is committed.
+
 ## House Conventions (the shipped libraries)
 
 Everything above is the contract the *application* enforces: get it wrong and

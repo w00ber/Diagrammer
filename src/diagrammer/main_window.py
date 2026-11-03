@@ -304,6 +304,9 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         title = "All Libraries" if category == "__all__" else category
         scene, view = build_library_table(title, defs_by_subcat)
         view._library_category = category  # tag for deduplication
+        # Lets the table's right-click menu toggle favorites and open a
+        # component's SVG externally, same as the library panel's menus.
+        view.set_library_panel(self._library_panel)
 
         label = "All Libraries" if category == "__all__" else category.replace("/", " / ").replace("_", " ")
         index = self._tab_widget.addTab(view, f"Table: {label}")
