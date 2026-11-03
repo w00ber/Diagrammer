@@ -189,11 +189,6 @@ class LibraryPanel(QDockWidget):
         # self._library directly would resurrect hidden categories.
         self._refresh_views()
 
-    def reload(self, root: Path) -> None:
-        self._library.scan(root)
-        self._tree.populate(self._library, self._favorites, self._recents)
-        self._grid.populate(self._library)
-
     def _sorted_categories(self, library: ComponentLibrary) -> list[str]:
         """Return categories in user-defined order, with any new ones appended."""
         all_cats = sorted(library.categories.keys())

@@ -94,7 +94,7 @@ All layers are `<g>` elements with specific `id` attributes, placed as **direct 
 | `labels` | No (hidden) | Defines label placeholder positions |
 | `stretch` | No (hidden) | Optional explicit stretch break axes. When absent, axes are inferred from `tile` and direction-tagged leads. |
 | `tile` | Yes (cloned) | Tile unit for repeating stretch (inside artwork) |
-| `upright` | Yes (compensated) | Baked lettering that stays readable when the component is flipped or rotated (inside artwork) |
+| `upright` | Yes (compensated) | Baked lettering that stays readable when the component is flipped or rotated. Top level, **after** `leads` — see below |
 | `decorative` | No (hidden) | Marks component as freely resizable |
 | `snap` | No (hidden) | Defines grid snap anchor point |
 
@@ -330,16 +330,19 @@ translate(-c)`, applied to everything the item draws. Lettering baked into
 `artwork` therefore comes out mirrored on a flipped part and lying on its side
 on a rotated one.
 
-Put such lettering in a `<g id="upright">` **inside** `artwork`, and give each
-child a `data-anchor="x,y"` — the point it should stay pinned to:
+Put such lettering in a `<g id="upright">` at the **top level, after `leads`**,
+and give each child a `data-anchor="x,y"` — the point it should stay pinned to:
 
 ```xml
 <g id="artwork">
   <circle class="st1" cx="60" cy="60" r="24"/>
-  <g id="upright">
-    <path class="st3" data-anchor="18,54" transform="translate(10.3,54) scale(1,-1)"
-          d="M4.5,4.3 …"/>
-  </g>
+</g>
+<g id="leads">
+  <path class="st1" d="M60,0v36"/>
+</g>
+<g id="upright">
+  <path class="st3" data-anchor="18,54" transform="translate(10.3,54) scale(1,-1)"
+        d="M4.5,4.3 …"/>
 </g>
 ```
 
@@ -350,9 +353,12 @@ while leaving its anchor wherever the item transform puts it — so the text sta
 readable *and* still travels with the port it names. Compensation is per child,
 not per group, which is what makes a label follow its own port under rotation.
 
-**Put the `upright` group at the top level, after `leads`** — not inside
-`artwork`. SVG paints in document order, so lettering inside `artwork` is drawn
-*before* the leads and a lead will simply paint over it.
+The placement is not a style preference. SVG paints in document order, so
+lettering inside `artwork` is drawn *before* the leads and a lead will simply
+paint over it. `_apply_upright` walks the whole document for `<g id="upright">`,
+so a group nested inside `artwork` still gets its compensation — it just ends up
+underneath the wiring. That is why this is the one rule here with a mechanical
+consequence rather than a cosmetic one.
 
 **Two things keep a label clear of the wiring**, and they solve different halves
 of the problem:
