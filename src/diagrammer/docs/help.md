@@ -107,6 +107,9 @@ explanation of why it matters.
 - **Grid** — 5, 10, 20 pt or your own. Components are designed on a 20 pt grid,
   but plenty of good ones sit off it deliberately, so the grid is shown rather
   than enforced.
+- **Show ports** — ports, labels and stretch axes are drawn behind the symbol
+  and faded, so a lead end stays visible under its port marker. Switch it off
+  to see the drawing on its own.
 - **Suggested fixes** — tick any you want. The preview updates as you tick, and
   the **Changes** box shows exactly what would be written. A fix marked ▲ moves
   geometry and is never pre-selected.

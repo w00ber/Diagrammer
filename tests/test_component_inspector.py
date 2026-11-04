@@ -651,3 +651,101 @@ def test_plain_save_still_forks_even_where_the_tree_is_writable(
         assert (overlay / "PAPER_2pt" / "part.svg").is_file()
     finally:
         dlg.deleteLater()
+
+
+# ==========================================================================
+# port markers must not hide what they mark
+# ==========================================================================
+
+PORTS_LAST = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 100">
+  <defs><style>
+      .lead { fill: none; stroke: #000; stroke-width: 2px; }
+      .port { fill: #c66; }
+  </style></defs>
+  <g id="artwork"><circle class="lead" cx="30" cy="50" r="20"/></g>
+  <g id="leads"><line class="lead" x1="30" y1="0" x2="30" y2="30"/></g>
+  <g id="ports"><circle id="port:top" class="port" cx="30" cy="0" r="3"/></g>
+</svg>
+'''
+
+
+def _layer_order(svg_bytes: bytes):
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(svg_bytes)
+    return [(el.get("id"), el.get("opacity"), el.get("display"))
+            for el in root
+            if (el.tag.split("}")[-1] if "}" in el.tag else el.tag) == "g"
+            and el.get("id")]
+
+
+def test_marker_layers_are_moved_behind_the_drawing() -> None:
+    """A port is a filled disc sitting exactly on the lead's endpoint, so
+    whichever order the exporter happened to emit decides whether you can see
+    the endpoint — which is the thing you opened the inspector to look at."""
+    order = _layer_order(render_component_bytes(PORTS_LAST))
+    assert [i for i, _o, _d in order] == ["ports", "artwork", "leads"]
+    assert order[0][1] == "0.45", "and faded, so artwork under it still reads"
+
+
+def test_demotion_preserves_the_relative_order_of_everything_else() -> None:
+    text = PORTS_LAST.replace(
+        '<g id="ports">',
+        '<g id="upright"><path data-anchor="5,5" d="M0,0H4"/></g>\n  <g id="ports">')
+    order = [i for i, _o, _d in _layer_order(render_component_bytes(text))]
+    assert order == ["ports", "artwork", "leads", "upright"]
+
+
+def test_the_lead_end_is_visible_under_its_port_marker(_ensure_qapp) -> None:
+    """The actual complaint, measured in pixels rather than asserted in XML."""
+    from PySide6.QtCore import QByteArray, QRectF
+    from PySide6.QtGui import QImage, QPainter
+    from PySide6.QtSvg import QSvgRenderer
+
+    def pixel(svg_bytes: bytes, x: int, y: int):
+        img = QImage(60, 100, QImage.Format.Format_ARGB32)
+        img.fill(0xFFFFFFFF)
+        p = QPainter(img)
+        QSvgRenderer(QByteArray(svg_bytes)).render(p, QRectF(0, 0, 60, 100))
+        p.end()
+        c = img.pixelColor(x, y)
+        return (c.red(), c.green(), c.blue())
+
+    # as authored the pink disc covers the endpoint
+    assert pixel(PORTS_LAST.encode(), 30, 1) == (204, 102, 102)
+    # the inspector shows the black lead there instead
+    assert pixel(render_component_bytes(PORTS_LAST), 30, 1) == (0, 0, 0)
+
+
+def test_show_ports_off_hides_the_marker_layers() -> None:
+    order = _layer_order(render_component_bytes(PORTS_LAST, show_markers=False))
+    hidden = {i: d for i, _o, d in order}
+    assert hidden["ports"] == "none"
+    assert hidden["artwork"] is None and hidden["leads"] is None
+
+
+def test_a_component_with_no_marker_layers_is_untouched() -> None:
+    plain = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
+             '<g id="artwork"><path d="M0,5H10"/></g></svg>')
+    assert _layer_order(render_component_bytes(plain)) == [("artwork", None, None)]
+
+
+def test_defs_stay_ahead_of_the_demoted_markers() -> None:
+    """Markers go after <defs>, not before it — a stylesheet moved below the
+    elements it styles would stop applying."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(render_component_bytes(PORTS_LAST))
+    tags = [(el.tag.split("}")[-1] if "}" in el.tag else el.tag) for el in root]
+    assert tags.index("defs") < tags.index("g")
+
+
+def test_the_toggle_reaches_the_scene(workspace) -> None:
+    dlg, _ = open_inspector(*workspace, SOUND)
+    try:
+        assert dlg._markers_cb.isChecked()
+        dlg._markers_cb.setChecked(False)
+        svgs = [i for i in dlg._scene.items() if type(i).__name__ == "_SvgItem"]
+        assert svgs, "the scene should have been rebuilt, not emptied"
+    finally:
+        dlg.deleteLater()

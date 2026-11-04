@@ -83,13 +83,65 @@ HIT_RADIUS_PX = 7
 GHOST_OPACITY = 0.4
 
 
-def render_component_bytes(text: str) -> bytes:
-    """Prepare SVG *text* for display with every layer visible.
+#: Layers that carry positions rather than artwork. The canvas hides them; the
+#: inspector shows them, but behind the drawing — see ``_demote_marker_layers``.
+MARKER_LAYERS = ("ports", "labels", "stretch", "snap")
 
-    ``hide_layers=()`` is the one thing the inspector changes about rendering:
-    the canvas hides ports, labels, stretch and snap because they carry
-    positions rather than artwork, but showing where they sit is this dialog's
-    entire job.
+#: How solid those markers are drawn. Enough to locate a port, sheer enough to
+#: read a lead end underneath it.
+MARKER_OPACITY = "0.45"
+
+
+def _demote_marker_layers(root, *, opacity: str = MARKER_OPACITY) -> None:
+    """Move the position-marker layers behind the drawing, and fade them.
+
+    A port marker is a filled disc of radius 3 sitting exactly on the lead's
+    endpoint, and the lead is 2 pt wide — so wherever the document happens to
+    put ``<g id="ports">`` after ``<g id="leads">``, which is 105 of the 238
+    shipped components, the disc covers the very endpoint you opened the
+    inspector to look at. Document order decides that, and it is an accident of
+    how each file was exported rather than anything meaningful.
+
+    So the inspector reorders them for display: markers first, everything that
+    paints the symbol after. The lead now wins where they overlap and the disc
+    still reads as a ring around it. Fading them as well keeps a marker that
+    sits over artwork from masking it.
+
+    Display only — this mutates the tree being rendered, never the candidate
+    text that Save writes.
+    """
+    children = list(root)
+    markers = [
+        el for el in children
+        if (el.tag.split("}")[-1] if "}" in el.tag else el.tag) == "g"
+        and el.get("id") in MARKER_LAYERS
+    ]
+    if not markers:
+        return
+    # Insert after <defs>/<style>/<metadata>, which must stay at the top.
+    head = 0
+    for el in children:
+        tag = el.tag.split("}")[-1] if "}" in el.tag else el.tag
+        if tag in ("defs", "style", "metadata", "title", "desc"):
+            head = children.index(el) + 1
+        else:
+            break
+    for el in markers:
+        root.remove(el)
+    for offset, el in enumerate(markers):
+        if opacity:
+            el.set("opacity", opacity)
+        root.insert(head + offset, el)
+
+
+def render_component_bytes(text: str, *, show_markers: bool = True) -> bytes:
+    """Prepare SVG *text* for display.
+
+    ``hide_layers=()`` is the first thing the inspector changes about
+    rendering: the canvas hides ports, labels, stretch and snap because they
+    carry positions rather than artwork, but showing where they sit is this
+    dialog's entire job. The second is ``_demote_marker_layers``, so showing
+    them does not hide what they mark.
 
     ``ET.fromstring`` rather than ``parse_svg``, because ``parse_svg`` takes a
     path and — worse — repairs the file on disk when ET rejects it. A candidate
@@ -99,7 +151,13 @@ def render_component_bytes(text: str) -> bytes:
     from diagrammer.items.component_item import prepare_svg_bytes_from_root
 
     normalized, _ = normalize_svg_text(text)
-    return prepare_svg_bytes_from_root(ET.fromstring(normalized), hide_layers=())
+    root = ET.fromstring(normalized)
+    if show_markers:
+        _demote_marker_layers(root)
+        hide = ()
+    else:
+        hide = MARKER_LAYERS
+    return prepare_svg_bytes_from_root(root, hide_layers=hide)
 
 
 # ---------------------------------------------------------------------------
@@ -471,6 +529,15 @@ class ComponentInspectorDialog(QDialog):
         self._grid_spin.valueChanged.connect(self._view_grid_from_spin)
         row.addWidget(self._grid_spin)
 
+        self._markers_cb = QCheckBox("Show ports")
+        self._markers_cb.setChecked(True)
+        self._markers_cb.setToolTip(
+            "Draw the ports, labels and stretch axes. They are painted behind "
+            "the symbol and faded, so a lead end stays readable under its "
+            "port marker; switch them off to see the drawing alone.")
+        self._markers_cb.toggled.connect(lambda _on: self._rebuild_scene())
+        row.addWidget(self._markers_cb)
+
         self._grid_cb = QCheckBox("Show grid")
         self._grid_cb.setChecked(True)
         self._grid_cb.toggled.connect(lambda on: self._view.set_grid_visible(on))
@@ -769,7 +836,8 @@ class ComponentInspectorDialog(QDialog):
         try:
             cdef = ComponentDef.from_svg_text(text, path=self._path)
             w, h = cdef.width, cdef.height
-            svg_bytes = render_component_bytes(text)
+            svg_bytes = render_component_bytes(
+                text, show_markers=self._markers_cb.isChecked())
         except Exception as exc:
             # A file that does not parse is the single most likely thing to be
             # inspected, so say so in the view rather than showing blank space.
