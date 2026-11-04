@@ -135,8 +135,8 @@ class ComponentDef:
         )
 
     @classmethod
-    def from_svg_text(cls, text: str, *, path: Path,
-                      category: str = "") -> ComponentDef:
+    def from_svg_text(cls, text: str, *, path: Path, category: str = "",
+                      infer_stretch: bool = True) -> ComponentDef:
         """Parse a component definition from SVG *text* rather than a file.
 
         ``path`` is still required — it supplies the component ``name``
@@ -156,16 +156,20 @@ class ComponentDef:
         root = ET.fromstring(normalized)
         return cls._from_root(
             root, path=path, category=category,
-            stretch_source=normalized.encode("utf-8"),
+            stretch_source=normalized.encode("utf-8") if infer_stretch else None,
         )
 
     @classmethod
     def _from_root(cls, root: ET.Element, *, path: Path, category: str,
-                   stretch_source: Path | bytes) -> ComponentDef:
+                   stretch_source: Path | bytes | None) -> ComponentDef:
         """Build a ComponentDef from an already-parsed ``<svg>`` root.
 
         ``stretch_source`` is what ``_infer_stretch_from_layers`` hands
         ``QSvgRenderer``; see that function for why it is not always ``path``.
+        ``None`` skips convention-based stretch inference altogether, for a
+        caller that does not read the stretch fields — the validator is the
+        one that matters, since it parses thousands of documents per run and
+        inference is the only thing in its path that touches Qt.
         """
         # Strip namespace prefix for easier attribute access
         tag = _strip_ns(root.tag)
@@ -202,8 +206,9 @@ class ComponentDef:
         # is absent or only partially specified. <g id="tile"> defines a
         # repeat region; direction-tagged leads (leads-left/-right/-top/
         # -bottom) define an anchored gap stretch.
-        if (stretch_v_pos is None and stretch_v_repeat is None) or \
-           (stretch_h_pos is None and stretch_h_repeat is None):
+        if stretch_source is not None and (
+                (stretch_v_pos is None and stretch_v_repeat is None)
+                or (stretch_h_pos is None and stretch_h_repeat is None)):
             (stretch_h_pos, stretch_v_pos,
              stretch_h_repeat, stretch_v_repeat) = _infer_stretch_from_layers(
                 stretch_source, root,
@@ -609,21 +614,35 @@ def _infer_stretch_from_layers(
        (stretch_v_pos is not None or stretch_v_repeat is not None):
         return stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat
 
-    try:
-        from PySide6.QtSvg import QSvgRenderer
-    except ImportError:
-        return stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat
+    # The renderer exists only to measure the direction-tagged lead groups, so
+    # don't build one when there are none — which is the overwhelming majority
+    # of documents: 6 of the 238 shipped components have such a group, and a
+    # hand-written test fixture almost never does. Besides being wasted work,
+    # the renderers accumulate: every ComponentDef parse made one, and a run
+    # that parses thousands of small documents has aborted inside Qt while
+    # garbage-collecting them.
+    _DIRECTIONAL = ("leads-left", "leads-right", "leads-top", "leads-bottom")
+    present = [lid for lid in _DIRECTIONAL
+               if _find_group_by_id(root, lid) is not None]
 
-    if isinstance(svg_source, bytes):
-        from PySide6.QtCore import QByteArray
-        renderer = QSvgRenderer(QByteArray(svg_source))
-    else:
-        renderer = QSvgRenderer(str(svg_source))
-    if not renderer.isValid():
-        return stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat
+    renderer = None
+    if present:
+        try:
+            from PySide6.QtSvg import QSvgRenderer
+        except ImportError:
+            return (stretch_h_pos, stretch_v_pos,
+                    stretch_h_repeat, stretch_v_repeat)
+        if isinstance(svg_source, bytes):
+            from PySide6.QtCore import QByteArray
+            renderer = QSvgRenderer(QByteArray(svg_source))
+        else:
+            renderer = QSvgRenderer(str(svg_source))
+        if not renderer.isValid():
+            return (stretch_h_pos, stretch_v_pos,
+                    stretch_h_repeat, stretch_v_repeat)
 
     def _bbox(elem_id: str):
-        if not renderer.elementExists(elem_id):
+        if renderer is None or not renderer.elementExists(elem_id):
             return None
         b = renderer.boundsOnElement(elem_id)
         if b.isNull() or b.isEmpty():

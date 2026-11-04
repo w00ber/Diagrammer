@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import sys
 
 import pytest
@@ -46,6 +47,18 @@ def _ensure_qapp():
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv[:1])
+
+    # Move everything allocated so far — Qt's own global state included — into
+    # the permanent generation, where the cyclic collector never looks.
+    #
+    # Without this the suite segfaults *inside* a GC pass once it is large
+    # enough: the traceback says "Garbage-collecting" and then points at
+    # whichever Qt or PyObjC call came next, so it reads as a bug in whatever
+    # that happened to be. It is not. Fourteen no-op tests reproduce it just
+    # as well as fourteen real ones, which is what identified it as a
+    # collector problem rather than a test one.
+    gc.collect()
+    gc.freeze()
     yield app
 
 

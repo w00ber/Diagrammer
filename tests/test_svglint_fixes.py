@@ -187,16 +187,23 @@ def test_set_lead_width_rewrites_the_lead_class_only(tmp_path: Path) -> None:
     assert widths["st2"] == 2.0
 
 
-def test_set_lead_width_refuses_a_class_shared_with_the_artwork(tmp_path: Path) -> None:
-    """Many shipped parts use one class for both body and leads. Restyling it
-    would silently change the artwork's weight too, so the fix declines and
-    says why rather than doing half the job."""
+def test_set_lead_width_splits_a_class_shared_with_the_artwork(
+        tmp_path: Path) -> None:
+    """Many shipped parts use one class for both body and leads, so the width
+    fix has to split it just as the cap fix does — the user should not have to
+    learn which fixes can cope with a shared class and which give up."""
+    from diagrammer.svglint import text_svg as T
+
     shared = svg('  <g id="artwork"><path class="st1" d="M0,50H60"/></g>\n'
                  '  <g id="leads"><line class="st1" x1="30" y1="0" x2="30" y2="45"/></g>\n'
                  '  <g id="ports"><circle id="port:top" cx="30" cy="0" r="3"/></g>\n')
-    out, notes = run(shared, ["set-lead-width"], tmp_path / "s.svg", profile=SLIDES)
-    assert out == shared
-    assert any("shared with the artwork" in n for n in notes)
+    out, notes = run(shared, ["set-lead-width"], tmp_path / "s.svg",
+                     profile=SLIDES)
+    assert out != shared
+    widths = T.css_widths(out)
+    assert widths["st1"] == 2.0, "the artwork keeps its weight"
+    assert widths["st1lead"] == 3.0, "the leads get the library's weight"
+    assert any("own class" in n for n in notes)
 
 
 def test_set_lead_linecap_butt(tmp_path: Path) -> None:
@@ -364,3 +371,109 @@ def test_default_fixes_clear_a_mangled_file(tmp_path: Path) -> None:
                                        profile=PAPER, path=path)
     assert svglint.check_text(candidate, path=path, profile=PAPER) == []
     assert path.read_text(encoding="utf-8") == text, "the file must not be written"
+
+
+# ==========================================================================
+# a class shared between artwork and leads
+# ==========================================================================
+
+#: The commonest shape in the shipped library (CAP1 is exactly this): one class
+#: styles both the body and the leads, so there is no way to change the lead's
+#: cap without changing the body's.
+SHARED_CLASS = svg(
+    '  <g id="artwork">\n'
+    '    <path class="st1" d="M54.6,54.6H5.4"/>\n'
+    '    <path class="st1" d="M54.6,45.4H5.4"/>\n'
+    "  </g>\n"
+    '  <g id="leads">\n'
+    '    <path class="st1" d="M30,0v45.4"/>\n'
+    '    <path class="st1" d="M30,100v-44.9"/>\n'
+    "  </g>\n"
+    '  <g id="ports">\n'
+    '    <circle id="port:top" class="st0" cx="30" cy="0" r="3"/>\n'
+    '    <circle id="port:bottom" class="st0" cx="30" cy="100" r="3"/>\n'
+    "  </g>\n",
+    style=("    <style>\n"
+           "      .st0 { fill: #c66; }\n"
+           "      .st1 {\n"
+           "        fill: none;\n"
+           "        stroke: #000;\n"
+           "        stroke-linecap: round;\n"
+           "        stroke-linejoin: bevel;\n"
+           "        stroke-width: 2px;\n"
+           "      }\n"
+           "    </style>\n"))
+
+
+def test_a_shared_class_is_split_rather_than_refused(tmp_path: Path) -> None:
+    """Refusing was correct but useless: it left the fix inapplicable to half
+    the library and told the user to go and split the class by hand."""
+    from diagrammer.svglint import text_svg as T
+
+    out, notes = run(SHARED_CLASS, ["set-lead-linecap-butt"], tmp_path / "c.svg")
+    assert out != SHARED_CLASS, "the fix must do something"
+    caps = T.css_property(out, "stroke-linecap")
+    assert caps["st1"] == "round", "the artwork keeps its caps"
+    assert caps["st1lead"] == "butt", "the leads get their own class"
+    assert any("own class" in n for n in notes)
+
+
+def test_the_split_class_carries_everything_the_original_gave(
+        tmp_path: Path) -> None:
+    """Otherwise the lead loses its stroke colour and width."""
+    from diagrammer.svglint import text_svg as T
+
+    out, _ = run(SHARED_CLASS, ["set-lead-linecap-butt"], tmp_path / "c.svg")
+    decls = T.class_declarations(out, "st1lead")
+    assert decls == {
+        "fill": "none", "stroke": "#000", "stroke-linecap": "butt",
+        "stroke-linejoin": "bevel", "stroke-width": "2px",
+    }
+    assert T.lead_width(out) == 2.0, "the attached wire can still size itself"
+
+
+def test_only_the_lead_elements_are_repointed(tmp_path: Path) -> None:
+    import re
+
+    out, _ = run(SHARED_CLASS, ["set-lead-linecap-butt"], tmp_path / "c.svg")
+    artwork = re.search(r'<g id="artwork">.*?</g>', out, re.S).group(0)
+    leads = re.search(r'<g id="leads">.*?</g>', out, re.S).group(0)
+    assert artwork.count('class="st1"') == 2
+    assert "st1lead" not in artwork
+    assert leads.count('class="st1lead"') == 2
+    assert 'class="st1"' not in leads
+
+
+def test_the_generated_class_name_has_no_hyphen(tmp_path: Path) -> None:
+    """A hyphen is legal CSS, but several of the app's own readers match
+    ``\\.(\\w+)``, which stops at it — ".st1-lead" would be recorded as "st1",
+    clobbering the real class and then failing to resolve for the element."""
+    import re
+
+    out, _ = run(SHARED_CLASS, ["set-lead-linecap-butt"], tmp_path / "c.svg")
+    new = [c for c in re.findall(r"\.([\w-]+)\s*\{", out) if c not in
+           ("st0", "st1")]
+    assert new and all("-" not in c for c in new), new
+    # and the app's narrower regex resolves it to the same set
+    narrow = {m.group(1) for m in re.finditer(r"\.(\w+)\s*\{", out)}
+    wide = {m.group(1) for m in re.finditer(r"\.([\w-]+)\s*\{", out)}
+    assert narrow == wide
+
+
+def test_splitting_is_idempotent(tmp_path: Path) -> None:
+    """A second pass must not invent .st1leadlead."""
+    once, _ = run(SHARED_CLASS, ["set-lead-linecap-butt"], tmp_path / "c.svg")
+    twice, _ = run(once, ["set-lead-linecap-butt"], tmp_path / "c.svg")
+    assert twice == once
+
+
+def test_the_split_resolves_the_finding(tmp_path: Path) -> None:
+    from diagrammer import svglint
+
+    path = tmp_path / "c.svg"
+    out, _ = run(SHARED_CLASS, ["set-lead-linecap-butt"], path)
+    remaining = {f.check_id for f in svglint.check_text(out, path=path,
+                                                        profile=PAPER)}
+    assert "lead-linecap-not-butt" not in remaining
+    # the artwork's own caps are still reported, as the separate info finding
+    assert "artwork-linecap-not-house-style" in remaining

@@ -356,6 +356,43 @@ def css_property(text: str, prop: str) -> dict[str, str]:
     return out
 
 
+def class_declarations(text: str, cls: str) -> dict[str, str]:
+    """Every CSS property that currently applies to ``cls``, cascade resolved.
+
+    Later rules win, matching how the renderer resolves equal-specificity
+    class selectors. Needed to split a class: a new one has to carry
+    everything the old one gave the element, or the lead loses its stroke.
+    """
+    out: dict[str, str] = {}
+    for block in re.finditer(r"<style[^>]*>(.*?)</style>", text, re.S):
+        for rule in re.finditer(r"([^{}]+)\{([^}]*)\}", block.group(1)):
+            if not re.search(rf"\.{re.escape(cls)}\b", rule.group(1)):
+                continue
+            for decl in re.finditer(r"([\w-]+)\s*:\s*([^;}]+)", rule.group(2)):
+                out[decl.group(1).strip()] = decl.group(2).strip()
+    return out
+
+
+def unique_class_name(text: str, base: str, suffix: str = "lead") -> str:
+    """A class name derived from ``base`` that the document does not use.
+
+    Deliberately hyphen-free. A hyphen is legal CSS and this module reads it
+    fine, but several of the app's own class readers match ``\\.(\\w+)``, which
+    stops at the hyphen — so ``.st1-lead`` would be recorded as ``st1``,
+    silently overwriting the real class and then failing to resolve for the
+    element. Generating a name those readers can also parse keeps the fix
+    working regardless of which reader sees the file.
+    """
+    used = {m.group(1) for m in re.finditer(r"\.([\w-]+)", text)}
+    used |= {m.group(1) for m in re.finditer(r'class="([\w-]+)"', text)}
+    candidate = f"{base}{suffix}"
+    n = 2
+    while candidate in used:
+        candidate = f"{base}{suffix}{n}"
+        n += 1
+    return candidate
+
+
 def _element_width(attrs: str, widths: dict[str, float]) -> float | None:
     inline = re.search(r"stroke-width\s*:\s*([\d.]+)", attrs)
     if inline:

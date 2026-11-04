@@ -782,13 +782,29 @@ class ComponentInspectorDialog(QDialog):
         self._findings_summary.setText(text)
 
     def _refresh_changes(self) -> None:
+        """Show the diff, and the notes — especially when there is no diff.
+
+        A fix that declines explains itself in its notes. Dropping them
+        whenever the candidate matched the original meant the user ticked a
+        box, read "No changes", and was told nothing: the explanation existed
+        and was thrown away. So the notes show either way, and the no-change
+        line distinguishes "nothing left to do" from "a fix had something to
+        say about why it did nothing".
+        """
+        notes = "\n".join(f"• {n}" for n in self._notes)
         if self._candidate == self._original_text:
-            self._notes_label.setText("No changes — the file would be saved "
-                                      "exactly as it is.")
+            if self._notes:
+                self._notes_label.setText("No change was made, because:\n"
+                                          + notes)
+            elif self._selected_fix_ids:
+                self._notes_label.setText(
+                    "The selected fixes found nothing left to change.")
+            else:
+                self._notes_label.setText("No changes — the file would be "
+                                          "saved exactly as it is.")
             self._diff.setPlainText("")
             return
-        self._notes_label.setText("\n".join(f"• {n}" for n in self._notes)
-                                  or "(no notes)")
+        self._notes_label.setText(notes or "(no notes)")
         diff = difflib.unified_diff(
             self._original_text.splitlines(keepends=True),
             self._candidate.splitlines(keepends=True),

@@ -370,6 +370,74 @@ def _css_declared(text: str, cls: str, prop: str) -> str | None:
     return T.css_property(text, prop).get(cls)
 
 
+def _split_shared_class(text: str, cls: str, prop: str, value: str
+                        ) -> tuple[str, str | None, list[str]]:
+    """Give the lead elements their own copy of ``cls``, with ``prop`` changed.
+
+    The common shape in the shipped library — CAP1 is typical — is one class
+    doing double duty::
+
+        .st1 { fill:none; stroke:#000; stroke-linecap:round; stroke-width:2px; }
+        <g id="artwork"> <path class="st1" .../> </g>   <- the plates
+        <g id="leads">   <path class="st1" .../> </g>   <- the leads
+
+    There is then no way to change the lead's cap without changing the plates'.
+    Refusing was correct but useless: it left the fix inapplicable to most of
+    the library, and told the user to go and split the class by hand.
+
+    So the fix does that itself. It emits a new class carrying everything the
+    original gave the element plus the override, and repoints only the elements
+    inside the lead layers at it. Artwork keeps ``cls`` untouched.
+
+    A new *class* rather than an inline ``style`` or a second class on the same
+    element, because both of those break something: ``_apply_style_overrides``
+    rebuilds the ``style`` attribute wholesale and would clobber an inline one,
+    and the app's own readers — ``lead_classes``, ``_element_width``,
+    ``ConnectCommand._get_lead_stroke_width`` — all match a single
+    ``class="name"``, so ``class="st1 st1-lead"`` would make the lead width
+    unreadable.
+
+    Returns ``(text, new_class_or_None, notes)``.
+    """
+    decls = T.class_declarations(text, cls)
+    if not decls:
+        return text, None, []
+    decls[prop] = value
+    new_cls = T.unique_class_name(text, cls)
+
+    body = "".join(f"\n        {k}: {v};" for k, v in decls.items())
+    rule = f"\n      .{new_cls} {{{body}\n      }}\n    "
+
+    def append(block: re.Match[str]) -> str:
+        return f"{block.group(1)}{block.group(2).rstrip()}\n{rule}{block.group(3)}"
+
+    out, n = re.subn(r"(<style[^>]*>)(.*?)(</style>)", append, text,
+                     count=1, flags=re.S)
+    if not n:
+        return text, None, []
+
+    # Repoint only the elements inside the lead layers.
+    repointed = 0
+
+    def in_leads(m: re.Match[str]) -> str:
+        nonlocal repointed
+        chunk, count = re.subn(rf'class="{re.escape(cls)}"',
+                               f'class="{new_cls}"', m.group(0))
+        repointed += count
+        return chunk
+
+    out = re.sub(rf'<g id="{T.LEAD_LAYER_RE}"[^>]*>.*?</g>', in_leads, out,
+                 flags=re.S)
+    if not repointed:
+        return text, None, []
+    notes = [
+        f".{cls} is shared with the artwork, so the leads were given their "
+        f"own class .{new_cls} ({prop}: {value}) rather than restyling the "
+        f"body; {repointed} lead element(s) repointed"
+    ]
+    return out, new_cls, notes
+
+
 def _fix_set_lead_width(text: str, ctx: FixContext) -> FixResult:
     """Set the lead stroke to the library's weight, so the wire matches it."""
     want = ctx.profile.lead_width
@@ -378,19 +446,27 @@ def _fix_set_lead_width(text: str, ctx: FixContext) -> FixResult:
     classes = T.lead_classes(text)
     if not classes:
         return _nop(text)
-    # A class shared with the body would restyle the artwork too. The shipped
-    # files do share one (.st1 is both body and lead in many parts), so only
-    # rewrite when the class is used *exclusively* by leads.
+    # A class shared with the body cannot simply be rewritten — that would
+    # restyle the artwork — and many shipped parts do share one, .st1 being
+    # both body and lead in most of PAPER_2pt. Those get split, exactly as the
+    # cap fix does; the user should not have to learn which fixes can cope
+    # with a shared class and which give up.
     exclusive = [c for c in classes if not _class_used_outside_leads(text, c)]
-    if not exclusive:
-        return FixResult(
-            text=text, changed=False,
-            notes=(f"cannot set the lead width: class(es) "
-                   f"{', '.join('.' + c for c in classes)} are shared with the "
-                   "artwork, so changing them would restyle the body too. "
-                   "Give the leads their own class first.",))
-    new, notes = _override_css_decl(text, exclusive, "stroke-width",
-                                    f"{T.fmt(want)}px")
+    shared_classes = [c for c in classes if c not in exclusive]
+
+    notes: list[str] = []
+    new = text
+    target = f"{T.fmt(want)}px"
+    for cls in shared_classes:
+        if _css_declared(new, cls, "stroke-width") == target:
+            continue
+        new, _made, split_notes = _split_shared_class(
+            new, cls, "stroke-width", target)
+        notes += split_notes
+    if exclusive:
+        new, own_notes = _override_css_decl(new, exclusive, "stroke-width",
+                                            target)
+        notes += own_notes
     shared = sorted({o for c in exclusive
                      for o in _css_rule_owners(text, c, "stroke-width")}
                     - set(exclusive))
@@ -431,16 +507,22 @@ def _fix_set_lead_linecap(text: str, ctx: FixContext) -> FixResult:
     classes = T.lead_classes(text)
     if not classes:
         return _nop(text)
+    want = ctx.profile.linecap
     exclusive = [c for c in classes if not _class_used_outside_leads(text, c)]
-    if not exclusive:
-        return FixResult(
-            text=text, changed=False,
-            notes=(f"cannot set the lead cap: class(es) "
-                   f"{', '.join('.' + c for c in classes)} are used by the "
-                   "artwork as well, so the change would restyle the body "
-                   "too. Give the leads their own class first.",))
-    new, notes = _override_css_decl(text, exclusive, "stroke-linecap",
-                                    ctx.profile.linecap)
+    shared_classes = [c for c in classes if c not in exclusive]
+
+    notes: list[str] = []
+    new = text
+    for cls in shared_classes:
+        if _css_declared(new, cls, "stroke-linecap") == want:
+            continue
+        new, made, split_notes = _split_shared_class(
+            new, cls, "stroke-linecap", want)
+        notes += split_notes
+    if exclusive:
+        new, own_notes = _override_css_decl(new, exclusive, "stroke-linecap",
+                                            want)
+        notes += own_notes
     shared = sorted({o for c in exclusive
                      for o in _css_rule_owners(text, c, "stroke-linecap")}
                     - set(exclusive))

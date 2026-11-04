@@ -749,3 +749,30 @@ def test_the_toggle_reaches_the_scene(workspace) -> None:
         assert svgs, "the scene should have been rebuilt, not emptied"
     finally:
         dlg.deleteLater()
+
+
+def test_a_declining_fix_explains_itself_in_the_changes_box(
+        workspace) -> None:
+    """Regression: a fix that declined said why in its notes, and the Changes
+    box discarded them whenever the candidate matched the original — so the
+    user ticked a box, read "No changes", and was told nothing."""
+    builtin, overlay = workspace
+    dlg, _ = open_inspector(builtin, overlay, MANGLED)
+    try:
+        dlg._selected_fix_ids = {"unwrap-layer-group"}
+        dlg._notes = ["cannot do it: reasons"]
+        dlg._candidate = dlg._original_text
+        dlg._refresh_changes()
+        assert "cannot do it: reasons" in dlg._notes_label.text()
+        assert "No change was made" in dlg._notes_label.text()
+        assert dlg._diff.toPlainText() == ""
+    finally:
+        dlg.deleteLater()
+
+
+def test_no_fixes_selected_still_reads_as_nothing_to_do(workspace) -> None:
+    dlg, _ = open_inspector(*workspace, SOUND)
+    try:
+        assert "saved exactly as it is" in dlg._notes_label.text()
+    finally:
+        dlg.deleteLater()

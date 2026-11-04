@@ -66,7 +66,7 @@ def check_parse(text: str, path: Path, profile: LibraryProfile) -> list[Finding]
     from diagrammer.models.component_def import ComponentDef
 
     try:
-        ComponentDef.from_svg_text(text, path=path)
+        ComponentDef.from_svg_text(text, path=path, infer_stretch=False)
     except Exception as exc:  # the app would log and skip this file
         return [Finding(
             check_id="parse-failure",
@@ -124,7 +124,7 @@ def check_ports_exist(text: str, path: Path,
     from diagrammer.models.component_def import ComponentDef
 
     try:
-        cdef = ComponentDef.from_svg_text(text, path=path)
+        cdef = ComponentDef.from_svg_text(text, path=path, infer_stretch=False)
     except Exception:
         return []  # check_parse already reported it
     if cdef.ports or cdef.decorative:
@@ -145,7 +145,7 @@ def check_port_on_edge(text: str, path: Path,
     from diagrammer.models.component_def import ComponentDef
 
     try:
-        cdef = ComponentDef.from_svg_text(text, path=path)
+        cdef = ComponentDef.from_svg_text(text, path=path, infer_stretch=False)
     except Exception:
         return []
     w, h = cdef.width, cdef.height
