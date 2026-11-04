@@ -109,9 +109,13 @@ def check_artwork_layer(text: str, path: Path,
         check_id="no-artwork-layer",
         severity="warning",
         message='no <g id="artwork"> layer',
-        detail=("Legal — the whole SVG is then treated as artwork — but usually "
-                "unintended, and it means lead shortening and stretch have no "
-                "body to work against."),
+        detail=("The symbol still renders — the parser treats the whole file "
+                "as artwork — so nothing looks wrong on the canvas. What it "
+                "costs is per-element editing: enumerate_svg_elements and the "
+                "Properties panel walk the *named* layers only, so none of the "
+                "body can be selected or restyled on its own. On one shipped "
+                "SQUID that is 2 selectable elements instead of 8."),
+        fix_ids=("wrap-artwork-layer",),
     )]
 
 
@@ -268,11 +272,43 @@ def check_lead_linecap(text: str, path: Path,
         detail=(f"A {offenders[0]} cap overhangs the endpoint by half the "
                 f"stroke width ({width / 2:g} pt here), so the lead reaches "
                 "past its port and the join with the wire thickens. The "
-                "shipped libraries are mid-migration on this — 127 of 229 "
-                "files still declare round — so it is a warning, not an "
-                "error."),
+                "shipped libraries are mid-migration on this — 74 files still "
+                "declare round — so it is a warning, not an error. Only the "
+                "lead classes are touched; the artwork's caps are a separate, "
+                "optional fix."),
         fix_ids=("set-lead-linecap-butt",),
         data={"found": offenders[0], "expected": profile.linecap},
+    )]
+
+
+def check_artwork_linecap(text: str, path: Path,
+                          profile: LibraryProfile) -> list[Finding]:
+    """Artwork caps that differ from house style — information, not a fault.
+
+    Severity ``info`` on purpose, and separate from the lead check. Unlike a
+    lead, a round-capped artwork stroke breaks nothing: a stub, an arrowhead or
+    a hand-drawn flourish is often round *because the author wanted it round*.
+    Reporting it as a warning beside real faults would be the validator
+    overstepping into taste.
+    """
+    caps = T.css_property(text, "stroke-linecap")
+    lead = set(T.lead_classes(text))
+    artwork = sorted(c for c, v in caps.items()
+                     if v in ("round", "square") and c not in lead)
+    if not artwork or profile.linecap not in ("butt",):
+        return []
+    return [Finding(
+        check_id="artwork-linecap-not-house-style",
+        severity="info",
+        message=(f"{len(artwork)} artwork class(es) declare a non-butt cap: "
+                 + ", ".join("." + c for c in artwork)),
+        detail=("House style for this library is "
+                f"stroke-linecap: {profile.linecap}, but a round or square cap "
+                "on artwork is frequently deliberate, so this is reported "
+                "rather than flagged. The fix is offered separately from the "
+                "lead one and is never pre-selected."),
+        fix_ids=("set-artwork-linecap-butt",),
+        data={"classes": ", ".join(artwork)},
     )]
 
 
@@ -445,6 +481,7 @@ ALL_CHECKS = (
     check_lead_endpoints,
     check_lead_width,
     check_lead_linecap,
+    check_artwork_linecap,
     check_stray_anchors,
 )
 

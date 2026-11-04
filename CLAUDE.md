@@ -81,13 +81,18 @@ junction-dot tests fail on that machine and pass everywhere else.
 **Two test-isolation traps beyond the settings file**, both of which cost real
 time to diagnose:
 
-`tests/conftest.py` imports `AppKit` at module scope, before anything pulls in
-Qt. `test_clipboard_svg_paste` reaches AppKit through `importorskip` part-way
-through the run, and importing its large `_metadata` module *after* Qt has
-initialised aborts the interpreter. So *which* test crashed depended on module
-import order at collection, and merely adding a test file that imports Qt could
-break a clipboard test unrelated to it. Don't remove that import, and don't
-import `main_window` from an autouse fixture — that was the other way in.
+**Don't import Qt from an autouse fixture.** `test_clipboard_svg_paste` reaches
+PyObjC through `importorskip` part-way through the run, and anything that
+reorders Qt against PyObjC aborts the interpreter — the traceback lands in an
+unrelated `QSvgRenderer` construction, so it reads as a component-loading bug.
+Importing `main_window` in a fixture did it once. Pre-importing `AppKit` at
+conftest scope to "fix" it did it worse, because conftest is imported *after*
+pytest installs fd-level capture and PyObjC does not survive initialising under
+redirected descriptors: 1 crash in 2 runs with that import, 0 in 12 without.
+Both are documented in `tests/conftest.py`; leave it alone.
+
+If you do see this abort, check `--capture=sys` as a diagnostic — if it goes
+away, it is this and not your code.
 
 `isolate_component_overlay` redirects `~/.diagrammer/components/`, which
 `MainWindow` now scans *first*. Without it, seven test modules would load

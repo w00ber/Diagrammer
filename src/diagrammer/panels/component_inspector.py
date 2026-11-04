@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import difflib
 import logging
+import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -560,6 +561,12 @@ class ComponentInspectorDialog(QDialog):
         self._save_btn.clicked.connect(self._save_in_place)
         row.addWidget(self._save_btn)
 
+        self._save_builtin_btn = QPushButton("Save to Library…")
+        self._save_builtin_btn.setAutoDefault(False)
+        self._save_builtin_btn.setVisible(False)
+        self._save_builtin_btn.clicked.connect(self._save_over_builtin)
+        row.addWidget(self._save_builtin_btn)
+
         self._save_as_btn = QPushButton("Save as New…")
         self._save_as_btn.setAutoDefault(False)
         self._save_as_btn.clicked.connect(self._save_as_new)
@@ -917,6 +924,21 @@ class ComponentInspectorDialog(QDialog):
     # -- saving -----------------------------------------------------------
 
     @property
+    def _builtin_is_writable(self) -> bool:
+        """Can the shipped tree actually be written to?
+
+        True in a source checkout, false in an installed ``.app`` — the bundle
+        is read-only and code-signed, so writing into it would fail and, if it
+        somehow did not, would break the signature. Curating the shipped
+        libraries is a real workflow, but only where the tree is editable, so
+        the entry appears only there.
+        """
+        if not self._target_is_builtin:
+            return False
+        return os.access(self._path.parent, os.W_OK) and os.access(
+            self._path, os.W_OK)
+
+    @property
     def _target_is_builtin(self) -> bool:
         if self._builtin_root is None:
             return False
@@ -935,6 +957,16 @@ class ComponentInspectorDialog(QDialog):
         their own copy rather than a change to the app.
         """
         dirty = self._candidate != self._original_text
+        writable = self._builtin_is_writable
+        self._save_builtin_btn.setVisible(writable)
+        self._save_builtin_btn.setEnabled(dirty)
+        if writable:
+            self._save_builtin_btn.setToolTip(
+                "Overwrite the shipped file itself, in "
+                f"{self._path.parent}.\n\nOnly offered because this copy of "
+                "Diagrammer runs from a writable source tree. The change is to "
+                "the library everyone gets, so commit it — reinstalling or "
+                "updating replaces the file.")
         if self._target_is_builtin:
             self._save_btn.setText("Save (creates your copy)")
             self._save_btn.setToolTip(
@@ -949,7 +981,7 @@ class ComponentInspectorDialog(QDialog):
                 "Overwrite this file. A timestamped backup is kept.")
         self._save_btn.setEnabled(dirty)
 
-    def _write(self, *, as_new: bool) -> None:
+    def _write(self, *, as_new: bool, force_in_place: bool = False) -> None:
         from diagrammer import __version__
         from diagrammer.io import component_writer as writer
 
@@ -975,8 +1007,9 @@ class ComponentInspectorDialog(QDialog):
                 result = writer.save_component_text(
                     self._candidate, self._path,
                     original_text=self._original_text, index=self._index,
-                    builtin_root=self._builtin_root if self._target_is_builtin
-                    else None,
+                    builtin_root=None if force_in_place else (
+                        self._builtin_root if self._target_is_builtin
+                        else None),
                     app_version=__version__, allow_shrink=moves)
         except writer.WriteRefused as exc:
             QMessageBox.critical(self, "Save Refused", str(exc))
@@ -1017,6 +1050,28 @@ class ComponentInspectorDialog(QDialog):
 
     def _save_in_place(self) -> None:
         self._write(as_new=False)
+
+    def _save_over_builtin(self) -> None:
+        """Overwrite the shipped file itself rather than forking.
+
+        The author's path, not the user's: it appears only when the component
+        tree is writable, which means a source checkout. ``_write`` forks
+        whenever it is handed a ``builtin_root``, so declining to pass one is
+        all this takes.
+        """
+        reply = QMessageBox.question(
+            self, "Overwrite the Shipped Component?",
+            "Write these changes straight into the component library?"
+            f"<br><br><code>{self._path}</code><br><br>"
+            "This edits the file that ships with Diagrammer rather than making "
+            "your own copy, so the change reaches every user once released — "
+            "and is lost on reinstall unless it is committed. A timestamped "
+            "backup is kept either way.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._write(as_new=False, force_in_place=True)
 
     def _save_as_new(self) -> None:
         self._write(as_new=True)

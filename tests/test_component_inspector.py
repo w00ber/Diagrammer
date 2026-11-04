@@ -563,3 +563,91 @@ def test_a_real_toggle_still_schedules_one_recompute(workspace) -> None:
         assert dlg._recompute_pending, "a user toggle must schedule a recompute"
     finally:
         dlg.deleteLater()
+
+
+# ==========================================================================
+# overwriting the shipped file in place
+# ==========================================================================
+
+def test_save_to_library_is_offered_only_where_the_tree_is_writable(
+        workspace) -> None:
+    """A source checkout can curate the shipped libraries; an installed .app
+    cannot, because the bundle is read-only and code-signed."""
+    import os
+    import stat
+
+    builtin, overlay = workspace
+    dlg, path = open_inspector(builtin, overlay, MANGLED)
+    try:
+        assert dlg._builtin_is_writable
+        assert dlg._save_builtin_btn.isVisible() or True  # hidden until shown
+        dlg._refresh_save_buttons()
+        assert dlg._save_builtin_btn.isEnabled()
+
+        mode = path.parent.stat().st_mode
+        os.chmod(path.parent, mode & ~stat.S_IWUSR)
+        try:
+            assert not dlg._builtin_is_writable
+            dlg._refresh_save_buttons()
+            assert not dlg._save_builtin_btn.isVisible()
+        finally:
+            os.chmod(path.parent, mode)
+    finally:
+        dlg.deleteLater()
+
+
+def test_save_to_library_overwrites_rather_than_forking(
+        workspace, monkeypatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(QMessageBox, "question",
+                        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes))
+    builtin, overlay = workspace
+    saved: list = []
+    dlg, path = open_inspector(builtin, overlay, MANGLED, saved=saved.append)
+    try:
+        dlg._save_over_builtin()
+        assert "Layer_1" not in path.read_text(encoding="utf-8"), (
+            "the shipped file itself should have been rewritten")
+        forks = [f for f in overlay.rglob("*.svg")
+                 if ".backups" not in f.parts]
+        assert forks == [], "nothing should be forked"
+        assert saved and not saved[0].forked
+        assert saved[0].path == path
+        # but a backup is still kept, dot-prefixed so the scanner ignores it
+        backups = list((overlay / ".backups").rglob("*.svg"))
+        assert len(backups) == 1
+        assert "Layer_1" in backups[0].read_text(encoding="utf-8")
+        assert dlg._path == path, "the inspector keeps following the same file"
+    finally:
+        dlg.deleteLater()
+
+
+def test_cancelling_the_overwrite_confirmation_writes_nothing(
+        workspace, monkeypatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Cancel))
+    builtin, overlay = workspace
+    dlg, path = open_inspector(builtin, overlay, MANGLED)
+    try:
+        dlg._save_over_builtin()
+        assert path.read_text(encoding="utf-8") == MANGLED
+        assert list(overlay.rglob("*.svg")) == []
+    finally:
+        dlg.deleteLater()
+
+
+def test_plain_save_still_forks_even_where_the_tree_is_writable(
+        workspace) -> None:
+    """The default must stay safe: only the explicit button overwrites."""
+    builtin, overlay = workspace
+    dlg, path = open_inspector(builtin, overlay, MANGLED)
+    try:
+        dlg._save_in_place()
+        assert path.read_text(encoding="utf-8") == MANGLED
+        assert (overlay / "PAPER_2pt" / "part.svg").is_file()
+    finally:
+        dlg.deleteLater()

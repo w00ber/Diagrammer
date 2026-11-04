@@ -176,11 +176,15 @@ def test_restore_primitives_converts_a_path_circle_back(tmp_path: Path) -> None:
 
 
 def test_set_lead_width_rewrites_the_lead_class_only(tmp_path: Path) -> None:
-    out, notes = run(SOUND, ["set-lead-width"], tmp_path / "l.svg", profile=SLIDES)
+    out, notes = run(SOUND, ["set-lead-width"], tmp_path / "l.svg",
+                     profile=SLIDES)
     assert "stroke-width: 3px" in out
-    # .st2 is the artwork's class and must keep its 2px
-    assert out.count("stroke-width: 2px") == 1
     assert any("st1" in n for n in notes)
+    # .st2 is the artwork's class and must still resolve to 2px
+    from diagrammer.svglint import text_svg as T
+    widths = T.css_widths(out)
+    assert widths["st1"] == 3.0
+    assert widths["st2"] == 2.0
 
 
 def test_set_lead_width_refuses_a_class_shared_with_the_artwork(tmp_path: Path) -> None:
@@ -199,9 +203,79 @@ def test_set_lead_linecap_butt(tmp_path: Path) -> None:
     text = SOUND.replace("stroke-width: 2px; }\n      .st2",
                          "stroke-width: 2px; stroke-linecap: round; }\n      .st2")
     out, notes = run(text, ["set-lead-linecap-butt"], tmp_path / "c.svg")
-    assert "stroke-linecap: butt" in out
-    assert "stroke-linecap: round" not in out
+    from diagrammer.svglint import text_svg as T
+    assert T.css_property(out, "stroke-linecap")["st1"] == "butt"
     assert any("stroke-linecap round -> butt" in n for n in notes)
+
+
+GROUPED = svg(
+    '  <g id="artwork">\n'
+    '    <circle class="st2" cx="30" cy="50" r="20"/>\n'
+    '    <path class="st3" d="M10,10L20,20"/>\n'
+    "  </g>\n"
+    '  <g id="leads">\n'
+    '    <line class="st7" x1="30" y1="0" x2="30" y2="30"/>\n'
+    "  </g>\n"
+    '  <g id="ports"><circle id="port:top" cx="30" cy="0" r="3"/></g>\n',
+    # Illustrator's real output shape: one grouped rule governing the lead
+    # class *and* half the artwork.
+    style=("    <style>\n"
+           "      .st2, .st3, .st7 {\n"
+           "        stroke: #000;\n"
+           "        stroke-linecap: round;\n"
+           "        stroke-width: 2px;\n"
+           "      }\n"
+           "    </style>\n"))
+
+
+def test_lead_cap_fix_does_not_restyle_artwork_sharing_the_rule(
+        tmp_path: Path) -> None:
+    """The bug this guards: Illustrator writes grouped selectors, so the rule
+    that sets the lead's cap usually sets half the symbol's too. Editing it in
+    place silently rounded-off the whole drawing."""
+    from diagrammer.svglint import text_svg as T
+
+    out, notes = run(GROUPED, ["set-lead-linecap-butt"], tmp_path / "g.svg")
+    caps = T.css_property(out, "stroke-linecap")
+    assert caps["st7"] == "butt", "the lead must change"
+    assert caps["st2"] == "round", "the circle must not"
+    assert caps["st3"] == "round", "nor the path"
+    assert any("shared with" in n for n in notes), (
+        "the user should be told why a rule was added rather than edited")
+
+
+def test_lead_width_fix_does_not_restyle_artwork_sharing_the_rule(
+        tmp_path: Path) -> None:
+    from diagrammer.svglint import text_svg as T
+
+    out, _ = run(GROUPED, ["set-lead-width"], tmp_path / "g.svg",
+                 profile=SLIDES)
+    widths = T.css_widths(out)
+    assert widths["st7"] == 3.0
+    assert widths["st2"] == 2.0 and widths["st3"] == 2.0
+
+
+def test_artwork_cap_is_a_separate_opt_in_fix(tmp_path: Path) -> None:
+    """Taste, not correctness — so it is its own checkbox and never pre-ticked."""
+    from diagrammer import svglint
+    from diagrammer.svglint import text_svg as T
+
+    path = tmp_path / "g.svg"
+    findings = svglint.check_text(GROUPED, path=path, profile=PAPER)
+    ids = {f.check_id for f in findings}
+    assert "lead-linecap-not-butt" in ids
+    assert "artwork-linecap-not-house-style" in ids
+
+    art = next(f for f in findings
+               if f.check_id == "artwork-linecap-not-house-style")
+    assert art.severity == "info", "artwork caps are reported, not flagged"
+    assert "set-artwork-linecap-butt" not in {
+        f.fix_id for f in svglint.default_fixes(findings)}
+
+    out, _ = run(GROUPED, ["set-lead-linecap-butt",
+                           "set-artwork-linecap-butt"], path)
+    caps = T.css_property(out, "stroke-linecap")
+    assert caps["st7"] == caps["st2"] == caps["st3"] == "butt"
 
 
 def test_rebase_viewbox_moves_content_and_zeroes_the_origin(tmp_path: Path) -> None:

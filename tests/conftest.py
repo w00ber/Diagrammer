@@ -6,6 +6,20 @@ import sys
 
 import pytest
 
+# Do NOT import AppKit here.
+#
+# test_clipboard_svg_paste seeds a real NSPasteboard and reaches PyObjC through
+# importorskip part-way through the run. Importing it at conftest scope to get
+# ahead of Qt looks like the fix and is not: conftest is imported *after*
+# pytest installs its fd-level capture, and initialising PyObjC under
+# redirected file descriptors aborts the interpreter inside an unrelated
+# QSvgRenderer construction later on. Measured: 1 run in 2 with that import,
+# 0 in 12 without it.
+#
+# The real constraint is narrower — do not drag Qt in from an autouse fixture,
+# which runs for every test and reorders Qt against PyObjC. See
+# isolate_component_overlay for how to avoid that.
+
 # Import PyObjC before anything pulls in Qt.
 #
 # test_clipboard_svg_paste seeds a real NSPasteboard and reaches AppKit through
@@ -18,10 +32,6 @@ import pytest
 #
 # conftest is imported before any test module, so doing it here fixes the order
 # once instead of constraining what every future test file may import.
-try:  # pragma: no cover - platform-dependent
-    import AppKit  # noqa: F401
-except Exception:  # pragma: no cover - not macOS, or PyObjC absent
-    pass
 
 
 @pytest.fixture(scope="session", autouse=True)

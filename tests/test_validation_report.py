@@ -17,10 +17,15 @@ from diagrammer.models.overrides import OverrideIndex
 from diagrammer.panels.library_overrides import LibraryOverridesDialog
 from diagrammer.panels.validation_report import ValidationReportDialog
 
+# The leads carry their own class. That matters: the lead-cap fix refuses to
+# touch a class the artwork also uses, since butt-capping it would restyle the
+# body — so a fixture sharing one would exercise the refusal, not the fix.
 ROUND_CAP = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 100">
-  <defs><style>.st1 { fill: none; stroke: #000; stroke-width: 2px;
-      stroke-linecap: round; }</style></defs>
-  <g id="artwork"><path class="st1" d="M10,50H50"/></g>
+  <defs><style>
+      .st1, .st2 { fill: none; stroke: #000; stroke-width: 2px;
+      stroke-linecap: round; }
+  </style></defs>
+  <g id="artwork"><path class="st2" d="M10,50H50"/></g>
   <g id="leads"><line class="st1" x1="30" y1="0" x2="30" y2="45"/></g>
   <g id="ports"><circle id="port:top" cx="30" cy="0" r="3"/></g>
 </svg>
@@ -32,6 +37,7 @@ NO_PORTS = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 100">
 '''
 
 SOUND = ROUND_CAP.replace("\n      stroke-linecap: round; ", " ")
+assert "stroke-linecap" not in SOUND, "the sound fixture must declare no cap"
 
 
 @pytest.fixture
@@ -158,10 +164,16 @@ def test_bulk_fix_rewrites_every_affected_file(library, monkeypatch) -> None:
     try:
         dlg._tree.setCurrentItem(row_for(dlg, "lead-linecap-not-butt"))
         dlg._bulk_fix()
-        caps = [(library / f"cap{i}.svg").read_text(encoding="utf-8")
-                for i in range(4)]
-        assert all("stroke-linecap: butt" in c for c in caps)
-        assert not any("stroke-linecap: round" in c for c in caps)
+        from diagrammer.svglint import text_svg as T
+
+        for i in range(4):
+            text = (library / f"cap{i}.svg").read_text(encoding="utf-8")
+            # Resolved value, not raw text: the fix appends an overriding rule
+            # rather than editing the shared one, so "round" is still in the
+            # source and correctly still applies to anything else using it.
+            caps = T.css_property(text, "stroke-linecap")
+            assert caps["st1"] == "butt", "the lead class changed"
+            assert caps["st2"] == "round", "the artwork class did not"
         # the untouched files stay untouched
         assert (library / "broken.svg").read_text(encoding="utf-8") == NO_PORTS
     finally:

@@ -181,6 +181,89 @@ def _fix_unwrap_layer_group(text: str, ctx: FixContext) -> FixResult:
                      notes=('unwrapped <g id="Layer_1">',))
 
 
+def _fix_wrap_artwork_layer(text: str, ctx: FixContext) -> FixResult:
+    """Wrap the unnamed top-level drawing in ``<g id="artwork">``.
+
+    Without that layer the symbol still renders — the parser falls back to
+    treating the whole document as artwork — so the fault is invisible on the
+    canvas. What it costs is everything that enumerates *named* layers:
+    ``enumerate_svg_elements`` and the properties panel walk ``artwork`` and
+    the lead groups only, so none of the body's elements can be selected or
+    restyled individually. On a real example that was 2 selectable elements
+    instead of 8.
+
+    Only the elements that are not already in a named layer are wrapped, and
+    they keep their document order, so nothing moves and nothing repaints
+    differently.
+    """
+    if re.search(r'<g\s+id="artwork"', text):
+        return _nop(text)
+    body = re.search(r"(<svg\b[^>]*>)(.*)(</svg>)", text, re.S)
+    if body is None:
+        return _nop(text)
+    head, inner, tail = body.group(1), body.group(2), body.group(3)
+
+    # Spans to leave alone: defs/metadata, and every already-named layer.
+    keep: list[tuple[int, int]] = []
+    for pat in (r"<defs\b.*?</defs>", r"<metadata\b.*?</metadata>",
+                r"<!--.*?-->", r"<title\b.*?</title>",
+                r"<desc\b.*?</desc>"):
+        keep += [m.span() for m in re.finditer(pat, inner, re.S)]
+    for layer in T.KNOWN_LAYER_IDS:
+        span = T.group_body(inner, layer)
+        if span is None:
+            continue
+        open_tag = re.search(rf'<g\s+id="{re.escape(layer)}"[^>]*>', inner)
+        start = open_tag.start() if open_tag else span[0]
+        close = inner.find("</g>", span[1])
+        keep.append((start, close + 4 if close != -1 else span[1]))
+
+    def covered(i: int, j: int) -> bool:
+        return any(a <= i and j <= b for a, b in keep)
+
+    # Top-level elements that are not covered are the loose artwork.
+    loose: list[tuple[int, int]] = []
+    pos = 0
+    depth = 0
+    for tok in re.finditer(r"<(\w[\w:-]*)\b[^>]*?(/?)>|</(\w[\w:-]*)>", inner):
+        if tok.group(3):          # a closing tag
+            depth -= 1
+            if depth == 0 and not covered(pos, tok.end()):
+                loose.append((pos, tok.end()))
+            continue
+        if depth == 0:
+            pos = tok.start()
+        if tok.group(2):          # self-closing
+            if depth == 0 and not covered(tok.start(), tok.end()):
+                loose.append((tok.start(), tok.end()))
+            continue
+        depth += 1
+
+    if not loose:
+        return _nop(text)
+
+    first, last = loose[0][0], loose[-1][1]
+    if any(covered(a, b) for a, b in loose):
+        return _nop(text)
+    # Only wrap a contiguous run; interleaved loose elements and named layers
+    # would change paint order, which this fix is not allowed to do.
+    if any(a <= first and last <= b for a, b in keep):
+        return _nop(text)
+    for a, b in keep:
+        if first < a < last or first < b < last:
+            return _nop(text)
+
+    inner_new = (inner[:first]
+                 + '<g id="artwork">'
+                 + inner[first:last]
+                 + "</g>"
+                 + inner[last:])
+    n = len(loose)
+    return FixResult(text=head + inner_new + tail, changed=True,
+                     notes=(f'wrapped {n} top-level element(s) in '
+                            f'<g id="artwork">',))
+
+
 def _fix_strip_editor_metadata(text: str, ctx: FixContext) -> FixResult:
     """Drop the Adobe PGF blob that "Preserve Illustrator Editing
     Capabilities" bakes into an export.
@@ -218,42 +301,73 @@ def _fix_strip_editor_metadata(text: str, ctx: FixContext) -> FixResult:
 # style, geometry-preserving
 # --------------------------------------------------------------------------
 
-def _rewrite_css_decl(text: str, classes: Sequence[str], prop: str,
-                      value: str) -> tuple[str, list[str]]:
-    """Set ``prop: value`` on each of ``classes`` inside the ``<style>`` block.
+def _css_rule_owners(text: str, cls: str, prop: str) -> set[str]:
+    """Every class that shares a rule setting ``prop`` with ``cls``.
 
-    Edits the declaration in place when the class already sets the property,
-    and appends it to the rule otherwise, so the file keeps its formatting and
-    the diff shows one line per real change.
+    Illustrator writes grouped selectors, and they are the reason a rule may
+    not be edited in place::
+
+        .st1, .st2, .st3, .st4, .st7, .st5, .st6 { stroke-linecap: round; }
+
+    If ``.st7`` is the lead class and the rest are artwork, rewriting that
+    declaration restyles the whole symbol. This is how the fix knows it is
+    about to.
     """
-    notes: list[str] = []
-
-    def in_block(block: re.Match[str]) -> str:
-        css = block.group(1)
-
-        def in_rule(rule: re.Match[str]) -> str:
+    owners: set[str] = set()
+    for block in re.finditer(r"<style[^>]*>(.*?)</style>", text, re.S):
+        for rule in re.finditer(r"([^{}]+)\{([^}]*)\}", block.group(1)):
             sel, body = rule.group(1), rule.group(2)
-            hit = [c for c in classes if re.search(rf"\.{re.escape(c)}\b", sel)]
-            if not hit:
-                return rule.group(0)
-            existing = re.search(rf"(\b{re.escape(prop)}\s*:\s*)([^;}}]+)", body)
-            if existing:
-                if existing.group(2).strip() == value:
-                    return rule.group(0)
-                notes.append(f".{hit[0]}: {prop} "
-                             f"{existing.group(2).strip()} -> {value}")
-                body = body[:existing.start(2)] + value + body[existing.end(2):]
-            else:
-                notes.append(f".{hit[0]}: added {prop}: {value}")
-                indent = re.match(r"\s*", body).group(0)
-                body = body.rstrip() + f"{indent}{prop}: {value};" + "\n      "
-            return f"{sel}{{{body}}}"
+            if not re.search(rf"\.{re.escape(cls)}\b", sel):
+                continue
+            if not re.search(rf"\b{re.escape(prop)}\s*:", body):
+                continue
+            owners |= {m.group(1) for m in re.finditer(r"\.([\w-]+)", sel)}
+    return owners
 
-        return block.group(0).replace(css, re.sub(r"([^{}]+)\{([^}]*)\}",
-                                                  in_rule, css))
 
-    new = re.sub(r"<style[^>]*>(.*?)</style>", in_block, text, flags=re.S)
+def _override_css_decl(text: str, classes: Sequence[str], prop: str,
+                       value: str) -> tuple[str, list[str]]:
+    """Give ``classes`` their own ``prop: value``, by appending one rule.
+
+    Appending rather than editing in place, because Illustrator groups
+    selectors: a declaration that happens to mention the lead class usually
+    governs half the artwork too, and editing it would restyle the symbol. A
+    rule added at the end of the ``<style>`` block has equal specificity and
+    later source order, so it wins for exactly the classes named and nothing
+    else — verified against Qt's renderer, which honours the cascade here.
+
+    It is also a smaller diff: one added rule instead of an edit scattered
+    across every rule the class appears in.
+    """
+    targets = [c for c in classes
+               if (_css_declared(text, c, prop) or "") != value]
+    if not targets:
+        return text, []
+    selector = ", ".join(f".{c}" for c in targets)
+    rule = f"\n      {selector} {{\n        {prop}: {value};\n      }}\n    "
+
+    def append(block: re.Match[str]) -> str:
+        head, css, tail = block.group(1), block.group(2), block.group(3)
+        return f"{head}{css.rstrip()}\n{rule}{tail}"
+
+    new, n = re.subn(r"(<style[^>]*>)(.*?)(</style>)", append, text,
+                     count=1, flags=re.S)
+    if not n:
+        # No <style> block at all: nothing to override, and inventing one
+        # would be a bigger change than this fix is allowed to make.
+        return text, []
+    was = {c: _css_declared(text, c, prop) for c in targets}
+    notes = [
+        f".{c}: {prop} {was[c]} -> {value}" if was[c]
+        else f".{c}: set {prop}: {value}"
+        for c in targets
+    ]
     return new, notes
+
+
+def _css_declared(text: str, cls: str, prop: str) -> str | None:
+    """The value ``cls`` currently resolves to for ``prop``, or None."""
+    return T.css_property(text, prop).get(cls)
 
 
 def _fix_set_lead_width(text: str, ctx: FixContext) -> FixResult:
@@ -275,8 +389,17 @@ def _fix_set_lead_width(text: str, ctx: FixContext) -> FixResult:
                    f"{', '.join('.' + c for c in classes)} are shared with the "
                    "artwork, so changing them would restyle the body too. "
                    "Give the leads their own class first.",))
-    new, notes = _rewrite_css_decl(text, exclusive, "stroke-width",
-                                   f"{T.fmt(want)}px")
+    new, notes = _override_css_decl(text, exclusive, "stroke-width",
+                                    f"{T.fmt(want)}px")
+    shared = sorted({o for c in exclusive
+                     for o in _css_rule_owners(text, c, "stroke-width")}
+                    - set(exclusive))
+    if shared and new != text:
+        notes.append(
+            "the existing rule is shared with "
+            + ", ".join("." + c for c in shared)
+            + ", so a new rule was added for the lead class rather than "
+              "editing that one, which would have restyled them too")
     return FixResult(text=new, changed=new != text, notes=tuple(notes))
 
 
@@ -293,18 +416,59 @@ def _class_used_outside_leads(text: str, cls: str) -> bool:
 
 
 def _fix_set_lead_linecap(text: str, ctx: FixContext) -> FixResult:
-    """Set butt caps on the lead classes, so a lead stops at its port."""
+    """Set butt caps on the **lead** classes, and only those.
+
+    A round cap overhangs the endpoint by half the stroke width, so the lead
+    reaches past its port and the join with the wire thickens. That is a
+    mechanical fault and worth fixing.
+
+    The same cap on *artwork* is a drawing decision — a round-capped stub or
+    arrow is often exactly what the author wanted — so it is left alone here
+    and offered separately by ``set-artwork-linecap-butt``. Keeping them apart
+    matters because Illustrator groups selectors, and the one rule that sets
+    the lead's cap usually sets half the symbol's too.
+    """
     classes = T.lead_classes(text)
     if not classes:
         return _nop(text)
     exclusive = [c for c in classes if not _class_used_outside_leads(text, c)]
-    targets = exclusive or classes
-    new, notes = _rewrite_css_decl(text, targets, "stroke-linecap",
-                                   ctx.profile.linecap)
-    if exclusive != classes and new != text:
-        notes.append("note: the lead class is shared with the artwork, so the "
-                     "cap change applies to both — check the body in Overlay "
-                     "mode before saving")
+    if not exclusive:
+        return FixResult(
+            text=text, changed=False,
+            notes=(f"cannot set the lead cap: class(es) "
+                   f"{', '.join('.' + c for c in classes)} are used by the "
+                   "artwork as well, so the change would restyle the body "
+                   "too. Give the leads their own class first.",))
+    new, notes = _override_css_decl(text, exclusive, "stroke-linecap",
+                                    ctx.profile.linecap)
+    shared = sorted({o for c in exclusive
+                     for o in _css_rule_owners(text, c, "stroke-linecap")}
+                    - set(exclusive))
+    if shared and new != text:
+        notes.append(
+            "the existing rule is shared with "
+            + ", ".join("." + c for c in shared)
+            + ", so a new rule was added for the lead class rather than "
+              "editing that one, which would have restyled them too")
+    return FixResult(text=new, changed=new != text, notes=tuple(notes))
+
+
+def _fix_set_artwork_linecap(text: str, ctx: FixContext) -> FixResult:
+    """Set butt caps on the artwork classes too.
+
+    Separate, and off by default, because this one is taste rather than
+    correctness: unlike a lead, a round-capped artwork stroke breaks nothing.
+    It is offered so a library can be made internally consistent in one step
+    when that is what the author wants.
+    """
+    caps = T.css_property(text, "stroke-linecap")
+    lead = set(T.lead_classes(text))
+    artwork = sorted(c for c, v in caps.items()
+                     if v in ("round", "square") and c not in lead)
+    if not artwork:
+        return _nop(text)
+    new, notes = _override_css_decl(text, artwork, "stroke-linecap",
+                                    ctx.profile.linecap)
     return FixResult(text=new, changed=new != text, notes=tuple(notes))
 
 
@@ -464,6 +628,15 @@ ALL_FIXES: tuple[Fix, ...] = (
                      "recognisable circle or straight segment."),
         order=ORDER_STRUCTURAL, scope="file",
         apply=_fix_restore_primitives, default_on=True, bulk_safe=True),
+    Fix(fix_id="wrap-artwork-layer",
+        title='Wrap the loose drawing in <g id="artwork">',
+        description=("Without a named artwork layer the symbol still renders, "
+                     "but none of its body can be selected or restyled "
+                     "individually in the Properties panel, because that "
+                     "enumerates named layers only. Elements keep their order, "
+                     "so nothing moves."),
+        order=ORDER_STRUCTURAL, scope="file",
+        apply=_fix_wrap_artwork_layer, default_on=False, bulk_safe=True),
     Fix(fix_id="strip-editor-metadata",
         title="Strip the Illustrator PGF metadata block",
         description=("Removes <i:aipgf>, typically 45-90 KB of private data "
@@ -482,9 +655,19 @@ ALL_FIXES: tuple[Fix, ...] = (
     Fix(fix_id="set-lead-linecap-butt",
         title="Set butt caps on the leads",
         description=("A round or square cap overhangs the endpoint by half the "
-                     "stroke width, so the lead reaches past its port."),
+                     "stroke width, so the lead reaches past its port and the "
+                     "join with the wire thickens. Touches the lead classes "
+                     "only — the artwork keeps its caps."),
         order=ORDER_STYLE, scope="file",
         apply=_fix_set_lead_linecap, default_on=False, bulk_safe=True),
+    Fix(fix_id="set-artwork-linecap-butt",
+        title="Also set butt caps on the artwork",
+        description=("House style rather than correctness: a round cap on "
+                     "artwork breaks nothing, and on a stub or an arrowhead it "
+                     "is usually deliberate. Offered so a library can be made "
+                     "consistent in one step when that is what you want."),
+        order=ORDER_STYLE, scope="file",
+        apply=_fix_set_artwork_linecap, default_on=False, bulk_safe=True),
 
     Fix(fix_id="rebase-viewbox-to-origin",
         title="Move the viewBox origin to (0,0)",
