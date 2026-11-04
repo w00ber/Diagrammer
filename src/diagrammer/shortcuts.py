@@ -149,6 +149,14 @@ _reg("file.save_as",   QKeySequence.StandardKey.SaveAs,   description="Save As..
 _reg("file.quit",      QKeySequence.StandardKey.Quit,     description="Quit",              category="File")
 _reg("file.refresh_libraries", _ks("F5"),                  description="Refresh Libraries", category="File")
 
+# ----- Library -----
+# Ctrl+I is free; Ctrl+Shift+I is already bound to the layers panel. Qt's
+# portable notation renders this as Cmd-I on macOS.
+_reg("library.inspect_component", _ks("Ctrl+I"),
+     description="Inspect & Validate Component", category="Library")
+_reg("library.validate_all",      None,
+     description="Validate Component Libraries", category="Library")
+
 # ----- Edit -----
 _reg("edit.undo",      QKeySequence.StandardKey.Undo,     description="Undo",              category="Edit")
 _reg("edit.redo",      QKeySequence.StandardKey.Redo,     description="Redo",              category="Edit")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QPointF, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QGraphicsView,
@@ -220,6 +220,10 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         self._restore_dock_state()
 
         self._populate_panels_menu()
+
+        # Deferred so the window is up first: this is information, not a
+        # decision that has to be made before the app is usable.
+        QTimer.singleShot(0, self._report_fork_drift)
 
     def _populate_panels_menu(self) -> None:
         """Fill View > Panels with a show/hide toggle per dock.
@@ -600,6 +604,192 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             entry["enabled"] = True
             app_settings.save()
             self._rebuild_library()
+
+    # ------------------------------------------------------------------
+    # Component inspector
+    # ------------------------------------------------------------------
+
+    def _selected_component_def(self):
+        """The one component the Inspect action should act on, or None.
+
+        Looks at the canvas first and the Library panel second, because the
+        canvas is where a fault is usually *noticed* — a wire stepping in
+        thickness at a join sends you to the part, not to the panel.
+        """
+        from diagrammer.items.component_item import ComponentItem
+
+        comps = [it for it in self._scene.selectedItems()
+                 if isinstance(it, ComponentItem)]
+        if len(comps) == 1:
+            return comps[0].comp_def
+        panel = getattr(self, "_library_panel", None)
+        if panel is not None:
+            key = panel.selected_key()
+            if key:
+                return self._library.get(key)
+        return None
+
+    def _sync_library_menu(self) -> None:
+        comp = self._selected_component_def()
+        act = getattr(self, "_inspect_component_act", None)
+        if act is None:
+            return
+        act.setEnabled(comp is not None and not comp.is_embedded)
+        act.setText(
+            f"&Inspect && Validate “{comp.name}”…" if comp is not None
+            else "&Inspect && Validate Component…")
+
+    def _inspect_selected_component(self) -> None:
+        comp = self._selected_component_def()
+        if comp is None:
+            self.statusBar().showMessage(
+                "Select a component on the canvas or in the Library panel "
+                "first", 4000)
+            return
+        if comp.is_embedded or not comp.svg_path:
+            QMessageBox.information(
+                self, "Nothing to Inspect",
+                "This component is embedded in the document rather than "
+                "loaded from a library file, so there is no file to check.")
+            return
+        self.open_component_inspector(Path(comp.svg_path))
+
+    def _inspect_svg_file(self) -> None:
+        """Inspect any SVG, in a library or not.
+
+        The route that closes the external-editor loop: right-click a part,
+        open it in Illustrator, then come back and check it here before it goes
+        anywhere near the library.
+        """
+        start = (app_settings.last_directory
+                 or str(self._overlay_root if self._overlay_root.is_dir()
+                        else self._builtin_components_path))
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Inspect SVG Component", start,
+            "SVG Files (*.svg);;All Files (*)")
+        if path:
+            self.open_component_inspector(Path(path))
+
+    def open_component_inspector(self, path: Path, *, finding=None):
+        """Open (or raise) the inspector for ``path``.
+
+        One dialog per file: re-inspecting a component the user already has open
+        should bring that window forward rather than stack a second copy with
+        its own, divergent set of ticked fixes.
+        """
+        from diagrammer.panels.component_inspector import (
+            ComponentInspectorDialog,
+        )
+
+        if not hasattr(self, "_inspectors"):
+            self._inspectors = {}
+        key = str(Path(path).resolve())
+        existing = self._inspectors.get(key)
+        if existing is not None:
+            existing.raise_()
+            existing.activateWindow()
+            return existing
+
+        dlg = ComponentInspectorDialog(
+            path, self,
+            index=self._overrides,
+            builtin_root=self._builtin_components_path,
+            overlay_root=self._overlay_root,
+            on_saved=self._on_component_saved,
+            profile_overrides=getattr(app_settings, "library_profiles", None),
+        )
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        dlg.finished.connect(lambda _r, k=key: self._inspectors.pop(k, None))
+        self._inspectors[key] = dlg
+        dlg.start_watching()
+        dlg.show()
+        return dlg
+
+    def _on_component_saved(self, result) -> None:
+        """Refresh the library after the inspector writes a component.
+
+        A fork or a new name changes the key set and the shadow map, so those
+        need a full rebuild; a plain in-place overwrite only changed one file's
+        contents, and ``reload_one`` swaps it without moving it in the panel.
+        """
+        if result.forked or result.rel is None:
+            self._rebuild_library()
+        else:
+            key = None
+            for k, comp in self._library._by_key.items():
+                if comp.svg_path == result.path:
+                    key = k
+                    break
+            if key is None or self._library.reload_one(key) is None:
+                self._rebuild_library()
+        self._library_panel._refresh_views()
+        where = "your copy" if result.forked else result.path.name
+        self.statusBar().showMessage(f"Saved {where} — {result.path}", 6000)
+
+    def _validate_libraries(self) -> None:
+        from diagrammer.panels.validation_report import ValidationReportDialog
+
+        dlg = ValidationReportDialog(
+            self,
+            roots=self._validation_roots(),
+            profile_overrides=getattr(app_settings, "library_profiles", None),
+            on_open=self.open_component_inspector,
+        )
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        dlg.show()
+
+    def _validation_roots(self) -> list[tuple[str, Path]]:
+        """Scopes the validation report offers, in precedence order."""
+        roots: list[tuple[str, Path]] = []
+        if self._overlay_root.is_dir():
+            roots.append(("My Components", self._overlay_root))
+        if self._builtin_components_path.is_dir():
+            for child in sorted(p for p in self._builtin_components_path.iterdir()
+                                if p.is_dir() and not p.name.startswith(".")):
+                roots.append((child.name, child))
+        for entry in app_settings.enabled_custom_library_paths():
+            p = Path(entry)
+            if p.is_dir():
+                roots.append((p.name, p))
+        return roots
+
+    def _show_library_overrides(self) -> None:
+        from diagrammer.panels.library_overrides import LibraryOverridesDialog
+
+        dlg = LibraryOverridesDialog(
+            self, index=self._overrides,
+            builtin_root=self._builtin_components_path,
+            on_changed=self._after_overrides_changed,
+            on_compare=self.open_component_inspector,
+        )
+        dlg.exec()
+
+    def _after_overrides_changed(self) -> None:
+        self._overrides.save(__import__("diagrammer").__version__)
+        self._rebuild_library()
+        self._library_panel._refresh_views()
+
+    def _reveal_overlay_folder(self) -> None:
+        from diagrammer.panels.library_panel import _show_in_file_browser
+
+        self._overlay_root.mkdir(parents=True, exist_ok=True)
+        _show_in_file_browser(self._overlay_root)
+
+    def _report_fork_drift(self) -> None:
+        """Tell the user, non-modally, when a shipped part they forked moved on.
+
+        Deliberately not a dialog at startup: it is information, not a
+        decision that has to be made now, and a modal on launch would be
+        read as an error.
+        """
+        drifted = self._overrides.drift()
+        if not drifted:
+            return
+        n = len(drifted)
+        self.statusBar().showMessage(
+            f"{n} of your edited component{'s' if n > 1 else ''} "
+            f"{'have' if n > 1 else 'has'} a newer shipped version — "
+            "see Library › Library Overrides…", 12000)
 
     def _open_settings(self) -> None:
         dlg = SettingsDialog(app_settings, self, library=self._library)

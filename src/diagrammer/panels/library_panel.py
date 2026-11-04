@@ -189,6 +189,22 @@ class LibraryPanel(QDockWidget):
         # self._library directly would resurrect hidden categories.
         self._refresh_views()
 
+    def selected_key(self) -> str | None:
+        """The library key of the highlighted component, if one is.
+
+        Only the tree view has a selection model; the grid view selects by
+        click-to-drag and keeps none, so this returns None there and the
+        caller falls back to the canvas selection.
+        """
+        tree = getattr(self, "_tree", None)
+        if tree is None:
+            return None
+        item = tree.currentItem()
+        if item is None:
+            return None
+        key = item.data(0, Qt.ItemDataRole.UserRole)
+        return key if isinstance(key, str) and key else None
+
     def _sorted_categories(self, library: ComponentLibrary) -> list[str]:
         """Return categories in user-defined order, with any new ones appended."""
         all_cats = sorted(library.categories.keys())

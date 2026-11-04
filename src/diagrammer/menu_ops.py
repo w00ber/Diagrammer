@@ -415,6 +415,59 @@ class MenuMixin:
         draw_text_act.triggered.connect(self._add_annotation)
         draw_menu.addAction(draw_text_act)
 
+        # ---- Library ----
+        # A menu of its own because the library actions were stranded in File,
+        # where nobody looks for them. The two File entries are mirrored rather
+        # than moved, so existing muscle memory still works.
+        library_menu = menu_bar.addMenu("&Library")
+
+        inspect_act = QAction("&Inspect && Validate Component\u2026", self)
+        self._register_shortcut(inspect_act, "library.inspect_component")
+        inspect_act.setStatusTip(
+            "Check the selected component against its library's conventions, "
+            "on a grid, and preview suggested fixes")
+        inspect_act.triggered.connect(self._inspect_selected_component)
+        library_menu.addAction(inspect_act)
+        self._inspect_component_act = inspect_act
+
+        inspect_file_act = QAction("Inspect SVG &File\u2026", self)
+        inspect_file_act.setStatusTip(
+            "Validate any SVG, whether or not it is in a library — use this "
+            "after editing a component in an external editor")
+        inspect_file_act.triggered.connect(self._inspect_svg_file)
+        library_menu.addAction(inspect_file_act)
+
+        library_menu.addSeparator()
+
+        validate_act = QAction("&Validate Component Libraries\u2026", self)
+        self._register_shortcut(validate_act, "library.validate_all")
+        validate_act.triggered.connect(self._validate_libraries)
+        library_menu.addAction(validate_act)
+
+        overrides_act = QAction("Library &Overrides\u2026", self)
+        overrides_act.setStatusTip(
+            "Your edited copies of shipped components, and anything you have "
+            "hidden")
+        overrides_act.triggered.connect(self._show_library_overrides)
+        library_menu.addAction(overrides_act)
+
+        library_menu.addSeparator()
+
+        create_comp_mirror = QAction("&Create Component from Selection\u2026", self)
+        create_comp_mirror.triggered.connect(self._create_component_from_selection)
+        library_menu.addAction(create_comp_mirror)
+
+        refresh_mirror = QAction("&Refresh Libraries", self)
+        self._register_shortcut(refresh_mirror, "file.refresh_libraries")
+        refresh_mirror.triggered.connect(self._refresh_libraries)
+        library_menu.addAction(refresh_mirror)
+
+        reveal_act = QAction("Reveal My Components Folder", self)
+        reveal_act.triggered.connect(self._reveal_overlay_folder)
+        library_menu.addAction(reveal_act)
+
+        library_menu.aboutToShow.connect(self._sync_library_menu)
+
         # ---- Help ----
         help_menu = menu_bar.addMenu("&Help")
 
