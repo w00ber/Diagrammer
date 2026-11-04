@@ -6,6 +6,23 @@ import sys
 
 import pytest
 
+# Import PyObjC before anything pulls in Qt.
+#
+# test_clipboard_svg_paste seeds a real NSPasteboard and reaches AppKit through
+# importorskip, i.e. part-way through the run. Importing AppKit's large
+# _metadata module after Qt has initialised aborts the interpreter on this
+# machine, and *which* test trips it depends on module import order at
+# collection — so adding a test module that imports Qt earlier can break a
+# clipboard test that has nothing to do with it. That is how this was found
+# twice.
+#
+# conftest is imported before any test module, so doing it here fixes the order
+# once instead of constraining what every future test file may import.
+try:  # pragma: no cover - platform-dependent
+    import AppKit  # noqa: F401
+except Exception:  # pragma: no cover - not macOS, or PyObjC absent
+    pass
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_qapp():

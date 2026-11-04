@@ -221,6 +221,13 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
 
         self._populate_panels_menu()
 
+        # Give the library panel's context menus the management actions. Set
+        # after the panel exists, and left None in a bare panel so it degrades
+        # to its read-only entries rather than failing.
+        from diagrammer.panels.library_actions import ComponentActions
+        self._component_actions = ComponentActions(self)
+        self._library_panel.component_actions = self._component_actions
+
         # Deferred so the window is up first: this is information, not a
         # decision that has to be made before the app is usable.
         QTimer.singleShot(0, self._report_fork_drift)

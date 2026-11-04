@@ -125,13 +125,8 @@ class LibraryTableView(QGraphicsView):
         panel = self._library_panel
         key = f"{comp_def.category}/{comp_def.name}"
         is_fav = panel.is_favorite(key) if panel is not None else False
-        menu, fav_act, show_act = build_component_menu(self, comp_def, is_fav)
-        action = menu.exec(event.globalPos())
-        if action is fav_act and panel is not None:
-            panel.toggle_favorite(key)
-        elif show_act is not None and action is show_act:
-            from diagrammer.panels.library_panel import _show_in_file_browser
-            _show_in_file_browser(comp_def.svg_path.parent)
+        build_component_menu(self, comp_def, is_fav, panel=panel,
+                             key=key).exec(event.globalPos())
 
     # -- Zoom helpers --
 
