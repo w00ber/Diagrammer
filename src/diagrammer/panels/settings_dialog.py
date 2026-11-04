@@ -191,6 +191,12 @@ class AppSettings:
         # reappear on next launch.
         self.auto_add_saved_compounds: bool = True
         self.user_compound_files: list[str] = []
+        # Per-library convention overrides, keyed by profile name, holding
+        # ONLY the fields the user changed. Storing a full profile would
+        # freeze the shipped defaults, so a later correction to one — a
+        # measured corner radius, say — would never reach anyone who had
+        # opened this dialog once.
+        self.library_profiles: dict[str, dict] = {}
 
         # External applications offered in the library panel's "Open With"
         # submenu, most-recently-used first. Each entry is a launchable
@@ -290,6 +296,7 @@ class AppSettings:
                 "recent_files": self.recent_files[:10],
                 "auto_add_saved_compounds": self.auto_add_saved_compounds,
                 "user_compound_files": self.user_compound_files,
+                "library_profiles": self.library_profiles,
                 "external_editors": self.external_editors,
                 "prefer_system_latex_for_math": self.prefer_system_latex_for_math,
                 "latex_bin_path": self.latex_bin_path,
@@ -384,6 +391,11 @@ class AppSettings:
                 self.auto_add_saved_compounds = data.get(
                     "auto_add_saved_compounds", self.auto_add_saved_compounds)
                 self.user_compound_files = data.get("user_compound_files", [])
+                raw_profiles = data.get("library_profiles", {})
+                if isinstance(raw_profiles, dict):
+                    self.library_profiles = {
+                        str(k): dict(v) for k, v in raw_profiles.items()
+                        if isinstance(v, dict)}
                 self.external_editors = data.get("external_editors", [])
                 self.prefer_system_latex_for_math = data.get(
                     "prefer_system_latex_for_math",
@@ -836,6 +848,8 @@ class SettingsDialog(QDialog):
         editors_layout.addLayout(editors_btn_row)
         editors_group.setLayout(editors_layout)
         lib_layout.addWidget(editors_group)
+
+        lib_layout.addWidget(self._build_profiles_group(settings))
 
         tabs.addTab(_scrollable(lib_tab), "Libraries")
 
@@ -1315,6 +1329,132 @@ class SettingsDialog(QDialog):
         if path:
             self._latex_path_edit.setText(path)
 
+    def _build_profiles_group(self, settings) -> QWidget:
+        """Per-library conventions, for the component validator to check against.
+
+        These are the spec's House Conventions, which are deliberately *not*
+        app-enforced and differ per library: the same symbol ships into
+        PAPER_2pt at a 2 px lead and CRYO_WIRING_6pt at 6 px, so a validator
+        cannot compare against a constant. A blank field means "no convention",
+        which disables that check rather than comparing against zero.
+
+        A folder carrying its own ``library.json`` wins over anything set here
+        and is shown read-only, because the sidecar travels with the folder
+        while this is per-machine.
+        """
+        from diagrammer.app import hint_text_color as _htc
+        from diagrammer.svglint import profiles as _profiles
+
+        group = QGroupBox("Library Conventions")
+        v = QVBoxLayout()
+        hint = QLabel(
+            "What “Validate Component Libraries” checks each library "
+            "against. Leave a field blank for “no convention”, which "
+            "turns that check off for the library rather than failing it."
+        )
+        hint.setStyleSheet(f"color: {_htc()}; font-size: 11px;")
+        hint.setWordWrap(True)
+        v.addWidget(hint)
+
+        form = QFormLayout()
+        self._profile_edits: dict[str, dict[str, QWidget]] = {}
+        for name, base in _profiles.BUILTIN_PROFILES.items():
+            over = settings.library_profiles.get(name, {})
+            row = QHBoxLayout()
+
+            grid = QDoubleSpinBox()
+            grid.setRange(1.0, 200.0)
+            grid.setDecimals(2)
+            grid.setValue(float(over.get("grid", base.grid)))
+            grid.setToolTip("Port grid, in points")
+            row.addWidget(QLabel("grid"))
+            row.addWidget(grid)
+
+            lead = QLineEdit()
+            lead_val = over.get("lead_width", base.lead_width)
+            lead.setText("" if lead_val is None else f"{float(lead_val):g}")
+            lead.setPlaceholderText("none")
+            lead.setFixedWidth(60)
+            lead.setToolTip(
+                "Lead stroke width. The attached wire takes its width from "
+                "this, so a mismatch makes the wire step in thickness at the "
+                "join. Blank means the library has no fixed weight.")
+            row.addWidget(QLabel("lead"))
+            row.addWidget(lead)
+
+            radius = QLineEdit()
+            r_val = over.get("corner_radius", base.corner_radius)
+            radius.setText("" if r_val is None else f"{float(r_val):g}")
+            radius.setPlaceholderText("none")
+            radius.setFixedWidth(60)
+            radius.setToolTip("rx on rounded bodies")
+            row.addWidget(QLabel("radius"))
+            row.addWidget(radius)
+
+            cap = QComboBox()
+            cap.addItems(["butt", "round", "square"])
+            cap.setCurrentText(str(over.get("linecap", base.linecap)))
+            row.addWidget(QLabel("cap"))
+            row.addWidget(cap)
+            row.addStretch()
+
+            holder = QWidget()
+            holder.setLayout(row)
+            form.addRow(base.label, holder)
+            self._profile_edits[name] = {
+                "grid": grid, "lead_width": lead,
+                "corner_radius": radius, "linecap": cap,
+            }
+
+        v.addLayout(form)
+        reset = QPushButton("Reset Conventions to Defaults")
+        reset.setAutoDefault(False)
+        reset.clicked.connect(self._reset_library_profiles)
+        btn_row = QHBoxLayout()
+        btn_row.addWidget(reset)
+        btn_row.addStretch()
+        v.addLayout(btn_row)
+        group.setLayout(v)
+        return group
+
+    def _reset_library_profiles(self) -> None:
+        from diagrammer.svglint import profiles as _profiles
+
+        for name, widgets in self._profile_edits.items():
+            base = _profiles.BUILTIN_PROFILES[name]
+            widgets["grid"].setValue(base.grid)
+            widgets["lead_width"].setText(
+                "" if base.lead_width is None else f"{base.lead_width:g}")
+            widgets["corner_radius"].setText(
+                "" if base.corner_radius is None else f"{base.corner_radius:g}")
+            widgets["linecap"].setCurrentText(base.linecap)
+
+    def _collect_library_profiles(self) -> dict[str, dict]:
+        """Read the editor back, keeping only what differs from the default."""
+        from diagrammer.svglint import profiles as _profiles
+
+        out: dict[str, dict] = {}
+        for name, widgets in getattr(self, "_profile_edits", {}).items():
+            base = _profiles.BUILTIN_PROFILES[name]
+            changed: dict = {}
+            if abs(widgets["grid"].value() - base.grid) > 1e-9:
+                changed["grid"] = widgets["grid"].value()
+            for field in ("lead_width", "corner_radius"):
+                text = widgets[field].text().strip()
+                value = None
+                if text:
+                    try:
+                        value = float(text)
+                    except ValueError:
+                        continue  # keep the default rather than store rubbish
+                if value != getattr(base, field):
+                    changed[field] = value
+            if widgets["linecap"].currentText() != base.linecap:
+                changed["linecap"] = widgets["linecap"].currentText()
+            if changed:
+                out[name] = changed
+        return out
+
     def _add_library_path(self) -> None:
         from PySide6.QtWidgets import QFileDialog, QListWidgetItem
         path = QFileDialog.getExistingDirectory(self, "Select Library Folder")
@@ -1635,6 +1775,7 @@ class SettingsDialog(QDialog):
         self._settings.custom_library_paths = new_paths
         # Auto-add toggle for compounds saved via "Create Component"
         self._settings.auto_add_saved_compounds = self._auto_add_compounds_cb.isChecked()
+        self._settings.library_profiles = self._collect_library_profiles()
         # External "Open With" applications, in menu order
         self._settings.external_editors = [
             self._editors_list.item(i).text()

@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from diagrammer.models.component_def import ComponentDef
+from diagrammer.panels.settings_dialog import app_settings
 from diagrammer.models.overrides import rel_posix
 
 logger = logging.getLogger(__name__)
@@ -194,8 +195,7 @@ class ComponentActions:
             return
         dlg = ValidationReportDialog(
             self._w, roots=roots,
-            profile_overrides=getattr(
-                self._w, "_library_profile_overrides", None),
+            profile_overrides=app_settings.library_profiles,
             on_open=self._w.open_component_inspector)
         from PySide6.QtCore import Qt as _Qt
         dlg.setAttribute(_Qt.WidgetAttribute.WA_DeleteOnClose, True)

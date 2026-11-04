@@ -57,6 +57,84 @@ Table views open in separate tabs. They support zoom (scroll wheel), pan (click-
 
 ---
 
+## Managing Your Components
+
+Everything in the Library panel is one of two things, and the panel says which:
+
+- **Shipped** components come with Diagrammer. They update when the app does.
+- **Your copies**, marked with a small blue dot, live in
+  `~/.diagrammer/components/` and are never touched by an update.
+
+### Editing a shipped component
+
+Just edit it. Diagrammer cannot change a shipped file — it lives inside the
+application — so when you save, it writes **your own copy** instead and uses
+that from then on. The Save button says so before you press it. The shipped
+version is left alone, so you can go back at any time.
+
+Because only the components you actually edit get copied, everything else keeps
+receiving updates. If a future release changes something you have edited,
+Diagrammer tells you in the status bar and **Library ▸ Library Overrides** lets
+you compare the two side by side, keep yours, or revert.
+
+### Right-click a component
+
+- **Inspect & Validate…** (⌘I) — see below
+- **Move to Category…** — for a shipped component this puts *your copy* in the
+  new category and hides the shipped one; both are reversible
+- **Hide from Library…** / **Remove…** — a shipped component can only be
+  hidden, and that can be undone from Library ▸ Library Overrides. One of your
+  own can be hidden *or* moved to the Trash.
+- **Compare with / Revert to Shipped Version…** — on one of your copies
+- **Open With** — hand the file to Illustrator, Inkscape or any editor you
+  choose, then come back and re-check it
+
+---
+
+## Checking a Component
+
+Components are data, and a component can be wrong in ways that look perfectly
+fine as a picture: a port a few points off the frame edge makes wires approach
+from the wrong side, a lead that does not quite touch its port stops being
+shortened, and a lead drawn at the wrong weight makes the attached wire step in
+thickness at the join. Round-tripping a file through a vector editor causes all
+three.
+
+**Library ▸ Inspect & Validate Component** (⌘I) opens the component on a grid,
+with its frame outlined, and marks anything it finds. Hover a mark for an
+explanation of why it matters.
+
+- **Grid** — 5, 10, 20 pt or your own. Components are designed on a 20 pt grid,
+  but plenty of good ones sit off it deliberately, so the grid is shown rather
+  than enforced.
+- **Suggested fixes** — tick any you want. The preview updates as you tick, and
+  the **Changes** box shows exactly what would be written. A fix marked ▲ moves
+  geometry and is never pre-selected.
+- **Fixed / Side by side / Overlay** — Side by side puts the original and the
+  result over one continuous grid; Overlay ghosts the original underneath, which
+  is the only way to see a change smaller than a point.
+- **Save** writes the component (creating your copy if it was a shipped one);
+  **Save as New** keeps both.
+
+**Library ▸ Inspect SVG File…** does the same for any SVG, in a library or not —
+use it after editing a component in an external editor. If the file changes while
+the window is open, a bar offers to reload it.
+
+**Library ▸ Validate Component Libraries…** checks a whole library and groups
+what it finds by issue rather than by file, so a style point affecting seventy
+components is one line with one button rather than seventy lines. Double-click
+any row to open that component.
+
+### Library conventions
+
+Each library has its own house style — lead weight above all, since the wire you
+attach takes its width from the lead. Settings ▸ Libraries lets you adjust what
+each one is checked against, and a blank field means "no convention", which
+switches that check off rather than failing it. A folder can also carry its own
+`library.json`, which travels with the folder and wins over the setting.
+
+---
+
 ## Selecting and Moving
 
 | Action | How |

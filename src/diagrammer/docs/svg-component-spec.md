@@ -501,8 +501,25 @@ export even from a custom library folder. Keep them out of the files anyway:
 
 Everything above is the contract the *application* enforces: get it wrong and
 ports go undetected or leads fail to shorten. This section is different — it is
-what the bundled libraries happen to agree on. Nothing here is checked by code,
-but a part that ignores it looks wrong sitting next to its neighbours.
+what the bundled libraries happen to agree on. A part that ignores it looks
+wrong sitting next to its neighbours.
+
+Some of it is now *checked* rather than merely written down, but only the parts
+with a mechanical consequence, and against the host library's own profile rather
+than a constant — `src/diagrammer/svglint/profiles.py` holds those, measured
+from the shipped artwork. Lead weight is checked because the attached wire takes
+its width from it. Grid conformance and body weight are deliberately **not**:
+97 of 208 shipped files miss the 20 pt grid and most do so by design, and body
+weight is inconsistent per family on purpose (see below), so any threshold
+would be wrong. Run the checks with:
+
+```bash
+python -m diagrammer.svglint src/diagrammer/components
+```
+
+or, in the app, Library ▸ Validate Component Libraries. The Component Inspector
+(⌘I) shows one part on a grid with its findings marked, which is the right tool
+for the positional questions no check can settle.
 
 ### Line weight is a property of the library
 
