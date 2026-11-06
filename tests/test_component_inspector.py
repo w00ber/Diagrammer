@@ -886,3 +886,33 @@ def test_the_delta_ignores_the_port_markers(workspace) -> None:
         assert (cells, px) == ([], 0)
     finally:
         dlg.deleteLater()
+
+
+def test_one_changed_spot_is_reported_as_one_place() -> None:
+    """A single changed spot routinely straddles a cell boundary. Reporting
+    "2 places" for one lead end — with two overlapping rings stacked on each
+    other — overstates what happened."""
+    from diagrammer.panels.component_inspector import DIFF_SCALE, _cluster
+
+    step = 30
+    # five cells in an L, all touching: one place
+    touching = [(4, 4), (5, 4), (4, 5), (5, 5), (6, 5)]
+    assert len(_cluster(touching, step)) == 1
+
+    # two groups far apart: two places
+    apart = [(0, 0), (1, 0), (20, 20), (20, 21)]
+    places = _cluster(apart, step)
+    assert len(places) == 2
+    assert places[0][0] < places[1][0]
+
+    # the marker sits at the group's centroid, in viewBox units
+    (x, y), = _cluster([(2, 2), (3, 2)], step)
+    assert x == (2.5 + 0.5) * step / DIFF_SCALE
+    assert y == (2.0 + 0.5) * step / DIFF_SCALE
+
+
+def test_diagonal_cells_count_as_touching() -> None:
+    from diagrammer.panels.component_inspector import _cluster
+
+    assert len(_cluster([(0, 0), (1, 1)], 30)) == 1
+    assert len(_cluster([(0, 0), (2, 2)], 30)) == 2

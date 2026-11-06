@@ -154,10 +154,39 @@ def visual_delta(before: str, after: str, width: float, height: float):
                 continue
             count += 1
             cells[(x // step, y // step)] = 1
-    centres = [((cx + 0.5) * step / DIFF_SCALE,
-                (cy + 0.5) * step / DIFF_SCALE)
-               for cx, cy in sorted(cells)]
-    return centres, count
+    return _cluster(sorted(cells), step), count
+
+
+def _cluster(cells, step: int):
+    """Merge touching cells into one marker each.
+
+    A single changed spot routinely straddles a cell boundary, and reporting
+    "2 places" for one lead end — with two overlapping rings on top of each
+    other — overstates what happened. Cells that touch, diagonally included,
+    describe the same place.
+    """
+    remaining = set(cells)
+    out: list[tuple[float, float]] = []
+    while remaining:
+        seed = remaining.pop()
+        group = [seed]
+        queue = [seed]
+        while queue:
+            cx, cy = queue.pop()
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    n = (cx + dx, cy + dy)
+                    if n in remaining:
+                        remaining.discard(n)
+                        group.append(n)
+                        queue.append(n)
+        xs = [c[0] for c in group]
+        ys = [c[1] for c in group]
+        out.append((
+            (sum(xs) / len(xs) + 0.5) * step / DIFF_SCALE,
+            (sum(ys) / len(ys) + 0.5) * step / DIFF_SCALE,
+        ))
+    return sorted(out)
 
 
 class DiffHighlightItem(QGraphicsItem):
