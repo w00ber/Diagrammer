@@ -776,3 +776,113 @@ def test_no_fixes_selected_still_reads_as_nothing_to_do(workspace) -> None:
         assert "saved exactly as it is" in dlg._notes_label.text()
     finally:
         dlg.deleteLater()
+
+
+# ==========================================================================
+# showing the user what actually changed
+# ==========================================================================
+
+def test_a_structural_fix_reports_that_nothing_visible_changed(
+        workspace) -> None:
+    """The confusion this answers: most fixes here edit the file without
+    touching the drawing, so "the preview looks the same" reads as the fix
+    having silently failed."""
+    from diagrammer.panels.component_inspector import DiffHighlightItem
+
+    dlg, _ = open_inspector(*workspace, MANGLED)
+    try:
+        dlg._selected_fix_ids = {"restore-named-ids"}
+        dlg._recompute()
+        assert dlg._candidate != dlg._original_text, "the file did change"
+        assert dlg._diff_pixels == 0, "but the rendering did not"
+        assert "drawing does not" in dlg._notes_label.text()
+        assert not [i for i in dlg._scene.items()
+                    if isinstance(i, DiffHighlightItem)]
+    finally:
+        dlg.deleteLater()
+
+
+def test_a_visible_fix_is_ringed_and_announced(workspace) -> None:
+    from diagrammer.panels.component_inspector import DiffHighlightItem
+
+    builtin, overlay = workspace
+    round_caps = SOUND.replace(
+        "stroke-width: 2px;",
+        "stroke-width: 2px; stroke-linecap: round;")
+    dlg, _ = open_inspector(builtin, overlay, round_caps)
+    try:
+        dlg._selected_fix_ids = {"set-lead-linecap-butt"}
+        dlg._recompute()
+        assert dlg._diff_pixels > 0
+        assert dlg._diff_cells
+        assert "drawing changes" in dlg._notes_label.text()
+        rings = [i for i in dlg._scene.items()
+                 if isinstance(i, DiffHighlightItem)]
+        assert len(rings) == 1
+        assert rings[0]._centres == dlg._diff_cells
+    finally:
+        dlg.deleteLater()
+
+
+def test_the_highlight_can_be_switched_off(workspace) -> None:
+    from diagrammer.panels.component_inspector import DiffHighlightItem
+
+    builtin, overlay = workspace
+    round_caps = SOUND.replace("stroke-width: 2px;",
+                               "stroke-width: 2px; stroke-linecap: round;")
+    dlg, _ = open_inspector(builtin, overlay, round_caps)
+    try:
+        dlg._selected_fix_ids = {"set-lead-linecap-butt"}
+        dlg._recompute()
+        assert [i for i in dlg._scene.items()
+                if isinstance(i, DiffHighlightItem)]
+        dlg._diff_cb.setChecked(False)
+        assert not [i for i in dlg._scene.items()
+                    if isinstance(i, DiffHighlightItem)]
+    finally:
+        dlg.deleteLater()
+
+
+def test_antialiasing_alone_is_not_reported_as_a_change() -> None:
+    """Re-rasterising a shape after a style change shifts antialiasing all
+    along its edges. Byte-exact comparison called the whole length of a line
+    changed when only its end caps moved — the highlighter crying wolf in
+    exactly the way a bad check does."""
+    from diagrammer.panels.component_inspector import DIFF_TOLERANCE
+
+    assert DIFF_TOLERANCE > 0, "a byte-exact comparison is too strict here"
+
+
+def test_a_change_everywhere_degrades_to_one_outline(workspace) -> None:
+    """Ringing eighty places marks the whole symbol and tells the reader
+    nothing they could not already see."""
+    from diagrammer.panels.component_inspector import (
+        DIFF_MAX_RINGS,
+        DiffHighlightItem,
+    )
+
+    dlg, _ = open_inspector(*workspace, SOUND)
+    try:
+        many = [(float(i), float(i)) for i in range(DIFF_MAX_RINGS + 5)]
+        dlg._diff_cells = many
+        dlg._diff_pixels = 999
+        assert "throughout" in dlg._visual_verdict()
+        item = DiffHighlightItem(many, (60, 100))
+        item.paint  # the degraded branch is exercised by the grab below
+        dlg._rebuild_scene()
+        dlg._view.grab()
+    finally:
+        dlg.deleteLater()
+
+
+def test_the_delta_ignores_the_port_markers(workspace) -> None:
+    """Both sides are rendered without markers, so demoting a port disc behind
+    the artwork cannot register as a change to the symbol."""
+    dlg, _ = open_inspector(*workspace, SOUND)
+    try:
+        from diagrammer.panels.component_inspector import visual_delta
+
+        cells, px = visual_delta(SOUND, SOUND, 60, 100)
+        assert (cells, px) == ([], 0)
+    finally:
+        dlg.deleteLater()

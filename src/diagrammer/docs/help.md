@@ -110,6 +110,13 @@ explanation of why it matters.
 - **Show ports** — ports, labels and stretch axes are drawn behind the symbol
   and faded, so a lead end stays visible under its port marker. Switch it off
   to see the drawing on its own.
+- **Highlight changes** — rings the places where the fixed version actually
+  draws differently. Worth reading the line above the diff: **many fixes change
+  the file without changing the drawing at all**, and it says so when that is
+  the case. Restoring a mangled port id or wrapping the artwork in a layer
+  render identically by design — the preview looking unchanged is the fix
+  working, not failing. When something *does* change it is often a single point
+  at the end of a lead, which is what the rings are for.
 - **Suggested fixes** — tick any you want. The preview updates as you tick, and
   the **Changes** box shows exactly what would be written. A fix marked ▲ moves
   geometry and is never pre-selected.

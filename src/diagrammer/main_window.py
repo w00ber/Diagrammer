@@ -628,7 +628,10 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         comps = [it for it in self._scene.selectedItems()
                  if isinstance(it, ComponentItem)]
         if len(comps) == 1:
-            return comps[0].comp_def
+            # ``component_def``, not ``comp_def``: the latter is what the
+            # library panel's table item carries, and reaching for it here
+            # raised every time a single component was selected.
+            return comps[0].component_def
         panel = getattr(self, "_library_panel", None)
         if panel is not None:
             key = panel.selected_key()

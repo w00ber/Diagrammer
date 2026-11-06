@@ -82,6 +82,129 @@ HIT_RADIUS_PX = 7
 
 GHOST_OPACITY = 0.4
 
+#: Supersampling used when comparing the two renders. A butt-vs-round cap on a
+#: 2 pt lead is a single device pixel at 1:1, which is exactly the change the
+#: eye misses, so the comparison is done well above display resolution.
+DIFF_SCALE = 6
+#: Size, in viewBox units, of the cells differing pixels are bucketed into to
+#: place the "look here" rings.
+DIFF_CELL = 5.0
+#: Per-channel difference, 0-255, below which two pixels count as the same.
+#: Re-rasterising a shape after a style change shifts antialiasing all along
+#: its edges by a few levels, so a byte-exact comparison reports the whole
+#: length of a line as changed when only its end caps moved — the highlighter
+#: would then cry wolf in exactly the way a bad check does.
+DIFF_TOLERANCE = 24
+DIFF_COLOR = QColor("#C026D3")
+#: Above this many changed areas, ring each one and the rings *are* the noise.
+#: Past it the highlight switches to outlining the region instead, which is
+#: the honest summary of "this changed all over".
+DIFF_MAX_RINGS = 18
+
+
+def render_to_image(text: str, width: float, height: float, *,
+                    scale: int = DIFF_SCALE):
+    """Rasterise a component for comparison, or None if it will not render."""
+    from PySide6.QtGui import QImage
+
+    w = max(1, int(round(width * scale)))
+    h = max(1, int(round(height * scale)))
+    renderer = QSvgRenderer(QByteArray(render_component_bytes(
+        text, show_markers=False)))
+    if not renderer.isValid():
+        return None
+    img = QImage(w, h, QImage.Format.Format_ARGB32)
+    img.fill(0xFFFFFFFF)
+    painter = QPainter(img)
+    renderer.render(painter, QRectF(0, 0, w, h))
+    painter.end()
+    return img
+
+
+def visual_delta(before: str, after: str, width: float, height: float):
+    """Where the two documents actually *draw* differently.
+
+    Returns ``(cells, pixel_count)`` — the viewBox-space centres of the areas
+    that differ, and how many device pixels changed. ``cells`` is empty when
+    the rendering is identical, which is the common and easily-misread case:
+    most fixes here are structural and change the file without changing the
+    drawing at all, and the ones that do change it often move a single pixel
+    at a lead end.
+
+    Markers are excluded from both renders, so moving a port disc behind the
+    artwork cannot register as a change to the symbol.
+    """
+    a = render_to_image(before, width, height)
+    b = render_to_image(after, width, height)
+    if a is None or b is None or a.size() != b.size():
+        return [], 0
+
+    cells: dict[tuple[int, int], int] = {}
+    count = 0
+    step = max(1, int(DIFF_CELL * DIFF_SCALE))
+    tol = DIFF_TOLERANCE
+    for y in range(a.height()):
+        row_a = bytes(a.constScanLine(y))
+        row_b = bytes(b.constScanLine(y))
+        if row_a == row_b:
+            continue
+        for x in range(a.width()):
+            i = x * 4
+            if max(abs(row_a[i + k] - row_b[i + k]) for k in range(4)) <= tol:
+                continue
+            count += 1
+            cells[(x // step, y // step)] = 1
+    centres = [((cx + 0.5) * step / DIFF_SCALE,
+                (cy + 0.5) * step / DIFF_SCALE)
+               for cx, cy in sorted(cells)]
+    return centres, count
+
+
+class DiffHighlightItem(QGraphicsItem):
+    """Rings over the places where the candidate draws differently.
+
+    Rings rather than a tinted mask: the differences are routinely one pixel
+    at the end of a lead, and a one-pixel tint is no more findable than the
+    change it marks. A cosmetic ring is the same size at any zoom, so it says
+    "look here" from the fitted view and still lines up when you zoom in.
+    """
+
+    def __init__(self, centres, frame: tuple[float, float],
+                 parent: QGraphicsItem | None = None):
+        super().__init__(parent)
+        self._centres = list(centres)
+        self._fw, self._fh = frame
+        self.setZValue(30)
+
+    def boundingRect(self) -> QRectF:
+        return QRectF(-DIFF_CELL, -DIFF_CELL,
+                      self._fw + DIFF_CELL * 2, self._fh + DIFF_CELL * 2)
+
+    def paint(self, painter: QPainter, option, widget=None) -> None:
+        if not self._centres:
+            return
+        pen = QPen(DIFF_COLOR, 0)
+        pen.setCosmetic(True)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        if len(self._centres) > DIFF_MAX_RINGS:
+            # Ringing eighty places marks the whole symbol, which tells the
+            # reader nothing they could not already see. Outline the region.
+            xs = [x for x, _ in self._centres]
+            ys = [y for _, y in self._centres]
+            pad = DIFF_CELL * 0.8
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.drawRect(QRectF(min(xs) - pad, min(ys) - pad,
+                                    max(xs) - min(xs) + pad * 2,
+                                    max(ys) - min(ys) + pad * 2))
+            return
+
+        painter.setPen(pen)
+        r = DIFF_CELL * 0.8
+        for x, y in self._centres:
+            painter.drawEllipse(QRectF(x - r, y - r, r * 2, r * 2))
+
 
 #: Layers that carry positions rather than artwork. The canvas hides them; the
 #: inspector shows them, but behind the drawing — see ``_demote_marker_layers``.
@@ -454,6 +577,10 @@ class ComponentInspectorDialog(QDialog):
         self._notes: list[str] = []
         self._mode = MODE_FIXED
         self._markers: list[FindingMarkerItem] = []
+        #: Where the candidate draws differently, and how much. Empty
+        #: is a real and common answer: most fixes here are structural.
+        self._diff_cells: list[tuple[float, float]] = []
+        self._diff_pixels = 0
         self._recompute_pending = False
         # Set while a list or tree is being rebuilt, so a widget's
         # own change signal cannot re-enter the recompute that is
@@ -528,6 +655,15 @@ class ComponentInspectorDialog(QDialog):
         self._grid_spin.setVisible(self._grid_combo.currentData() is None)
         self._grid_spin.valueChanged.connect(self._view_grid_from_spin)
         row.addWidget(self._grid_spin)
+
+        self._diff_cb = QCheckBox("Highlight changes")
+        self._diff_cb.setChecked(True)
+        self._diff_cb.setToolTip(
+            "Ring the places where the fixed version actually draws "
+            "differently. Many fixes are structural and change nothing "
+            "visible at all; this says which.")
+        self._diff_cb.toggled.connect(lambda _on: self._rebuild_scene())
+        row.addWidget(self._diff_cb)
 
         self._markers_cb = QCheckBox("Show ports")
         self._markers_cb.setChecked(True)
@@ -699,6 +835,7 @@ class ComponentInspectorDialog(QDialog):
             profile=self._profile, path=self._path)
         self._candidate_findings = svglint.check_text(
             self._candidate, path=self._path, profile=self._profile)
+        self._recompute_visual_delta()
         self._refresh_fixes_list()
         self._refresh_findings_tree()
         self._refresh_changes()
@@ -804,7 +941,8 @@ class ComponentInspectorDialog(QDialog):
                                           "saved exactly as it is.")
             self._diff.setPlainText("")
             return
-        self._notes_label.setText(notes or "(no notes)")
+        self._notes_label.setText(
+            self._visual_verdict() + ("\n" + notes if notes else ""))
         diff = difflib.unified_diff(
             self._original_text.splitlines(keepends=True),
             self._candidate.splitlines(keepends=True),
@@ -813,6 +951,26 @@ class ComponentInspectorDialog(QDialog):
             n=2,
         )
         self._diff.setPlainText("".join(diff))
+
+    def _visual_verdict(self) -> str:
+        """One line saying whether any of this is actually visible.
+
+        Worth stating outright: most of these fixes are structural and change
+        the file without changing the drawing — restoring a sanitized port id
+        or wrapping the artwork in a layer render identically by construction.
+        Without being told, "the preview looks the same" reads as the fix
+        having silently failed.
+        """
+        if self._diff_pixels:
+            n = len(self._diff_cells)
+            if n > DIFF_MAX_RINGS:
+                return ("▲ The drawing changes throughout — the altered "
+                        "region is outlined in the preview.")
+            where = "1 place" if n == 1 else f"{n} places"
+            return (f"▲ The drawing changes in {where} — ringed in the "
+                    "preview. Zoom in, or use Overlay, to see it.")
+        return ("▲ The file changes but the drawing does not — this fix is "
+                "structural, so the preview is identical on purpose.")
 
     def _on_finding_selected(self, current, _previous) -> None:
         if self._populating:
@@ -846,7 +1004,8 @@ class ComponentInspectorDialog(QDialog):
             self._rebuild_scene()
 
     def _add_component(self, text: str, findings, *, x: float,
-                       caption: str, ghost: bool = False) -> None:
+                       caption: str, ghost: bool = False,
+                       diff: bool = False) -> None:
         from diagrammer.models.component_def import ComponentDef
 
         try:
@@ -885,6 +1044,27 @@ class ComponentInspectorDialog(QDialog):
                 self._scene.addItem(m)
                 self._markers.append(m)
 
+        if diff and self._diff_cells and self._diff_cb.isChecked():
+            ring = DiffHighlightItem(self._diff_cells, (w, h))
+            ring.setPos(x, 0)
+            self._scene.addItem(ring)
+
+    def _recompute_visual_delta(self) -> None:
+        from diagrammer.models.component_def import ComponentDef
+
+        if self._candidate == self._original_text:
+            self._diff_cells, self._diff_pixels = [], 0
+            return
+        try:
+            cdef = ComponentDef.from_svg_text(self._original_text,
+                                              path=self._path,
+                                              infer_stretch=False)
+            self._diff_cells, self._diff_pixels = visual_delta(
+                self._original_text, self._candidate, cdef.width, cdef.height)
+        except Exception:
+            logger.debug("could not compare renders", exc_info=True)
+            self._diff_cells, self._diff_pixels = [], 0
+
     def _rebuild_scene(self) -> None:
         self._scene.clear()
         self._markers = []
@@ -900,15 +1080,15 @@ class ComponentInspectorDialog(QDialog):
             self._add_component(self._original_text, self._findings,
                                 x=0.0, caption="Original")
             self._add_component(self._candidate, self._candidate_findings,
-                                x=width + spacing, caption="Fixed")
+                                x=width + spacing, caption="Fixed", diff=True)
         elif self._mode == MODE_OVERLAY:
             self._add_component(self._original_text, [], x=0.0,
                                 caption="", ghost=True)
             self._add_component(self._candidate, self._candidate_findings,
-                                x=0.0, caption="Fixed over original")
+                                x=0.0, caption="Fixed over original", diff=True)
         else:
             self._add_component(self._candidate, self._candidate_findings,
-                                x=0.0, caption=self._path.name)
+                                x=0.0, caption=self._path.name, diff=True)
 
         self._scene.setSceneRect(
             self._scene.itemsBoundingRect().adjusted(-40, -40, 40, 40))

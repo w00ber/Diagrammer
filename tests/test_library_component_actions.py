@@ -304,3 +304,62 @@ def test_can_revert_only_for_a_fork(win, monkeypatch) -> None:
     win._component_actions.move_to_category(win._library.get(KEY))
     assert win._component_actions.can_revert(
         win._library.get("flowchart/mine/decision"))
+
+
+# ==========================================================================
+# the canvas route into the inspector
+# ==========================================================================
+
+def _place(win, key: str = KEY):
+    """Put one component on the canvas and select it."""
+    from diagrammer.items.component_item import ComponentItem
+
+    item = ComponentItem(win._library.get(key))
+    win._scene.addItem(item)
+    item.setSelected(True)
+    return item
+
+
+def test_a_selected_canvas_component_is_what_inspect_acts_on(win) -> None:
+    """Regression: this read ``comp_def``, which is the *library table* item's
+    attribute — the canvas item exposes ``component_def``. Opening the Library
+    menu with exactly one component selected raised every time."""
+    item = _place(win)
+    comp = win._selected_component_def()
+    assert comp is not None
+    assert comp is item.component_def
+    assert comp.name == "decision"
+
+
+def test_opening_the_library_menu_with_a_selection_does_not_raise(win) -> None:
+    """``aboutToShow`` is the path the user actually hit."""
+    _place(win)
+    win._sync_library_menu()
+    assert win._inspect_component_act.isEnabled()
+    assert "decision" in win._inspect_component_act.text()
+
+
+def test_the_menu_falls_back_to_the_panel_and_then_to_nothing(win) -> None:
+    assert win._selected_component_def() is None
+    win._sync_library_menu()
+    assert not win._inspect_component_act.isEnabled()
+    assert win._inspect_component_act.text().endswith("Component…")
+
+
+def test_two_selected_components_are_ambiguous(win) -> None:
+    """Inspect acts on one file, so a multi-selection is not a target."""
+    _place(win)
+    _place(win)
+    assert win._selected_component_def() is None
+    win._sync_library_menu()
+    assert not win._inspect_component_act.isEnabled()
+
+
+def test_inspect_from_the_canvas_opens_the_library_file(win) -> None:
+    item = _place(win)
+    dlg = win.open_component_inspector(item.component_def.svg_path)
+    try:
+        assert dlg is not None
+        assert dlg._path == item.component_def.svg_path
+    finally:
+        dlg.close()
