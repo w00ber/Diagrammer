@@ -787,15 +787,25 @@ class ComponentItem(QGraphicsItem):
         layer and direction-tagged ``leads-left``/``leads-right``/
         ``leads-top``/``leads-bottom`` layers receive shortening.
         """
+        seen: set[int] = set()
         for elem in root.iter():
             tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
             if tag != "g" or elem.get("id") not in LEAD_LAYER_IDS:
                 continue
-            for child in elem:
+            # Descendants, not just direct children. Illustrator nests its own
+            # sub-groups inside a layer, and 14 shipped components keep their
+            # leads two groups deep — ``<g id="leads"><g id="leads1"><g
+            # id="leads2"><path/>``. Looking only one level down found a <g>,
+            # skipped it, and silently shortened nothing on those parts.
+            for child in elem.iter():
+                if id(child) in seen:
+                    continue  # a tagged lead layer nested inside another
                 ctag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
                 if ctag == "line":
+                    seen.add(id(child))
                     ComponentItem._shorten_line_elem(child, lead_shortening, port_positions, name_map)
                 elif ctag == "path":
+                    seen.add(id(child))
                     ComponentItem._shorten_path_elem(child, lead_shortening, port_positions, name_map)
 
     @staticmethod

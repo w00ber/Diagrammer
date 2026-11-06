@@ -47,6 +47,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QRadioButton,
+    QSizePolicy,
     QSplitter,
     QToolTip,
     QTreeWidget,
@@ -568,6 +569,56 @@ class ComponentInspectorView(LibraryTableView):
 # dialog
 # ---------------------------------------------------------------------------
 
+class _ElidedLabel(QLabel):
+    """A label that shrinks instead of forcing the window wider than a screen.
+
+    The header carries a component's full path, which for a nested library
+    runs past 130 characters. A plain QLabel reports that as its minimum
+    width, a QDialog cannot be sized below its layout's minimum, and the
+    window opened 1451 px wide — off the side of the display — with no way to
+    pull it back.
+    """
+
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(text, parent)
+        self._full = text
+        self.setSizePolicy(QSizePolicy.Policy.Ignored,
+                           QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(80)
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        self._full = text
+        self.setToolTip(_strip_markup(text))
+        self._relayout()
+
+    def text(self) -> str:
+        return self._full
+
+    def resizeEvent(self, event) -> None:  # noqa: ANN001, N802
+        super().resizeEvent(event)
+        self._relayout()
+
+    def _relayout(self) -> None:
+        from PySide6.QtGui import QFontMetrics
+
+        width = max(40, self.width() - 4)
+        metrics = QFontMetrics(self.font())
+        if metrics.horizontalAdvance(_strip_markup(self._full)) <= width:
+            super().setText(self._full)
+            return
+        # Elide the *middle*, so the library name at the front and the file
+        # name at the end — the two parts that identify the component — both
+        # survive. Rich text cannot be elided, so the shortened form is plain.
+        super().setText(metrics.elidedText(
+            _strip_markup(self._full), Qt.TextElideMode.ElideMiddle, width))
+
+
+def _strip_markup(text: str) -> str:
+    import re
+
+    return re.sub(r"<[^>]+>", "", text)
+
+
 MODE_FIXED = "fixed"
 MODE_SIDE = "side"
 MODE_OVERLAY = "overlay"
@@ -593,8 +644,8 @@ class ComponentInspectorDialog(QDialog):
         self._profile_overrides = profile_overrides
 
         self.setWindowTitle(f"Inspect — {self._path.name}")
-        self.resize(1040, 720)
         self.setSizeGripEnabled(True)
+        self._resize_within_screen(1040, 720)
 
         self._original_text = self._read()
         self._profile = svglint.profile_for(self._path,
@@ -621,6 +672,22 @@ class ComponentInspectorDialog(QDialog):
         self._select_default_fixes()
         self._schedule_recompute()
         self._fit_soon()
+
+    def _resize_within_screen(self, width: int, height: int) -> None:
+        """Open at the requested size, or the screen's, whichever is smaller.
+
+        A window wider than the display cannot be dragged back into view on
+        macOS, so clamping is the difference between a cramped dialog and an
+        unusable one.
+        """
+        from PySide6.QtGui import QGuiApplication
+
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            width = min(width, int(available.width() * 0.95))
+            height = min(height, int(available.height() * 0.95))
+        self.resize(width, height)
 
     # -- io ---------------------------------------------------------------
 
@@ -659,7 +726,7 @@ class ComponentInspectorDialog(QDialog):
 
     def _build_header(self) -> QHBoxLayout:
         row = QHBoxLayout()
-        self._where = QLabel()
+        self._where = _ElidedLabel()
         self._where.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         row.addWidget(self._where, 1)

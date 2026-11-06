@@ -264,6 +264,52 @@ def _fix_wrap_artwork_layer(text: str, ctx: FixContext) -> FixResult:
                             f'<g id="artwork">',))
 
 
+def _fix_merge_lead_layer(text: str, ctx: FixContext) -> FixResult:
+    """Fold a ``leads1``-style layer into the real one, or rename it.
+
+    Moving the children into the existing ``leads`` group rather than renaming
+    both, because two groups with the same id is not valid and the parser
+    would read only the first. Where there is no real lead layer, renaming is
+    enough.
+    """
+    known = set(T.KNOWN_LAYER_IDS)
+    strays = [g for g in T.top_level_layer_ids(text)
+              if g not in known and g.startswith("leads")]
+    if not strays:
+        return _nop(text)
+
+    notes: list[str] = []
+    for gid in strays:
+        span = T.group_body(text, gid)
+        if span is None:
+            continue
+        open_tag = re.search(rf'[ \t]*<g\s+id="{re.escape(gid)}"[^>]*>\n?', text)
+        if open_tag is None:
+            continue
+        close = text.find("</g>", span[1])
+        if close == -1:
+            continue
+        body = text[span[0]:span[1]].strip("\n")
+        # cut the stray group out, including the line it sat on
+        end = close + len("</g>")
+        while end < len(text) and text[end] in "\n":
+            end += 1
+        text = text[:open_tag.start()] + text[end:]
+
+        target = T.group_body(text, "leads")
+        if target is not None:
+            head = text[:target[1]].rstrip("\n ")
+            tail = text[target[1]:].lstrip("\n ")
+            text = f"{head}\n{body}\n  {tail}"
+            notes.append(f'moved the contents of <g id="{gid}"> into '
+                         '<g id="leads">')
+        else:
+            text = (text[:open_tag.start()] + '  <g id="leads">\n' + body
+                    + "\n  </g>\n" + text[open_tag.start():])
+            notes.append(f'renamed <g id="{gid}"> to <g id="leads">')
+    return FixResult(text=text, changed=bool(notes), notes=tuple(notes))
+
+
 def _fix_strip_editor_metadata(text: str, ctx: FixContext) -> FixResult:
     """Drop the Adobe PGF blob that "Preserve Illustrator Editing
     Capabilities" bakes into an export.
@@ -719,6 +765,14 @@ ALL_FIXES: tuple[Fix, ...] = (
                      "so nothing moves."),
         order=ORDER_STRUCTURAL, scope="file",
         apply=_fix_wrap_artwork_layer, default_on=False, bulk_safe=True),
+    Fix(fix_id="merge-lead-layer",
+        title='Fold the stray lead layer into <g id="leads">',
+        description=("A layer named like leads but spelled otherwise renders "
+                     "as artwork, so its lead is never shortened and never "
+                     "sets the wire's width. Its contents move into the real "
+                     "lead layer; nothing is repositioned."),
+        order=ORDER_STRUCTURAL, scope="file",
+        apply=_fix_merge_lead_layer, default_on=True, bulk_safe=True),
     Fix(fix_id="strip-editor-metadata",
         title="Strip the Illustrator PGF metadata block",
         description=("Removes <i:aipgf>, typically 45-90 KB of private data "

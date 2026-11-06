@@ -477,3 +477,90 @@ def test_the_split_resolves_the_finding(tmp_path: Path) -> None:
     assert "lead-linecap-not-butt" not in remaining
     # the artwork's own caps are still reported, as the separate info finding
     assert "artwork-linecap-not-house-style" in remaining
+
+
+# ==========================================================================
+# a layer named like leads but spelled otherwise
+# ==========================================================================
+
+STRAY_LEAD_LAYER = svg(
+    '  <g id="artwork"><path class="st1" d="M10,40H50"/></g>\n'
+    '  <g id="leads"><path class="st1" d="M30,0v20"/></g>\n'
+    '  <g id="leads1"><path class="st1" d="M30,100v-20"/></g>\n'
+    '  <g id="ports">\n'
+    '    <circle id="port:top" cx="30" cy="0" r="3"/>\n'
+    '    <circle id="port:bottom" cx="30" cy="100" r="3"/>\n'
+    "  </g>\n")
+
+
+def test_a_misnamed_lead_layer_is_an_error(tmp_path: Path) -> None:
+    """It renders, so the part looks right — and the lead inside it is never
+    shortened and never sets the wire's width, while the one next to it is."""
+    from diagrammer import svglint
+
+    path = tmp_path / "f.svg"
+    f = next(x for x in svglint.check_text(STRAY_LEAD_LAYER, path=path,
+                                           profile=PAPER)
+             if x.check_id == "lead-layer-misnamed")
+    assert f.severity == "error"
+    assert f.element_id == "leads1"
+    assert f.fix_ids == ("merge-lead-layer",)
+
+
+def test_the_stray_layer_is_folded_into_the_real_one(tmp_path: Path) -> None:
+    from diagrammer import svglint
+    from diagrammer.svglint import text_svg as T
+
+    path = tmp_path / "f.svg"
+    out, notes = run(STRAY_LEAD_LAYER, ["merge-lead-layer"], path)
+    assert "leads1" not in T.top_level_layer_ids(out)
+    assert T.top_level_layer_ids(out).count("leads") == 1, (
+        "two groups with the same id would leave the parser reading only one")
+    # both leads now live where the lead reader looks. Counted as elements
+    # rather than via lead_endpoints, which deliberately declines relative
+    # path commands like the "v20" these use.
+    import re
+
+    body = re.search(r'<g id="leads">.*?</g>', out, re.S).group(0)
+    assert body.count("<path") == 2
+    assert any("moved the contents" in n for n in notes)
+    assert not [x for x in svglint.check_text(out, path=path, profile=PAPER)
+                if x.check_id == "lead-layer-misnamed"]
+
+
+def test_a_stray_layer_with_no_real_leads_is_renamed(tmp_path: Path) -> None:
+    from diagrammer.svglint import text_svg as T
+
+    only_stray = STRAY_LEAD_LAYER.replace(
+        '  <g id="leads"><path class="st1" d="M30,0v20"/></g>\n', "")
+    out, notes = run(only_stray, ["merge-lead-layer"], tmp_path / "f.svg")
+    ids = T.top_level_layer_ids(out)
+    assert "leads" in ids and "leads1" not in ids
+    assert any("renamed" in n for n in notes)
+
+
+def test_folding_does_not_move_the_geometry(tmp_path: Path) -> None:
+    import re
+
+    out, _ = run(STRAY_LEAD_LAYER, ["merge-lead-layer"], tmp_path / "f.svg")
+    # \sd=" not d=", or the "d" at the end of every id="..." matches too
+    coords = lambda t: sorted(re.findall(r'\sd="([^"]+)"', t))  # noqa: E731
+    assert coords(out) == coords(STRAY_LEAD_LAYER), (
+        "the fix moves elements between groups, never their coordinates")
+
+
+def test_direction_tagged_layers_are_not_mistaken_for_strays(
+        tmp_path: Path) -> None:
+    """``leads-left`` starts with "leads" and is entirely legitimate."""
+    from diagrammer import svglint
+
+    tagged = STRAY_LEAD_LAYER.replace('id="leads1"', 'id="leads-bottom"')
+    path = tmp_path / "f.svg"
+    assert not [x for x in svglint.check_text(tagged, path=path, profile=PAPER)
+                if x.check_id == "lead-layer-misnamed"]
+
+
+def test_folding_is_idempotent(tmp_path: Path) -> None:
+    once, _ = run(STRAY_LEAD_LAYER, ["merge-lead-layer"], tmp_path / "f.svg")
+    twice, _ = run(once, ["merge-lead-layer"], tmp_path / "f.svg")
+    assert twice == once

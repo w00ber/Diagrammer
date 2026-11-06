@@ -447,6 +447,39 @@ def check_degraded_primitives(text: str, path: Path,
     return out
 
 
+def check_lead_like_layer(text: str, path: Path,
+                          profile: LibraryProfile) -> list[Finding]:
+    """A layer named like leads but spelled in a way nothing reads.
+
+    ``<g id="leads1">`` renders — everything outside the hidden set does — so
+    the component looks right, and the lead inside it is never shortened,
+    because ``_shorten_leads_in_svg`` and ``_get_lead_stroke_width`` match
+    ``leads`` and ``leads-left/right/top/bottom`` and nothing else. On a part
+    that also has a real ``leads`` layer the result is two leads that behave
+    differently from each other, which is invisible until a wire is attached
+    to the wrong one.
+    """
+    out: list[Finding] = []
+    known = set(T.KNOWN_LAYER_IDS)
+    for gid in T.top_level_layer_ids(text):
+        if gid in known or not gid.startswith("leads"):
+            continue
+        out.append(Finding(
+            check_id="lead-layer-misnamed",
+            severity="error",
+            message=f'<g id="{gid}"> is named like a lead layer but is not one',
+            detail=("Only \"leads\" and \"leads-left/right/top/bottom\" are "
+                    "read as leads. This one renders as plain artwork, so the "
+                    "lead inside it is never shortened for a wire's corner "
+                    "rounding and never supplies the wire's stroke width — "
+                    "while any lead in the real layer is."),
+            element_id=gid,
+            fix_ids=("merge-lead-layer",),
+            data={"group": gid},
+        ))
+    return out
+
+
 def check_duplicate_upright(text: str, path: Path,
                             profile: LibraryProfile) -> list[Finding]:
     """``_apply_upright`` compensates only the *first* ``<g id="upright">``."""
@@ -474,6 +507,7 @@ ALL_CHECKS = (
     check_mangled_ids,
     check_degraded_primitives,
     check_duplicate_upright,
+    check_lead_like_layer,
     check_viewbox,
     check_artwork_layer,
     check_ports_exist,

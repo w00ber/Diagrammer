@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLabel
 
 from diagrammer import svglint
 from diagrammer.models.overrides import OverrideIndex
@@ -916,3 +917,70 @@ def test_diagonal_cells_count_as_touching() -> None:
 
     assert len(_cluster([(0, 0), (1, 1)], 30)) == 1
     assert len(_cluster([(0, 0), (2, 2)], 30)) == 2
+
+
+# ==========================================================================
+# the window must fit on a screen
+# ==========================================================================
+
+def test_the_long_path_in_the_header_cannot_widen_the_window(
+        workspace) -> None:
+    """Regression: the header carries the component's full path, which for a
+    nested library runs past 130 characters. A plain QLabel reports that as
+    its minimum width, a QDialog cannot size below its layout's minimum, and
+    the window opened wider than the display — where macOS will not let you
+    drag it back."""
+    builtin, overlay = workspace
+    deep = builtin / "PAPER_2pt" / "circuits" / "quantum" / "SQUIDs" / "sub"
+    deep.mkdir(parents=True)
+    path = deep / "a_component_with_a_rather_long_name.svg"
+    path.write_text(SOUND, encoding="utf-8")
+
+    dlg = ComponentInspectorDialog(
+        path, index=OverrideIndex.load(overlay, builtin),
+        builtin_root=builtin, overlay_root=overlay)
+    try:
+        dlg.show()
+        assert dlg.minimumSizeHint().width() < 900, (
+            "the header must not pin the dialog open")
+        dlg.resize(640, 560)
+        assert dlg.width() <= 800
+    finally:
+        dlg.deleteLater()
+
+
+def test_the_header_keeps_the_full_path_in_its_tooltip(workspace) -> None:
+    """Eliding is only acceptable because nothing is lost."""
+    dlg, path = open_inspector(*workspace, SOUND)
+    try:
+        assert str(path.parent) in dlg._where.toolTip()
+        assert dlg._where.text(), "the full text is still retrievable"
+    finally:
+        dlg.deleteLater()
+
+
+def test_the_label_elides_when_it_cannot_fit(_ensure_qapp) -> None:
+    from diagrammer.panels.component_inspector import _ElidedLabel
+
+    label = _ElidedLabel()
+    label.setText("PAPER_2pt/" + "x" * 400 + "/widget.svg")
+    label.resize(200, 20)
+    shown = QLabel.text(label)
+    assert len(shown) < 200, "the displayed text should have been shortened"
+    assert "…" in shown
+    assert label.text().endswith("widget.svg"), "the full text is preserved"
+
+
+def test_the_dialog_never_opens_larger_than_the_screen(workspace) -> None:
+    from PySide6.QtGui import QGuiApplication
+
+    dlg, _ = open_inspector(*workspace, SOUND)
+    try:
+        screen = dlg.screen() or QGuiApplication.primaryScreen()
+        if screen is None:
+            pytest.skip("no screen")
+        avail = screen.availableGeometry()
+        assert dlg.width() <= avail.width()
+        assert dlg.height() <= avail.height()
+    finally:
+        dlg.deleteLater()

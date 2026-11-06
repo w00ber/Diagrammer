@@ -30,6 +30,20 @@ Diagrammer renders SVG components at **1:1 with the viewBox dimensions**. One vi
 >
 > **How to catch it:** after export, confirm the `viewBox` numbers equal your artboard size. If the width/height are larger (often by the port radius, ~3 pt per edge, or by a whole guide grid), re-export with **Use Artboards** on. The generator comment near the top of the SVG records the Illustrator version, which helps when a tool upgrade silently changes the default.
 
+**Anything outside the `viewBox` is clipped.** Every render path — the canvas,
+the library thumbnails, every export — goes through
+`QSvgRenderer.render(painter, rect)`, which clips to that rect. So a stroke that
+overhangs the frame is cut off at it rather than drawn. This matters most at the
+edges, where ports live: a 2 pt lead ending exactly on the frame with a *round*
+cap has 1 pt of cap outside the frame, and that pt is never drawn. The symbol
+looks the same with `butt` caps, which is why the cap fix appears to do nothing
+on those ends — the difference was already being clipped away. Leads meeting the
+body *inside* the frame are where the cap actually shows.
+
+**Nest freely inside a layer.** `<g id="leads"><g><path/></g></g>` is read the
+same as a flat one: lead shortening walks the whole subtree. Illustrator nests
+its own groups and 14 shipped components rely on this.
+
 **Grid alignment tip:** Design port positions at multiples of the grid spacing (20 pt) for clean alignment. For example, place ports at x=0, x=20, x=40, x=60, x=80, x=100, and y values at multiples of 20.
 
 ## SVG Root Element
