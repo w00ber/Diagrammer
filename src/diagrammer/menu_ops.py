@@ -112,11 +112,13 @@ class MenuMixin:
         # ---- Edit ----
         edit_menu = menu_bar.addMenu("&Edit")
 
-        undo_act = self._scene.undo_stack.createUndoAction(self, "&Undo")
+        # From the undo group, so Undo/Redo follow whichever diagram tab is
+        # active (document_tabs.py).
+        undo_act = self._undo_group.createUndoAction(self, "&Undo")
         self._register_shortcut(undo_act, "edit.undo")
         edit_menu.addAction(undo_act)
 
-        redo_act = self._scene.undo_stack.createRedoAction(self, "&Redo")
+        redo_act = self._undo_group.createRedoAction(self, "&Redo")
         self._register_shortcut(redo_act, "edit.redo")
         edit_menu.addAction(redo_act)
 
@@ -301,6 +303,8 @@ class MenuMixin:
         self._register_shortcut(toggle_grid_act, "view.toggle_grid")
         toggle_grid_act.toggled.connect(self._toggle_grid)
         view_menu.addAction(toggle_grid_act)
+        # Kept so a newly opened diagram tab starts with the same grid state.
+        self._toggle_grid_act = toggle_grid_act
 
         view_menu.addSeparator()
 
@@ -344,6 +348,16 @@ class MenuMixin:
         self._theme_actions[current].setChecked(True)
 
         view_menu.addSeparator()
+
+        next_tab_act = QAction("Show Next Tab", self)
+        self._register_shortcut(next_tab_act, "view.next_tab")
+        next_tab_act.triggered.connect(self._show_next_tab)
+        view_menu.addAction(next_tab_act)
+
+        prev_tab_act = QAction("Show Previous Tab", self)
+        self._register_shortcut(prev_tab_act, "view.prev_tab")
+        prev_tab_act.triggered.connect(self._show_previous_tab)
+        view_menu.addAction(prev_tab_act)
 
         close_tab_act = QAction("Close Tab", self)
         self._register_shortcut(close_tab_act, "view.close_tab")

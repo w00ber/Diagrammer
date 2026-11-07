@@ -49,7 +49,7 @@ conda env, and run headless:
 QT_QPA_PLATFORM=offscreen ~/miniforge3/envs/CMT/bin/python -m pytest tests -q
 ```
 
-As of 2026-11-03 the suite is **fully green — 724 passed, 0 failed**. Any
+As of 2026-11-06 the suite is **fully green — 786 passed, 0 failed**. Any
 failure you see is yours. Earlier notes here claimed 6 then 11 permanent
 failures; both were measurement artifacts, from the traps below.
 
@@ -114,6 +114,14 @@ platform-specific while the app is correct on both.
 
 ## Conventions that bite
 
+- **`MainWindow._scene` / `_view` / `_current_file` mean the *active* diagram.**
+  Several diagrams can be open, one per tab; these are properties resolving to
+  whichever is in front (see `document_tabs.py`), and they keep pointing at the
+  last diagram while a library table or the Validation tab is showing. Anything
+  window-wide (grid, snapping, background, routing default) must loop over
+  `_documents()` *and* be applied to new tabs in `_configure_document`, or the
+  second tab silently disagrees with the first. Connect a scene's signals in
+  `_new_document`, not after it.
 - **Every canvas mutation is an undo command.** Adding a feature that edits the
   scene directly instead of through `commands/` breaks undo silently.
 - **Component SVGs are data, not code.** New parts are dropped into

@@ -52,8 +52,9 @@ View all components in a library category as a reference table:
 
 Table views open in separate tabs. They support zoom (scroll wheel), pan (click-drag), and zoom window (Z key). Export the table view via File > Export as SVG/PNG/PDF while the table tab is active.
 
-- **Ctrl+W** — close the active table tab
-- The tab bar is hidden when only the diagram is open
+- **Ctrl+W** — close the active tab
+- **Ctrl+Shift+]** / **Ctrl+Shift+[** — show the next / previous tab (diagrams, tables and the Validation report alike)
+- The tab bar is hidden while only one diagram is open
 
 ---
 
@@ -134,6 +135,13 @@ the window is open, a bar offers to reload it.
 what it finds by issue rather than by file, so a style point affecting seventy
 components is one line with one button rather than seventy lines. Double-click
 any row to open that component.
+
+The report opens in a **Validation** tab beside your diagrams (⇧⌘] / ⇧⌘[ to
+reach it) and keeps itself current: saving a component from the inspector
+re-checks it at once, and coming back to the tab or the app re-checks any file
+that changed on disk, e.g. in an external editor. Saving a shipped component
+usually makes your own copy instead of changing the shipped file; the shipped
+file's rows then read *replaced by your copy*, and opening one opens the copy.
 
 ### Library conventions
 
@@ -396,7 +404,7 @@ Double-click a component to enter **isolation mode** for editing individual SVG 
 
 | Action | Shortcut |
 |--------|----------|
-| New diagram | Ctrl+N |
+| New diagram (in a new tab) | Ctrl+N |
 | Open | Ctrl+O |
 | Save | Ctrl+S |
 | Save As | Ctrl+Shift+S |
@@ -404,10 +412,21 @@ Double-click a component to enter **isolation mode** for editing individual SVG 
 | Export PNG | File > Export as PNG |
 | Export PDF | File > Export as PDF |
 | Close Tab | Ctrl+W |
+| Next / Previous Tab | Ctrl+Shift+] / Ctrl+Shift+[ |
+
+### Several diagrams at once
+
+Each diagram opens in its own tab. **New** and **Open** add a tab rather than
+replacing the diagram in front of you — unless that one is an empty, untouched
+Untitled, which is reused. Opening a file that is already open just switches to
+its tab. Undo history, layers and selection belong to each diagram; grid, snap
+and routing settings apply to all of them. Copy in one tab and paste in another
+to move parts between diagrams. A **•** after a tab's name means unsaved
+changes; closing that tab, or quitting, asks first.
 
 Diagrams are saved as `.dgm` JSON files. All component positions, connections, waypoints, styles, layers, and transforms are preserved.
 
-**Unsaved changes** — a prompt appears when creating a new diagram, opening a file, or quitting with unsaved changes. Choose Save, Discard, or Cancel.
+**Unsaved changes** — a prompt appears when closing a diagram's tab or quitting with unsaved changes. Choose Save, Discard, or Cancel.
 
 ### Export scaling
 

@@ -7,21 +7,12 @@ from pathlib import Path
 
 from PySide6.QtCore import QPointF, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import (
-    QGraphicsView,
-    QHBoxLayout,
-    QLabel,
-    QMainWindow,
-    QTabBar,
-    QTabWidget,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QLabel, QMainWindow
 
 from diagrammer.canvas.grid import DEFAULT_GRID_SPACING
-from diagrammer.canvas.scene import DiagramScene, InteractionMode
-from diagrammer.canvas.view import DiagramView
+from diagrammer.canvas.scene import InteractionMode
 from diagrammer.clipboard_ops import ClipboardMixin
+from diagrammer.document_tabs import DocumentTabsMixin
 from diagrammer.menu_ops import MenuMixin
 from diagrammer.models import overrides as overrides_mod
 from diagrammer.models.library import ComponentLibrary
@@ -59,7 +50,8 @@ def _find_builtin_components() -> Path:
     return here / "components"
 
 
-class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
+class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
+                 QMainWindow):
     """Top-level window containing the diagram canvas, menus, and panels."""
 
     def __init__(self, parent=None):
@@ -93,54 +85,14 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             app_settings.user_compound_files = surviving
             app_settings.save()
 
-        # -- Scene and View --
-        self._scene = DiagramScene(library=self._library, parent=self)
-        self._view = DiagramView(self._scene, self)
-
-        # -- Tab widget (diagram tab + closable library table tabs) --
-        self._tab_widget = QTabWidget(self)
-        self._tab_widget.setTabsClosable(True)
-        self._tab_widget.setMovable(False)
-        self._tab_widget.tabCloseRequested.connect(self._on_tab_close_requested)
-        # Wrap canvas with mode label above it (right-aligned)
-        self._mode_label = QLabel("Mode: Select")
-        self._mode_label.setStyleSheet("font-weight: bold;")
-        diagram_container = QWidget()
-        diagram_layout = QVBoxLayout(diagram_container)
-        diagram_layout.setContentsMargins(0, 0, 0, 0)
-        diagram_layout.setSpacing(0)
-        mode_bar = QHBoxLayout()
-        mode_bar.setContentsMargins(0, 2, 6, 2)
-        mode_bar.addStretch()
-        mode_bar.addWidget(self._mode_label)
-        diagram_layout.addLayout(mode_bar)
-        diagram_layout.addWidget(self._view)
-        # Persistent discoverability hint under the lower-right of the canvas.
-        # Text is set (and kept in sync with the live toggle key) by
-        # _refresh_overlay_hint_label() once the shortcut registry is ready.
-        from diagrammer.app import hint_text_color
-        hint_bar = QHBoxLayout()
-        hint_bar.setContentsMargins(0, 2, 6, 2)
-        hint_bar.addStretch()
-        self._overlay_hint_label = QLabel("")
-        self._overlay_hint_label.setStyleSheet(
-            f"color: {hint_text_color()}; font-size: 11px;")
-        hint_bar.addWidget(self._overlay_hint_label)
-        diagram_layout.addLayout(hint_bar)
-        self._tab_widget.addTab(diagram_container, "Diagram")
-        # Diagram tab is never closable
-        self._tab_widget.tabBar().setTabButton(
-            0, QTabBar.ButtonPosition.RightSide, None
-        )
-        # Hide tab bar when only the diagram tab is shown
-        self._tab_widget.tabBar().setVisible(False)
+        # -- Diagram documents, one per tab, beside library table tabs --
+        # ``_scene``/``_view``/``_current_file`` resolve to the active one;
+        # see document_tabs.py.
+        self._init_document_tabs()
         self.setCentralWidget(self._tab_widget)
 
         # -- Clipboard for copy/paste --
         self._clipboard: list = []
-
-        # -- Current file path --
-        self._current_file: str | None = None
 
         # -- Status bar --
         self._pos_label = QLabel("X: 0.0  Y: 0.0")
@@ -151,9 +103,6 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         self._layer_warning_label.setStyleSheet(
             "color: #b36b00; font-weight: bold;")
         self.statusBar().addPermanentWidget(self._layer_warning_label)
-
-        self._scene.cursor_scene_pos_changed.connect(self._update_pos_label)
-        self._scene.mode_changed.connect(self._update_mode_label)
 
         # -- Menus --
         self._create_menus()
@@ -195,14 +144,16 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         self._props_panel = PropertiesPanel(self)
         self._props_panel.setObjectName("PropertiesPanel")
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._props_panel)
-        self._scene.selectionChanged.connect(self._on_selection_changed)
 
         from diagrammer.panels.layers_panel import LayersPanel
         self._layers_panel = LayersPanel(self._scene.layer_manager, self)
         self._layers_panel.setObjectName("LayersPanel")
         self._layers_panel.layers_changed.connect(self._on_layers_changed)
-        self._layers_panel.layers_reordered.connect(self._scene.remap_layer_swap)
-        self._layers_panel.layer_removed.connect(self._scene.remap_layer_removed)
+        # Resolved per call: the panel serves whichever diagram is active.
+        self._layers_panel.layers_reordered.connect(
+            lambda *a: self._scene.remap_layer_swap(*a))
+        self._layers_panel.layer_removed.connect(
+            lambda *a: self._scene.remap_layer_removed(*a))
         self._layers_panel.active_layer_switched.connect(self._on_layer_switched)
         # The panel's eye / lock toggles are canvas mutations like any other.
         self._layers_panel.set_undo_stack(self._scene.undo_stack)
@@ -254,89 +205,8 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             menu.addAction(act)
 
     # --------------------------------------------------------- Tab management
-
-    def _active_scene(self):
-        """Return the QGraphicsScene for the currently active tab."""
-        widget = self._tab_widget.currentWidget()
-        if widget is self._view:
-            return self._scene
-        if hasattr(widget, 'scene') and callable(widget.scene):
-            return widget.scene()
-        return self._scene
-
-    def _active_view(self) -> QGraphicsView:
-        """Return the QGraphicsView for the currently active tab."""
-        widget = self._tab_widget.currentWidget()
-        if isinstance(widget, QGraphicsView):
-            return widget
-        return self._view
-
-    def _update_tab_bar_visibility(self) -> None:
-        """Show the tab bar only when there are library table tabs open."""
-        self._tab_widget.tabBar().setVisible(self._tab_widget.count() > 1)
-
-    def _on_tab_close_requested(self, index: int) -> None:
-        """Close a library table tab (diagram tab at index 0 is never closable)."""
-        if index == 0:
-            return
-        widget = self._tab_widget.widget(index)
-        self._tab_widget.removeTab(index)
-        self._update_tab_bar_visibility()
-        # Clean up the scene and view
-        if hasattr(widget, 'scene') and callable(widget.scene):
-            scene = widget.scene()
-            if scene:
-                scene.clear()
-        widget.deleteLater()
-
-    def _open_library_table(self, category: str) -> None:
-        """Open (or focus) a library table tab for the given category."""
-        # Check if a tab for this category already exists
-        for i in range(1, self._tab_widget.count()):
-            widget = self._tab_widget.widget(i)
-            if getattr(widget, '_library_category', None) == category:
-                self._tab_widget.setCurrentIndex(i)
-                return
-
-        # Collect component defs for this category and subcategories,
-        # skipping any categories the user has hidden in Settings.
-        hidden = app_settings.hidden_libraries
-        defs_by_subcat: dict[str, list] = {}
-        if category == "__all__":
-            for cat, cat_defs in self._library.categories.items():
-                if cat not in hidden:
-                    defs_by_subcat[cat] = cat_defs
-        else:
-            for cat, cat_defs in self._library.categories.items():
-                if cat in hidden:
-                    continue
-                if cat == category or cat.startswith(category + "/"):
-                    defs_by_subcat[cat] = cat_defs
-
-        if not defs_by_subcat:
-            return
-
-        from diagrammer.panels.library_table_view import build_library_table
-        title = "All Libraries" if category == "__all__" else category
-        scene, view = build_library_table(title, defs_by_subcat)
-        view._library_category = category  # tag for deduplication
-        # Lets the table's right-click menu toggle favorites and open a
-        # component's SVG externally, same as the library panel's menus.
-        view.set_library_panel(self._library_panel)
-
-        label = "All Libraries" if category == "__all__" else category.replace("/", " / ").replace("_", " ")
-        index = self._tab_widget.addTab(view, f"Table: {label}")
-        self._tab_widget.setCurrentIndex(index)
-        self._update_tab_bar_visibility()
-        # Defer fit_all so the view has its final geometry
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, view.fit_all)
-
-    def close_active_tab(self) -> None:
-        """Close the active tab if it's a library table tab (not the diagram)."""
-        index = self._tab_widget.currentIndex()
-        if index > 0:
-            self._on_tab_close_requested(index)
+    # Tabs, documents and the active-diagram properties live in
+    # DocumentTabsMixin (document_tabs.py).
 
     def _zoom_active_view(self, factor: float) -> None:
         """Zoom the active tab's view."""
@@ -372,7 +242,8 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             self._zoom_window_act.blockSignals(False)
 
     def _toggle_grid(self, visible: bool) -> None:
-        self._view.grid_visible = visible
+        for doc in self._documents():
+            doc.view.grid_visible = visible
 
     def _on_theme_selected(self, mode: str) -> None:
         """Handle Appearance submenu selection: live-switch the theme."""
@@ -401,8 +272,9 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         from PySide6.QtGui import QBrush
         bg = app_settings.current_background_color()
         try:
-            self._view.setBackgroundBrush(QBrush(bg))
-            self._view.viewport().update()
+            for doc in self._documents():
+                doc.view.setBackgroundBrush(QBrush(bg))
+                doc.view.viewport().update()
         except Exception:
             logger.debug("Failed to reassert canvas background brush", exc_info=True)
         try:
@@ -415,21 +287,19 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             logger.debug("Failed to reassert annotations panel light surface", exc_info=True)
 
     def _toggle_snap(self, enabled: bool) -> None:
-        self._view.snap_enabled = enabled
         app_settings.snap_to_grid = enabled
         app_settings.save()
-        if not enabled and app_settings.snap_to_angle:
-            self._view._angle_snap = True
-            self._view._angle_snap_increment = app_settings.angle_snap_increment
-        else:
-            self._view._angle_snap = False
+        for doc in self._documents():
+            doc.view.snap_enabled = enabled
+            self._sync_angle_snap(doc.view)
 
     def _on_grid_spacing_changed(self, value: float) -> None:
-        self._view.grid_spacing = value
+        for doc in self._documents():
+            doc.view.grid_spacing = value
 
     def _reset_grid_spacing(self) -> None:
+        # valueChanged applies it to every open diagram.
         self._grid_spin.setValue(DEFAULT_GRID_SPACING)
-        self._view.grid_spacing = DEFAULT_GRID_SPACING
 
     def _rebuild_library(self) -> None:
         """Wipe and re-scan: overlay + built-ins + custom paths + compounds.
@@ -733,20 +603,26 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             if key is None or self._library.reload_one(key) is None:
                 self._rebuild_library()
         self._library_panel._refresh_views()
+        report = self._validation_report_tab()
+        if report is not None:
+            replaces = (self._overrides.builtin_path(result.rel)
+                        if result.forked and result.rel else None)
+            report.file_saved(result.path, replaces=replaces)
         where = "your copy" if result.forked else result.path.name
         self.statusBar().showMessage(f"Saved {where} — {result.path}", 6000)
 
     def _validate_libraries(self) -> None:
-        from diagrammer.panels.validation_report import ValidationReportDialog
+        self._show_validation_report(self._validation_roots())
 
-        dlg = ValidationReportDialog(
-            self,
-            roots=self._validation_roots(),
-            profile_overrides=getattr(app_settings, "library_profiles", None),
-            on_open=self.open_component_inspector,
-        )
-        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        dlg.show()
+    def _shadowing_copy(self, path: Path) -> Path | None:
+        """The user's own copy that replaces shipped ``path`` on the canvas."""
+        from diagrammer.models.overrides import rel_posix
+
+        rel = rel_posix(Path(path), self._builtin_components_path)
+        if rel is None or not self._overrides.is_fork(rel):
+            return None
+        copy = self._overrides.overlay_path(rel)
+        return copy if copy.is_file() else None
 
     def _validation_roots(self) -> list[tuple[str, Path]]:
         """Scopes the validation report offers, in precedence order."""
@@ -832,17 +708,14 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
 
     def _apply_settings(self) -> None:
         """Push current app_settings into the scene/view."""
-        # Update snap-to-angle based on grid snap state
-        if not self._view.snap_enabled and app_settings.snap_to_angle:
-            self._view._angle_snap = True
-            self._view._angle_snap_increment = app_settings.angle_snap_increment
-        else:
-            self._view._angle_snap = False
-        # Repaint wires so a changed crossover default takes effect at once
-        self._scene.update_connections()
-        # Full scene repaint for items update_connections doesn't touch
-        # (junction dots react to the "Show junction dots" toggle)
-        self._scene.update()
+        for doc in self._documents():
+            # Update snap-to-angle based on grid snap state
+            self._sync_angle_snap(doc.view)
+            # Repaint wires so a changed crossover default takes effect at once
+            doc.scene.update_connections()
+            # Full scene repaint for items update_connections doesn't touch
+            # (junction dots react to the "Show junction dots" toggle)
+            doc.scene.update()
 
     def _apply_library_visibility(self) -> None:
         """Rebuild library panel with only visible categories."""
@@ -1081,9 +954,8 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
     }
 
     def _init_shortcut_overlay(self) -> None:
-        """Create the hint overlay over the canvas. Call once, after the view."""
-        from diagrammer.panels.shortcut_overlay import ShortcutOverlay
-        self._shortcut_overlay = ShortcutOverlay(self._view.viewport())
+        """Arm the hint overlay. Each document builds its own over its view's
+        viewport (document_tabs.py); this seeds the shared on/off state."""
         # Runtime visibility flag, seeded from the persisted default (set in
         # Settings → Appearance). The '?' hotkey / Help menu item toggle it for
         # the session; the default is re-applied when Settings are accepted.
@@ -1183,13 +1055,12 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
     def _refresh_overlay_hint_label(self) -> None:
         """Update the persistent 'X to toggle …' hint under the canvas so it
         always shows the current (possibly rebound) overlay toggle key."""
-        label = getattr(self, "_overlay_hint_label", None)
-        if label is None:
-            return
         from diagrammer.app import hint_text_color
         keys = get_shortcut("overlay.toggle").display_text or "?"
-        label.setText(f"{keys} to toggle keyboard shortcut overlay")
-        label.setStyleSheet(f"color: {hint_text_color()}; font-size: 11px;")
+        for doc in self._documents():
+            doc.hint_label.setText(f"{keys} to toggle keyboard shortcut overlay")
+            doc.hint_label.setStyleSheet(
+                f"color: {hint_text_color()}; font-size: 11px;")
 
     def _on_layers_changed(self) -> None:
         """Apply layer visibility/lock state to all scene items."""
@@ -1287,16 +1158,14 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
     def _toggle_snap_to_angle(self, enabled: bool) -> None:
         app_settings.snap_to_angle = enabled
         app_settings.save()
-        if not self._view.snap_enabled and enabled:
-            self._view._angle_snap = True
-            self._view._angle_snap_increment = app_settings.angle_snap_increment
-        elif not enabled:
-            self._view._angle_snap = False
+        for doc in self._documents():
+            self._sync_angle_snap(doc.view)
 
     def _toggle_discrete_angle_routing(self, enabled: bool) -> None:
         from diagrammer.items.connection_item import ROUTE_ORTHO, ROUTE_ORTHO_45
         mode = ROUTE_ORTHO_45 if enabled else ROUTE_ORTHO
-        self._scene.default_routing_mode = mode
+        for doc in self._documents():
+            doc.scene.default_routing_mode = mode
         app_settings.default_routing_mode = mode
         app_settings.discrete_angle_routing = enabled
         app_settings.save()
@@ -1311,7 +1180,8 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             act.blockSignals(True)
 
         # Snap to grid
-        self._view.snap_enabled = app_settings.snap_to_grid
+        for doc in self._documents():
+            doc.view.snap_enabled = app_settings.snap_to_grid
         self._snap_grid_act.setChecked(app_settings.snap_to_grid)
 
         # Snap to port
@@ -1323,8 +1193,9 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         # Discrete angle routing
         self._discrete_angle_act.setChecked(app_settings.discrete_angle_routing)
 
-        # Default routing mode (sync scene with persisted setting)
-        self._scene.default_routing_mode = app_settings.default_routing_mode
+        # Default routing mode (sync scenes with persisted setting)
+        for doc in self._documents():
+            doc.scene.default_routing_mode = app_settings.default_routing_mode
 
         for act in toggle_acts:
             act.blockSignals(False)
@@ -1408,7 +1279,7 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         self._push_z_change(states, "Send backward")
 
     def _bring_to_front(self) -> None:
-        """Move selected items to the top of the stacking order (Ctrl+Shift+])."""
+        """Move selected items to the top of the stacking order (Ctrl+Alt+])."""
         selected = self._scene.selectedItems()
         if not selected:
             return
@@ -1420,7 +1291,7 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         self._push_z_change(states, "Bring to front")
 
     def _send_to_back(self) -> None:
-        """Move selected items to the bottom of the stacking order (Ctrl+Shift+[)."""
+        """Move selected items to the bottom of the stacking order (Ctrl+Alt+[)."""
         selected = self._scene.selectedItems()
         if not selected:
             return
@@ -1580,14 +1451,16 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             restore_path = app_settings.last_opened_file
 
         if restore_path:
-            self._scene.clear()
-            self._scene.undo_stack.clear()
-            fallback_keys = DiagramSerializer.load(self._scene, restore_path, library=self._library)
+            existing = (self._find_document(restore_path)
+                        if restore_path != str(auto_save) else None)
+            if existing is not None:
+                self._tab_widget.setCurrentWidget(existing.container)
+                return
+            doc, _created = self._document_for_load()
+            fallback_keys = DiagramSerializer.load(doc.scene, restore_path, library=self._library)
             self._warn_embedded_components(fallback_keys)
-            self._layers_panel._manager = self._scene._layer_manager
-            self._layers_panel.refresh()
-            self._scene.apply_layer_state()
-            self._refresh_layer_warning()
+            self._sync_panels_to_document()
+            doc.scene.apply_layer_state()
             # If restoring from autosave, don't set _current_file (it's unsaved)
             if restore_path != str(auto_save):
                 self._current_file = restore_path
@@ -1616,8 +1489,12 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             self.restoreState(state)
 
     def closeEvent(self, event) -> None:
-        """Prompt for unsaved changes, then auto-save session state and dock layout."""
-        if not self._check_unsaved_changes():
+        """Prompt for unsaved changes, then auto-save session state and dock layout.
+
+        Every open diagram is offered for saving; the autosave (Restore
+        Previous Session) still holds the active one only.
+        """
+        if not self._confirm_close_all():
             event.ignore()
             return
         try:
@@ -1661,10 +1538,6 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             "github.com/w00ber/Diagrammer</a></small></p>"
         )
         QMessageBox.about(self, "About Diagrammer", text)
-
-    def _update_title(self) -> None:
-        name = Path(self._current_file).name if self._current_file else "Untitled"
-        self.setWindowTitle(f"{name} \u2014 Diagrammer")
 
     def _last_dir(self) -> str:
         """Return the last used directory for file dialogs."""
@@ -1713,17 +1586,26 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             app_settings.save()
             self._rebuild_recent_menu()
             return
+        existing = self._find_document(path)
+        if existing is not None:
+            # Already open: show it rather than load a second, diverging copy.
+            self._tab_widget.setCurrentWidget(existing.container)
+            self._track_file(path)
+            return
         from diagrammer.io.serializer import DiagramSerializer
-        self._scene.clear()
-        self._scene.undo_stack.clear()
-        fallback_keys = DiagramSerializer.load(self._scene, path, library=self._library)
+        doc, created = self._document_for_load()
+        try:
+            fallback_keys = DiagramSerializer.load(doc.scene, path, library=self._library)
+        except Exception as exc:
+            self._discard_failed_load(doc, created)
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Open Diagram",
+                                 f"Failed to open {Path(path).name}:\n\n{exc}")
+            return
         self._warn_embedded_components(fallback_keys)
-        self._layers_panel._manager = self._scene._layer_manager
-        self._layers_panel.refresh()
-        self._scene.apply_layer_state()
-        self._refresh_layer_warning()
+        self._sync_panels_to_document()
+        doc.scene.apply_layer_state()
         self._current_file = path
-        self._update_title()
         self._track_file(path)
 
     def _warn_embedded_components(self, fallback_keys: list[str]) -> None:
@@ -1749,21 +1631,10 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         )
 
     def _file_new(self) -> None:
-        if not self._check_unsaved_changes():
-            return
-        self._scene.clear()
-        self._scene.undo_stack.clear()
-        from diagrammer.panels.layers_panel import LayerManager
-        self._scene._layer_manager = LayerManager()
-        self._layers_panel._manager = self._scene._layer_manager
-        self._layers_panel.refresh()
-        self._refresh_layer_warning()
-        self._current_file = None
-        self._update_title()
+        """A new Untitled diagram in its own tab; nothing open is disturbed."""
+        self._new_document()
 
     def _file_open(self) -> None:
-        if not self._check_unsaved_changes():
-            return
         from PySide6.QtWidgets import QFileDialog
         path, _ = QFileDialog.getOpenFileName(
             self, "Open Diagram", self._last_dir(),
@@ -1774,8 +1645,6 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
 
     def _file_open_example(self) -> None:
         """Show the Examples dialog and load the chosen example as Untitled."""
-        if not self._check_unsaved_changes():
-            return
         from diagrammer.panels.examples_dialog import ExamplesDialog
         dlg = ExamplesDialog(self._library, self)
         if dlg.exec() != dlg.DialogCode.Accepted:
@@ -1784,21 +1653,19 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
         if path is None:
             return
         from diagrammer.io.serializer import DiagramSerializer
-        self._scene.clear()
-        self._scene.undo_stack.clear()
+        doc, created = self._document_for_load()
         try:
-            fallback_keys = DiagramSerializer.load(self._scene, str(path), library=self._library)
+            fallback_keys = DiagramSerializer.load(doc.scene, str(path), library=self._library)
         except Exception as exc:
+            self._discard_failed_load(doc, created)
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(self, "Open Example", f"Failed to open example:\n\n{exc}")
             return
         self._warn_embedded_components(fallback_keys)
-        self._layers_panel._manager = self._scene._layer_manager
-        self._layers_panel.refresh()
-        self._scene.apply_layer_state()
+        self._sync_panels_to_document()
+        doc.scene.apply_layer_state()
         # Open as untitled — Save will become Save As, protecting the bundled file.
         self._current_file = None
-        self._update_title()
         # Mark scene as dirty so the user is prompted to save before discarding.
         # (load() leaves the undo stack clean, but the example is unsaved work
         # from the user's perspective the moment they pick it.)
@@ -1827,11 +1694,10 @@ class MainWindow(MenuMixin, ClipboardMixin, TransformMixin, QMainWindow):
             DiagramSerializer.save(self._scene, path)
             self._scene.undo_stack.setClean()
             self._current_file = path
-            self._update_title()
             self._track_file(path)
 
     def _check_unsaved_changes(self) -> bool:
-        """Check for unsaved changes and prompt the user.
+        """Check the active diagram for unsaved changes and prompt the user.
 
         Returns True if it's OK to proceed (saved, discarded, or no changes).
         Returns False if the user cancelled.
