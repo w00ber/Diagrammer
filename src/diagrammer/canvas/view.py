@@ -16,7 +16,7 @@ def _terminal_junctions_to_auto_include(scene_items, selected_items) -> list:
 
 
 from PySide6.QtGui import QBrush, QColor, QPainter, QPen
-from PySide6.QtWidgets import QGraphicsView, QWidget
+from PySide6.QtWidgets import QGraphicsItem, QGraphicsView, QWidget
 
 from diagrammer.canvas.grid import (
     DEFAULT_GRID_SPACING,
@@ -812,6 +812,9 @@ class DiagramView(QGraphicsView):
                 self._diagram_scene._cancel_connection()
                 event.accept()
                 return
+            self._select_for_context_menu(event.position())
+            event.accept()
+            return
 
         if event.button() == Qt.MouseButton.LeftButton:
             item = self._item_at_pos(event.position())
@@ -1616,6 +1619,32 @@ class DiagramView(QGraphicsView):
         else:
             snapped = snap_to_grid(tentative, self._grid_spacing)
         return snapped - start
+
+    def _select_for_context_menu(self, viewport_pos) -> None:
+        """Settle the selection a right-press will open the menu on.
+
+        The press must not reach ``QGraphicsView``. No item is ever
+        ``ItemIsMovable`` (the view drags them itself), and Qt's base
+        ``QGraphicsItem::mousePressEvent`` ignores a non-left press on a
+        non-movable item — so the scene sees an unhandled press and clears the
+        selection. The context menu, built a moment later, then had nothing to
+        act on and did not open at all.
+
+        Conventional rules instead: right-clicking something already selected
+        keeps the whole selection; right-clicking an unselected item selects
+        it (with its group); right-clicking empty canvas leaves the selection
+        alone.
+        """
+        item = self._item_at_pos(viewport_pos)
+        if isinstance(item, PortItem):
+            item = item.component
+        if item is None or item.isSelected():
+            return
+        if not item.flags() & QGraphicsItem.GraphicsItemFlag.ItemIsSelectable:
+            return
+        self._diagram_scene.clearSelection()
+        item.setSelected(True)
+        self._expand_group_selection(item)
 
     def _expand_group_selection(self, clicked_item) -> list:
         """Expand selection to include all group members of the clicked item.
