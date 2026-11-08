@@ -83,6 +83,23 @@ class ComponentDef:
     # than loaded from the on-disk component library.
     svg_bytes: bytes | None = None
     is_embedded: bool = False
+    # Provenance, set by ComponentLibrary after parsing. Required rather than a
+    # convenience: build_component_menu is handed only a ComponentDef and has no
+    # library handle, so the def itself must be able to answer "is this mine, or
+    # did it ship with the app?" — which decides whether Remove offers a
+    # reversible tombstone or a real delete.
+    source_root: Path | None = None
+    source_kind: str = ""  # "builtin" | "overlay" | "custom" | "compound" | "embedded"
+
+    @property
+    def is_builtin(self) -> bool:
+        """Shipped with the app: read-only, and replaced by an update."""
+        return self.source_kind == "builtin"
+
+    @property
+    def is_user_owned(self) -> bool:
+        """The user's to edit, move or delete outright."""
+        return self.source_kind in ("overlay", "custom", "compound")
 
     @classmethod
     def from_embedded(cls, metadata: dict, svg_bytes: bytes) -> ComponentDef:
@@ -113,8 +130,47 @@ class ComponentDef:
     def from_svg(cls, path: Path, category: str = "") -> ComponentDef:
         """Parse a component definition from an SVG file."""
         tree = parse_svg(path)
-        root = tree.getroot()
+        return cls._from_root(
+            tree.getroot(), path=path, category=category, stretch_source=path
+        )
 
+    @classmethod
+    def from_svg_text(cls, text: str, *, path: Path, category: str = "",
+                      infer_stretch: bool = True) -> ComponentDef:
+        """Parse a component definition from SVG *text* rather than a file.
+
+        ``path`` is still required — it supplies the component ``name``
+        (``path.stem``), the recorded ``svg_path``, and the ``.dgmcomp``
+        sibling lookup — but nothing is read from it, so the text may differ
+        from what is saved there. That is the point: the component inspector
+        checks and renders a *candidate* built by applying fixes to the
+        original, and must never write a temp file to do it.
+
+        The text is run through ``normalize_svg_text`` first, matching
+        ``parse_svg``'s tolerance for the duplicate attributes some editors
+        emit, but unlike ``parse_svg`` this never repairs the file on disk.
+        """
+        from diagrammer.io.svg_parse import normalize_svg_text
+
+        normalized, _ = normalize_svg_text(text)
+        root = ET.fromstring(normalized)
+        return cls._from_root(
+            root, path=path, category=category,
+            stretch_source=normalized.encode("utf-8") if infer_stretch else None,
+        )
+
+    @classmethod
+    def _from_root(cls, root: ET.Element, *, path: Path, category: str,
+                   stretch_source: Path | bytes | None) -> ComponentDef:
+        """Build a ComponentDef from an already-parsed ``<svg>`` root.
+
+        ``stretch_source`` is what ``_infer_stretch_from_layers`` hands
+        ``QSvgRenderer``; see that function for why it is not always ``path``.
+        ``None`` skips convention-based stretch inference altogether, for a
+        caller that does not read the stretch fields — the validator is the
+        one that matters, since it parses thousands of documents per run and
+        inference is the only thing in its path that touches Qt.
+        """
         # Strip namespace prefix for easier attribute access
         tag = _strip_ns(root.tag)
         if tag != "svg":
@@ -150,11 +206,12 @@ class ComponentDef:
         # is absent or only partially specified. <g id="tile"> defines a
         # repeat region; direction-tagged leads (leads-left/-right/-top/
         # -bottom) define an anchored gap stretch.
-        if (stretch_v_pos is None and stretch_v_repeat is None) or \
-           (stretch_h_pos is None and stretch_h_repeat is None):
+        if stretch_source is not None and (
+                (stretch_v_pos is None and stretch_v_repeat is None)
+                or (stretch_h_pos is None and stretch_h_repeat is None)):
             (stretch_h_pos, stretch_v_pos,
              stretch_h_repeat, stretch_v_repeat) = _infer_stretch_from_layers(
-                path, root,
+                stretch_source, root,
                 stretch_h_pos, stretch_v_pos,
                 stretch_h_repeat, stretch_v_repeat,
             )
@@ -516,7 +573,7 @@ def _layer_geometric_bbox(group: ET.Element) -> tuple[float, float, float, float
 
 
 def _infer_stretch_from_layers(
-    svg_path: Path,
+    svg_source: Path | bytes,
     root: ET.Element,
     stretch_h_pos: float | None,
     stretch_v_pos: float | None,
@@ -545,23 +602,47 @@ def _infer_stretch_from_layers(
     bboxes we walk the path data ourselves — ``boundsOnElement`` would
     add half the stroke width on each side, leaving visible gaps between
     cloned tiles when the renderer spaces clones by that wider extent.
+
+    ``svg_source`` is the file to hand the renderer: a ``Path`` for a file on
+    disk, or the document ``bytes`` when the caller holds text that is not (or
+    not yet) on disk — a candidate in the component inspector, say. Passing the
+    bytes matters there: loading the ``Path`` would render whatever is still
+    saved, so the inferred break lines would describe the old artwork.
     """
     # If both axes are already declared, nothing to infer.
     if (stretch_h_pos is not None or stretch_h_repeat is not None) and \
        (stretch_v_pos is not None or stretch_v_repeat is not None):
         return stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat
 
-    try:
-        from PySide6.QtSvg import QSvgRenderer
-    except ImportError:
-        return stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat
+    # The renderer exists only to measure the direction-tagged lead groups, so
+    # don't build one when there are none — which is the overwhelming majority
+    # of documents: 6 of the 238 shipped components have such a group, and a
+    # hand-written test fixture almost never does. Besides being wasted work,
+    # the renderers accumulate: every ComponentDef parse made one, and a run
+    # that parses thousands of small documents has aborted inside Qt while
+    # garbage-collecting them.
+    _DIRECTIONAL = ("leads-left", "leads-right", "leads-top", "leads-bottom")
+    present = [lid for lid in _DIRECTIONAL
+               if _find_group_by_id(root, lid) is not None]
 
-    renderer = QSvgRenderer(str(svg_path))
-    if not renderer.isValid():
-        return stretch_h_pos, stretch_v_pos, stretch_h_repeat, stretch_v_repeat
+    renderer = None
+    if present:
+        try:
+            from PySide6.QtSvg import QSvgRenderer
+        except ImportError:
+            return (stretch_h_pos, stretch_v_pos,
+                    stretch_h_repeat, stretch_v_repeat)
+        if isinstance(svg_source, bytes):
+            from PySide6.QtCore import QByteArray
+            renderer = QSvgRenderer(QByteArray(svg_source))
+        else:
+            renderer = QSvgRenderer(str(svg_source))
+        if not renderer.isValid():
+            return (stretch_h_pos, stretch_v_pos,
+                    stretch_h_repeat, stretch_v_repeat)
 
     def _bbox(elem_id: str):
-        if not renderer.elementExists(elem_id):
+        if renderer is None or not renderer.elementExists(elem_id):
             return None
         b = renderer.boundsOnElement(elem_id)
         if b.isNull() or b.isEmpty():

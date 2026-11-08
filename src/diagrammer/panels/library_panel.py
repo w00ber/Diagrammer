@@ -54,6 +54,9 @@ class LibraryPanel(QDockWidget):
         self._favorites: set[str] = set()
         self._recents: list[str] = []
         self._category_order: list[str] = []  # user-defined category order
+        # Set by MainWindow. None leaves the context menus read-only-but-usable,
+        # which is what lets the panel be constructed in a test without a window.
+        self.component_actions = None
         self._load_prefs()
 
         container = QWidget()
@@ -189,10 +192,21 @@ class LibraryPanel(QDockWidget):
         # self._library directly would resurrect hidden categories.
         self._refresh_views()
 
-    def reload(self, root: Path) -> None:
-        self._library.scan(root)
-        self._tree.populate(self._library, self._favorites, self._recents)
-        self._grid.populate(self._library)
+    def selected_key(self) -> str | None:
+        """The library key of the highlighted component, if one is.
+
+        Only the tree view has a selection model; the grid view selects by
+        click-to-drag and keeps none, so this returns None there and the
+        caller falls back to the canvas selection.
+        """
+        tree = getattr(self, "_tree", None)
+        if tree is None:
+            return None
+        item = tree.currentItem()
+        if item is None:
+            return None
+        key = item.data(0, Qt.ItemDataRole.UserRole)
+        return key if isinstance(key, str) and key else None
 
     def _sorted_categories(self, library: ComponentLibrary) -> list[str]:
         """Return categories in user-defined order, with any new ones appended."""
@@ -289,25 +303,175 @@ class LibraryPanel(QDockWidget):
 # Shared component context menu
 # =========================================================================
 
-def build_component_menu(parent, comp_def: ComponentDef, is_favorite: bool):
+class ComponentMenu:
+    """The right-click menu for one library component, plus its dispatch.
+
+    Returns an object rather than a tuple of actions because the entries now
+    outnumber what a call site should have to unpack, and because all three
+    views — the List tree, the Grid thumbnails and the Table view — must offer
+    exactly the same menu. ``handle()`` does the work, so a new entry is added
+    once here instead of three times at the call sites.
+    """
+
+    def __init__(self, parent, comp_def: ComponentDef, is_favorite: bool,
+                 *, panel=None, key: str = ""):
+        from PySide6.QtWidgets import QMenu
+
+        self._parent = parent
+        self._panel = panel
+        self._comp = comp_def
+        self._key = key or (f"{comp_def.category}/{comp_def.name}"
+                            if comp_def is not None else "")
+        actions = getattr(panel, "component_actions", None)
+        self._actions = actions
+
+        self.menu = QMenu(parent)
+        self.inspect_act = None
+        self.move_act = None
+        self.remove_act = None
+        self.revert_act = None
+        self.compare_act = None
+
+        has_file = (comp_def is not None and comp_def.svg_path
+                    and not comp_def.is_embedded)
+
+        if actions is not None and has_file:
+            self.inspect_act = self.menu.addAction(
+                "Inspect && Validate\u2026")
+            self.inspect_act.setToolTip(
+                "Check this component against its library's conventions")
+            self.menu.addSeparator()
+
+        self.fav_act = self.menu.addAction(
+            "\u2605 Remove from Favorites" if is_favorite
+            else "\u2606 Add to Favorites")
+
+        if actions is not None and has_file:
+            self.menu.addSeparator()
+            self.move_act = self.menu.addAction("Move to Category\u2026")
+            # Named for what it does to *this* component, which differs: a
+            # shipped part can only be hidden, a user's own can be deleted.
+            self.remove_act = self.menu.addAction(
+                "Hide from Library\u2026" if comp_def.is_builtin
+                else "Remove\u2026")
+            if actions.can_revert(comp_def):
+                self.compare_act = self.menu.addAction(
+                    "Compare with Shipped Version\u2026")
+                self.revert_act = self.menu.addAction(
+                    "Revert to Shipped Version\u2026")
+
+        self.show_act = None
+        if has_file:
+            self.menu.addSeparator()
+            add_open_with_actions(self.menu, comp_def.svg_path, parent)
+            self.show_act = self.menu.addAction("Show in File Browser")
+
+    def exec(self, global_pos):
+        return self.handle(self.menu.exec(global_pos))
+
+    def handle(self, action) -> bool:
+        """Run whichever entry was chosen. True if one was."""
+        if action is None:
+            return False
+        if action is self.fav_act:
+            if self._panel is not None:
+                self._panel.toggle_favorite(self._key)
+            return True
+        if self.show_act is not None and action is self.show_act:
+            _show_in_file_browser(self._comp.svg_path.parent)
+            return True
+        a = self._actions
+        if a is None:
+            return False
+        if action is self.inspect_act:
+            a.inspect(self._comp)
+        elif action is self.move_act:
+            a.move_to_category(self._comp, self._parent)
+        elif action is self.remove_act:
+            a.remove(self._comp, self._parent)
+        elif action is self.revert_act:
+            a.revert_to_builtin(self._comp, self._parent)
+        elif action is self.compare_act:
+            a.compare_with_builtin(self._comp)
+        else:
+            return False
+        return True
+
+
+def build_component_menu(parent, comp_def: ComponentDef, is_favorite: bool,
+                         *, panel=None, key: str = ""):
     """Build the right-click menu for a single library component.
 
-    Shared by the tree ("List") and grid views so both offer the same
-    entries. Returns ``(menu, favorite_action, show_action)``; the two
-    actions are the ones the caller must handle after ``menu.exec()``.
-    The open-in-an-application entries handle themselves, and are omitted
-    for an embedded compound, which has no file on disk to open.
+    Shared by the List tree, the Grid thumbnails and the Table view so all
+    three offer the same entries. ``panel`` supplies the favorites and, through
+    ``panel.component_actions``, the library-management entries; without it the
+    menu degrades to the read-only entries rather than failing.
     """
-    from PySide6.QtWidgets import QMenu
-    menu = QMenu(parent)
-    fav_act = menu.addAction(
-        "\u2605 Remove from Favorites" if is_favorite else "\u2606 Add to Favorites")
-    show_act = None
-    if comp_def is not None and comp_def.svg_path and not comp_def.is_embedded:
-        menu.addSeparator()
-        add_open_with_actions(menu, comp_def.svg_path, parent)
-        show_act = menu.addAction("Show in File Browser")
-    return menu, fav_act, show_act
+    return ComponentMenu(parent, comp_def, is_favorite, panel=panel, key=key)
+
+
+class CategoryMenu:
+    """The right-click menu for a category node.
+
+    Extracted from the tree's ``contextMenuEvent`` so that "Validate this
+    category" has somewhere to live and so the grid view can grow the same menu
+    without duplicating it.
+    """
+
+    def __init__(self, parent, category: str, library: ComponentLibrary | None,
+                 *, panel=None):
+        from PySide6.QtWidgets import QMenu
+
+        self._parent = parent
+        self._category = category
+        self._panel = panel
+        self._defs = (library.categories.get(category, []) if library else [])
+
+        self.menu = QMenu(parent)
+        self.table_act = self.menu.addAction("View as Table")
+        self.validate_act = None
+        if panel is not None and getattr(panel, "component_actions", None) \
+                is not None and self._defs:
+            self.validate_act = self.menu.addAction(
+                "Validate This Category\u2026")
+        self.show_act = None
+        if self._defs and self._defs[0].svg_path:
+            self.menu.addSeparator()
+            self.show_act = self.menu.addAction("Show in File Browser")
+        self.menu.addSeparator()
+        self.up_act = self.menu.addAction("\u2191 Move Up")
+        self.down_act = self.menu.addAction("\u2193 Move Down")
+
+    def exec(self, global_pos):
+        return self.handle(self.menu.exec(global_pos))
+
+    def handle(self, action) -> bool:
+        if action is None:
+            return False
+        panel = self._panel
+        if action is self.show_act:
+            _show_in_file_browser(self._defs[0].svg_path.parent)
+            return True
+        if panel is None:
+            return False
+        if action is self.table_act:
+            panel.open_library_table(self._category)
+        elif action is self.up_act:
+            panel.move_category(self._category, -1)
+        elif action is self.down_act:
+            panel.move_category(self._category, 1)
+        elif action is self.validate_act:
+            panel.component_actions.validate_category(
+                self._category, self._defs)
+        else:
+            return False
+        return True
+
+
+def build_category_menu(parent, category: str,
+                        library: ComponentLibrary | None, *, panel=None):
+    """Build the right-click menu for a category node."""
+    return CategoryMenu(parent, category, library, panel=panel)
 
 
 # =========================================================================
@@ -411,7 +575,14 @@ class _DragTree(QTreeWidget):
         child = QTreeWidgetItem(parent_item, [label])
         child.setData(0, Qt.ItemDataRole.UserRole, key)
         child.setIcon(0, _make_icon(comp_def))
-        child.setToolTip(0, f"{key}\nPorts: {', '.join(p.name for p in comp_def.ports)}")
+        tip = [key, f"Ports: {', '.join(p.name for p in comp_def.ports)}"]
+        if comp_def.is_user_owned:
+            tip.append("\u25cf Your copy — edits are kept across updates"
+                       if comp_def.source_kind == "overlay"
+                       else "\u25cf Your component")
+        elif comp_def.is_builtin:
+            tip.append("Ships with Diagrammer")
+        child.setToolTip(0, "\n".join(tip))
 
     def startDrag(self, supportedActions) -> None:
         item = self.currentItem()
@@ -441,46 +612,26 @@ class _DragTree(QTreeWidget):
         # Component context menu
         if key is not None:
             comp_def = self._library.get(key) if self._library else None
-            menu, fav_act, show_act = build_component_menu(
-                self, comp_def, key in self._favorites)
-            action = menu.exec(event.globalPos())
-            if action is fav_act:
-                panel = self.parent()
-                while panel and not isinstance(panel, LibraryPanel):
-                    panel = panel.parent()
-                if isinstance(panel, LibraryPanel):
-                    panel.toggle_favorite(key)
-            elif show_act and action is show_act:
-                _show_in_file_browser(comp_def.svg_path.parent)
-            return
-
-        # Category context menu (reorder + table view)
-        if raw_cat is not None:
-            menu = QMenu(self)
-            table_act = menu.addAction("View as Table")
-            # "Show in File Browser" — find the directory for this category
-            show_act = None
-            if self._library:
-                cat_defs = self._library.categories.get(raw_cat, [])
-                if cat_defs and cat_defs[0].svg_path:
-                    menu.addSeparator()
-                    show_act = menu.addAction("Show in File Browser")
-            menu.addSeparator()
-            up_act = menu.addAction("\u2191 Move Up")
-            down_act = menu.addAction("\u2193 Move Down")
-            action = menu.exec(event.globalPos())
+            if comp_def is None:
+                return
             panel = self.parent()
             while panel and not isinstance(panel, LibraryPanel):
                 panel = panel.parent()
-            if isinstance(panel, LibraryPanel):
-                if action is table_act:
-                    panel.open_library_table(raw_cat)
-                elif action is up_act:
-                    panel.move_category(raw_cat, -1)
-                elif action is down_act:
-                    panel.move_category(raw_cat, 1)
-            if show_act and action is show_act:
-                _show_in_file_browser(cat_defs[0].svg_path.parent)
+            build_component_menu(
+                self, comp_def, key in self._favorites,
+                panel=panel if isinstance(panel, LibraryPanel) else None,
+                key=key).exec(event.globalPos())
+            return
+
+        # Category context menu (reorder + table view + validate)
+        if raw_cat is not None:
+            panel = self.parent()
+            while panel and not isinstance(panel, LibraryPanel):
+                panel = panel.parent()
+            build_category_menu(
+                self, raw_cat, self._library,
+                panel=panel if isinstance(panel, LibraryPanel) else None,
+            ).exec(event.globalPos())
 
 
 # =========================================================================
@@ -634,16 +785,12 @@ class _DragThumbnail(QLabel):
     def build_menu(self):
         """Return this tile's context menu (see ``build_component_menu``)."""
         is_fav = self._panel.is_favorite(self._key) if self._panel else False
-        return build_component_menu(self, self._comp_def, is_fav)
+        return build_component_menu(self, self._comp_def, is_fav,
+                                    panel=self._panel, key=self._key)
 
     def contextMenuEvent(self, event) -> None:
         """Same component menu as the tree view, so either view can reach it."""
-        menu, fav_act, show_act = self.build_menu()
-        action = menu.exec(event.globalPos())
-        if action is fav_act and self._panel is not None:
-            self._panel.toggle_favorite(self._key)
-        elif show_act is not None and action is show_act:
-            _show_in_file_browser(self._comp_def.svg_path.parent)
+        self.build_menu().exec(event.globalPos())
 
 
 # =========================================================================
@@ -761,6 +908,14 @@ def _make_icon(comp_def: ComponentDef) -> QIcon:
 
     painter = QPainter(pixmap)
     renderer.render(painter, target_rect)
+    # A corner dot for a component the user owns, so "mine" versus "shipped" is
+    # visible without opening a menu — which matters because a fork shadows the
+    # built-in and the panel therefore shows only one entry for the two.
+    if comp_def.is_user_owned:
+        from PySide6.QtGui import QColor, QPen
+        painter.setPen(QPen(QColor(255, 255, 255), 1))
+        painter.setBrush(QColor(0, 120, 215))
+        painter.drawEllipse(QRectF(tw - 9, 2, 6, 6))
     painter.end()
     return QIcon(pixmap)
 

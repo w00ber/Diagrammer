@@ -149,6 +149,14 @@ _reg("file.save_as",   QKeySequence.StandardKey.SaveAs,   description="Save As..
 _reg("file.quit",      QKeySequence.StandardKey.Quit,     description="Quit",              category="File")
 _reg("file.refresh_libraries", _ks("F5"),                  description="Refresh Libraries", category="File")
 
+# ----- Library -----
+# Ctrl+I is free; Ctrl+Shift+I is already bound to the layers panel. Qt's
+# portable notation renders this as Cmd-I on macOS.
+_reg("library.inspect_component", _ks("Ctrl+I"),
+     description="Inspect & Validate Component", category="Library")
+_reg("library.validate_all",      None,
+     description="Validate Component Libraries", category="Library")
+
 # ----- Edit -----
 _reg("edit.undo",      QKeySequence.StandardKey.Undo,     description="Undo",              category="Edit")
 _reg("edit.redo",      QKeySequence.StandardKey.Redo,     description="Redo",              category="Edit")
@@ -181,8 +189,11 @@ _reg("edit.toggle_layer_lock",    _ks("Shift+L"),          description="Lock / U
 
 _reg("edit.bring_fwd",    _ks("Ctrl+]"),                   description="Bring Forward",     category="Edit")
 _reg("edit.send_bwd",     _ks("Ctrl+["),                   description="Send Backward",     category="Edit")
-_reg("edit.bring_front",  _ks("Ctrl+Shift+]"),             description="Bring to Front",    category="Edit")
-_reg("edit.send_back",    _ks("Ctrl+Shift+["),             description="Send to Back",      category="Edit")
+# Bring to Front / Send to Back moved off Ctrl+Shift+]/[ (Cmd-Shift on macOS),
+# which is the platform's tab-cycling chord (Safari, Terminal, Xcode) and now
+# cycles the canvas tabs -- see view.next_tab / view.prev_tab.
+_reg("edit.bring_front",  _ks("Ctrl+Alt+]"),               description="Bring to Front",    category="Edit")
+_reg("edit.send_back",    _ks("Ctrl+Alt+["),               description="Send to Back",      category="Edit")
 
 _reg("edit.group",     _ks("Ctrl+G"),                      description="Group",             category="Edit")
 _reg("edit.ungroup",   _ks("Ctrl+Shift+G"),                description="Ungroup",           category="Edit")
@@ -200,6 +211,8 @@ _reg("view.fit_all",   _ks("A"),                           description="Zoom All
 _reg("view.fit_all2",  _ks("Ctrl+0"),                      description="Zoom All / Fit",    category="View")
 _reg("view.zoom_window", _ks("Z"),                         description="Zoom Window",       category="View")
 _reg("view.close_tab",  QKeySequence.StandardKey.Close,    description="Close Tab",         category="View")
+_reg("view.next_tab",   _ks("Ctrl+Shift+]"),               description="Show Next Tab",     category="View")
+_reg("view.prev_tab",   _ks("Ctrl+Shift+["),               description="Show Previous Tab", category="View")
 _reg("view.toggle_grid", _ks("G"),                          description="Show / Hide Grid",  category="View")
 
 # ----- Routing -----

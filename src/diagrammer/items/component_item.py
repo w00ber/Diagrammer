@@ -32,6 +32,64 @@ STRETCH_HANDLE_HIT_MARGIN = 8.0  # extra margin for hit-testing
 LEAD_LAYER_IDS = ("leads", "leads-left", "leads-right", "leads-top", "leads-bottom")
 DIRECTIONAL_LEAD_IDS = ("leads-left", "leads-right", "leads-top", "leads-bottom")
 
+# Groups the canvas never paints: they carry positions, not artwork.
+DEFAULT_HIDDEN_LAYERS = ("ports", "labels", "stretch", "snap", "decorative")
+
+
+def prepare_svg_bytes_from_root(
+    root,
+    *,
+    hide_layers: tuple[str, ...] = DEFAULT_HIDDEN_LAYERS,
+    lead_shortening: dict[str, float] | None = None,
+    port_positions: list | None = None,
+    style_overrides=None,
+    flip_h: bool = False,
+    flip_v: bool = False,
+    rotation: float = 0.0,
+) -> bytes:
+    """Render-prepare an already-parsed ``<svg>`` root, in place.
+
+    The body of ``ComponentItem._prepare_svg_bytes``, split out so a caller
+    holding a document that is not on disk — a candidate in the component
+    inspector — can render it without writing a temp file first.
+
+    ``hide_layers`` is the one knob the inspector changes: it passes ``()``,
+    because the whole job there is to *show* where the ports, labels and
+    stretch axes sit. The canvas keeps the default.
+
+    Note this mutates ``root``; hand it a tree you own.
+    """
+    import xml.etree.ElementTree as ET
+
+    if hide_layers:
+        for elem in root.iter():
+            tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
+            if tag == "g" and elem.get("id") in hide_layers:
+                elem.set("display", "none")
+
+    # Shorten specific leads based on actual connections
+    if lead_shortening and port_positions:
+        xy_map = [(x, y) for _, x, y in port_positions]
+        name_map = {(round(x, 1), round(y, 1)): name for name, x, y in port_positions}
+        ComponentItem._shorten_leads_in_svg(root, lead_shortening, xy_map, name_map)
+
+    # Keep baked lettering readable when the item is flipped or rotated
+    ComponentItem._apply_upright(root, flip_h, flip_v, rotation)
+
+    # Drop Illustrator's stray anchor points before anything renders.
+    ComponentItem._strip_degenerate_paths(root)
+
+    # Inline CSS url() references (e.g. gradient fills) as direct SVG
+    # attributes so that downstream SVG manipulations (style overrides,
+    # compound export) can see them without parsing the <style> block.
+    ComponentItem._inline_css_url_refs(root)
+
+    # Apply per-instance style overrides
+    if style_overrides is not None and not style_overrides.is_empty():
+        ComponentItem._apply_style_overrides(root, style_overrides)
+
+    return ET.tostring(root, encoding="unicode").encode("utf-8")
+
 
 class ComponentItem(QGraphicsItem):
     """A diagram component rendered from an SVG definition.
@@ -507,38 +565,15 @@ class ComponentItem(QGraphicsItem):
             port_positions: List of (name, x, y) tuples for port positions.
             style_overrides: ComponentStyleOverrides instance (or None).
         """
-        import xml.etree.ElementTree as ET
         from diagrammer.io.svg_parse import parse_svg
         tree = parse_svg(svg_path)
-        root = tree.getroot()
-
-        for elem in root.iter():
-            tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-            if tag == "g" and elem.get("id") in ("ports", "labels", "stretch", "snap", "decorative"):
-                elem.set("display", "none")
-
-        # Shorten specific leads based on actual connections
-        if lead_shortening and port_positions:
-            xy_map = [(x, y) for _, x, y in port_positions]
-            name_map = {(round(x, 1), round(y, 1)): name for name, x, y in port_positions}
-            ComponentItem._shorten_leads_in_svg(root, lead_shortening, xy_map, name_map)
-
-        # Keep baked lettering readable when the item is flipped or rotated
-        ComponentItem._apply_upright(root, flip_h, flip_v, rotation)
-
-        # Drop Illustrator's stray anchor points before anything renders.
-        ComponentItem._strip_degenerate_paths(root)
-
-        # Inline CSS url() references (e.g. gradient fills) as direct SVG
-        # attributes so that downstream SVG manipulations (style overrides,
-        # compound export) can see them without parsing the <style> block.
-        ComponentItem._inline_css_url_refs(root)
-
-        # Apply per-instance style overrides
-        if style_overrides is not None and not style_overrides.is_empty():
-            ComponentItem._apply_style_overrides(root, style_overrides)
-
-        return ET.tostring(root, encoding="unicode").encode("utf-8")
+        return prepare_svg_bytes_from_root(
+            tree.getroot(),
+            lead_shortening=lead_shortening,
+            port_positions=port_positions,
+            style_overrides=style_overrides,
+            flip_h=flip_h, flip_v=flip_v, rotation=rotation,
+        )
 
     # Path commands that actually draw something. A ``d`` with none of
     # these is a bare anchor point: no geometry, no area, nothing to see.
@@ -752,15 +787,25 @@ class ComponentItem(QGraphicsItem):
         layer and direction-tagged ``leads-left``/``leads-right``/
         ``leads-top``/``leads-bottom`` layers receive shortening.
         """
+        seen: set[int] = set()
         for elem in root.iter():
             tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
             if tag != "g" or elem.get("id") not in LEAD_LAYER_IDS:
                 continue
-            for child in elem:
+            # Descendants, not just direct children. Illustrator nests its own
+            # sub-groups inside a layer, and 14 shipped components keep their
+            # leads two groups deep — ``<g id="leads"><g id="leads1"><g
+            # id="leads2"><path/>``. Looking only one level down found a <g>,
+            # skipped it, and silently shortened nothing on those parts.
+            for child in elem.iter():
+                if id(child) in seen:
+                    continue  # a tagged lead layer nested inside another
                 ctag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
                 if ctag == "line":
+                    seen.add(id(child))
                     ComponentItem._shorten_line_elem(child, lead_shortening, port_positions, name_map)
                 elif ctag == "path":
+                    seen.add(id(child))
                     ComponentItem._shorten_path_elem(child, lead_shortening, port_positions, name_map)
 
     @staticmethod

@@ -52,8 +52,104 @@ View all components in a library category as a reference table:
 
 Table views open in separate tabs. They support zoom (scroll wheel), pan (click-drag), and zoom window (Z key). Export the table view via File > Export as SVG/PNG/PDF while the table tab is active.
 
-- **Ctrl+W** — close the active table tab
-- The tab bar is hidden when only the diagram is open
+- **Ctrl+W** — close the active tab
+- **Ctrl+Shift+]** / **Ctrl+Shift+[** — show the next / previous tab (diagrams, tables and the Validation report alike)
+- The tab bar is hidden while only one diagram is open
+
+---
+
+## Managing Your Components
+
+Everything in the Library panel is one of two things, and the panel says which:
+
+- **Shipped** components come with Diagrammer. They update when the app does.
+- **Your copies**, marked with a small blue dot, live in
+  `~/.diagrammer/components/` and are never touched by an update.
+
+### Editing a shipped component
+
+Just edit it. Diagrammer cannot change a shipped file — it lives inside the
+application — so when you save, it writes **your own copy** instead and uses
+that from then on. The Save button says so before you press it. The shipped
+version is left alone, so you can go back at any time.
+
+Because only the components you actually edit get copied, everything else keeps
+receiving updates. If a future release changes something you have edited,
+Diagrammer tells you in the status bar and **Library ▸ Library Overrides** lets
+you compare the two side by side, keep yours, or revert.
+
+### Right-click a component
+
+- **Inspect & Validate…** (⌘I) — see below
+- **Move to Category…** — for a shipped component this puts *your copy* in the
+  new category and hides the shipped one; both are reversible
+- **Hide from Library…** / **Remove…** — a shipped component can only be
+  hidden, and that can be undone from Library ▸ Library Overrides. One of your
+  own can be hidden *or* moved to the Trash.
+- **Compare with / Revert to Shipped Version…** — on one of your copies
+- **Open With** — hand the file to Illustrator, Inkscape or any editor you
+  choose, then come back and re-check it
+
+---
+
+## Checking a Component
+
+Components are data, and a component can be wrong in ways that look perfectly
+fine as a picture: a port a few points off the frame edge makes wires approach
+from the wrong side, a lead that does not quite touch its port stops being
+shortened, and a lead drawn at the wrong weight makes the attached wire step in
+thickness at the join. Round-tripping a file through a vector editor causes all
+three.
+
+**Library ▸ Inspect & Validate Component** (⌘I) opens the component on a grid,
+with its frame outlined, and marks anything it finds. Hover a mark for an
+explanation of why it matters.
+
+- **Grid** — 5, 10, 20 pt or your own. Components are designed on a 20 pt grid,
+  but plenty of good ones sit off it deliberately, so the grid is shown rather
+  than enforced.
+- **Show ports** — ports, labels and stretch axes are drawn behind the symbol
+  and faded, so a lead end stays visible under its port marker. Switch it off
+  to see the drawing on its own.
+- **Highlight changes** — rings the places where the fixed version actually
+  draws differently. Worth reading the line above the diff: **many fixes change
+  the file without changing the drawing at all**, and it says so when that is
+  the case. Restoring a mangled port id or wrapping the artwork in a layer
+  render identically by design — the preview looking unchanged is the fix
+  working, not failing. When something *does* change it is often a single point
+  at the end of a lead, which is what the rings are for.
+- **Suggested fixes** — tick any you want. The preview updates as you tick, and
+  the **Changes** box shows exactly what would be written. A fix marked ▲ moves
+  geometry and is never pre-selected.
+- **Fixed / Side by side / Overlay** — Side by side puts the original and the
+  result over one continuous grid; Overlay ghosts the original underneath, which
+  is the only way to see a change smaller than a point.
+- **Save** writes the component (creating your copy if it was a shipped one);
+  **Save as New** keeps both.
+
+**Library ▸ Inspect SVG File…** does the same for any SVG, in a library or not —
+use it after editing a component in an external editor. If the file changes while
+the window is open, a bar offers to reload it.
+
+**Library ▸ Validate Component Libraries…** checks a whole library and groups
+what it finds by issue rather than by file, so a style point affecting seventy
+components is one line with one button rather than seventy lines. Double-click
+any row to open that component.
+
+The report opens in a **Validation** tab beside your diagrams (⇧⌘] / ⇧⌘[ to
+reach it) and keeps itself current: saving a component from the inspector
+re-checks it at once, and coming back to the tab or the app re-checks any file
+that changed on disk, e.g. in an external editor. Saving a shipped component
+usually makes your own copy instead of changing the shipped file; the shipped
+file's rows then read *replaced by your copy*, and opening one opens the copy.
+
+### Library conventions
+
+Each library has its own house style — lead weight above all, since the wire you
+attach takes its width from the lead. Settings ▸ Libraries lets you adjust what
+each one is checked against, and a blank field means "no convention", which
+switches that check off rather than failing it. A folder can also carry its own
+`library.json`, which travels with the folder and wins over the setting.
 
 ---
 
@@ -308,7 +404,7 @@ Double-click a component to enter **isolation mode** for editing individual SVG 
 
 | Action | Shortcut |
 |--------|----------|
-| New diagram | Ctrl+N |
+| New diagram (in a new tab) | Ctrl+N |
 | Open | Ctrl+O |
 | Save | Ctrl+S |
 | Save As | Ctrl+Shift+S |
@@ -316,10 +412,21 @@ Double-click a component to enter **isolation mode** for editing individual SVG 
 | Export PNG | File > Export as PNG |
 | Export PDF | File > Export as PDF |
 | Close Tab | Ctrl+W |
+| Next / Previous Tab | Ctrl+Shift+] / Ctrl+Shift+[ |
+
+### Several diagrams at once
+
+Each diagram opens in its own tab. **New** and **Open** add a tab rather than
+replacing the diagram in front of you — unless that one is an empty, untouched
+Untitled, which is reused. Opening a file that is already open just switches to
+its tab. Undo history, layers and selection belong to each diagram; grid, snap
+and routing settings apply to all of them. Copy in one tab and paste in another
+to move parts between diagrams. A **•** after a tab's name means unsaved
+changes; closing that tab, or quitting, asks first.
 
 Diagrams are saved as `.dgm` JSON files. All component positions, connections, waypoints, styles, layers, and transforms are preserved.
 
-**Unsaved changes** — a prompt appears when creating a new diagram, opening a file, or quitting with unsaved changes. Choose Save, Discard, or Cancel.
+**Unsaved changes** — a prompt appears when closing a diagram's tab or quitting with unsaved changes. Choose Save, Discard, or Cancel.
 
 ### Export scaling
 

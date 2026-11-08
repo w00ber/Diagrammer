@@ -30,6 +30,20 @@ Diagrammer renders SVG components at **1:1 with the viewBox dimensions**. One vi
 >
 > **How to catch it:** after export, confirm the `viewBox` numbers equal your artboard size. If the width/height are larger (often by the port radius, ~3 pt per edge, or by a whole guide grid), re-export with **Use Artboards** on. The generator comment near the top of the SVG records the Illustrator version, which helps when a tool upgrade silently changes the default.
 
+**Anything outside the `viewBox` is clipped.** Every render path — the canvas,
+the library thumbnails, every export — goes through
+`QSvgRenderer.render(painter, rect)`, which clips to that rect. So a stroke that
+overhangs the frame is cut off at it rather than drawn. This matters most at the
+edges, where ports live: a 2 pt lead ending exactly on the frame with a *round*
+cap has 1 pt of cap outside the frame, and that pt is never drawn. The symbol
+looks the same with `butt` caps, which is why the cap fix appears to do nothing
+on those ends — the difference was already being clipped away. Leads meeting the
+body *inside* the frame are where the cap actually shows.
+
+**Nest freely inside a layer.** `<g id="leads"><g><path/></g></g>` is read the
+same as a flat one: lead shortening walks the whole subtree. Illustrator nests
+its own groups and 14 shipped components rely on this.
+
 **Grid alignment tip:** Design port positions at multiples of the grid spacing (20 pt) for clean alignment. For example, place ports at x=0, x=20, x=40, x=60, x=80, x=100, and y values at multiples of 20.
 
 ## SVG Root Element
@@ -94,7 +108,7 @@ All layers are `<g>` elements with specific `id` attributes, placed as **direct 
 | `labels` | No (hidden) | Defines label placeholder positions |
 | `stretch` | No (hidden) | Optional explicit stretch break axes. When absent, axes are inferred from `tile` and direction-tagged leads. |
 | `tile` | Yes (cloned) | Tile unit for repeating stretch (inside artwork) |
-| `upright` | Yes (compensated) | Baked lettering that stays readable when the component is flipped or rotated (inside artwork) |
+| `upright` | Yes (compensated) | Baked lettering that stays readable when the component is flipped or rotated. Top level, **after** `leads` — see below |
 | `decorative` | No (hidden) | Marks component as freely resizable |
 | `snap` | No (hidden) | Defines grid snap anchor point |
 
@@ -330,16 +344,19 @@ translate(-c)`, applied to everything the item draws. Lettering baked into
 `artwork` therefore comes out mirrored on a flipped part and lying on its side
 on a rotated one.
 
-Put such lettering in a `<g id="upright">` **inside** `artwork`, and give each
-child a `data-anchor="x,y"` — the point it should stay pinned to:
+Put such lettering in a `<g id="upright">` at the **top level, after `leads`**,
+and give each child a `data-anchor="x,y"` — the point it should stay pinned to:
 
 ```xml
 <g id="artwork">
   <circle class="st1" cx="60" cy="60" r="24"/>
-  <g id="upright">
-    <path class="st3" data-anchor="18,54" transform="translate(10.3,54) scale(1,-1)"
-          d="M4.5,4.3 …"/>
-  </g>
+</g>
+<g id="leads">
+  <path class="st1" d="M60,0v36"/>
+</g>
+<g id="upright">
+  <path class="st3" data-anchor="18,54" transform="translate(10.3,54) scale(1,-1)"
+        d="M4.5,4.3 …"/>
 </g>
 ```
 
@@ -350,9 +367,12 @@ while leaving its anchor wherever the item transform puts it — so the text sta
 readable *and* still travels with the port it names. Compensation is per child,
 not per group, which is what makes a label follow its own port under rotation.
 
-**Put the `upright` group at the top level, after `leads`** — not inside
-`artwork`. SVG paints in document order, so lettering inside `artwork` is drawn
-*before* the leads and a lead will simply paint over it.
+The placement is not a style preference. SVG paints in document order, so
+lettering inside `artwork` is drawn *before* the leads and a lead will simply
+paint over it. `_apply_upright` walks the whole document for `<g id="upright">`,
+so a group nested inside `artwork` still gets its compensation — it just ends up
+underneath the wiring. That is why this is the one rule here with a mechanical
+consequence rather than a cosmetic one.
 
 **Two things keep a label clear of the wiring**, and they solve different halves
 of the problem:
@@ -495,8 +515,25 @@ export even from a custom library folder. Keep them out of the files anyway:
 
 Everything above is the contract the *application* enforces: get it wrong and
 ports go undetected or leads fail to shorten. This section is different — it is
-what the bundled libraries happen to agree on. Nothing here is checked by code,
-but a part that ignores it looks wrong sitting next to its neighbours.
+what the bundled libraries happen to agree on. A part that ignores it looks
+wrong sitting next to its neighbours.
+
+Some of it is now *checked* rather than merely written down, but only the parts
+with a mechanical consequence, and against the host library's own profile rather
+than a constant — `src/diagrammer/svglint/profiles.py` holds those, measured
+from the shipped artwork. Lead weight is checked because the attached wire takes
+its width from it. Grid conformance and body weight are deliberately **not**:
+97 of 208 shipped files miss the 20 pt grid and most do so by design, and body
+weight is inconsistent per family on purpose (see below), so any threshold
+would be wrong. Run the checks with:
+
+```bash
+python -m diagrammer.svglint src/diagrammer/components
+```
+
+or, in the app, Library ▸ Validate Component Libraries. The Component Inspector
+(⌘I) shows one part on a grid with its findings marked, which is the right tool
+for the positional questions no check can settle.
 
 ### Line weight is a property of the library
 

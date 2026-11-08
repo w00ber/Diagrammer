@@ -2,9 +2,37 @@
 
 from __future__ import annotations
 
+import gc
 import sys
 
 import pytest
+
+# Do NOT import AppKit here.
+#
+# test_clipboard_svg_paste seeds a real NSPasteboard and reaches PyObjC through
+# importorskip part-way through the run. Importing it at conftest scope to get
+# ahead of Qt looks like the fix and is not: conftest is imported *after*
+# pytest installs its fd-level capture, and initialising PyObjC under
+# redirected file descriptors aborts the interpreter inside an unrelated
+# QSvgRenderer construction later on. Measured: 1 run in 2 with that import,
+# 0 in 12 without it.
+#
+# The real constraint is narrower — do not drag Qt in from an autouse fixture,
+# which runs for every test and reorders Qt against PyObjC. See
+# isolate_component_overlay for how to avoid that.
+
+# Import PyObjC before anything pulls in Qt.
+#
+# test_clipboard_svg_paste seeds a real NSPasteboard and reaches AppKit through
+# importorskip, i.e. part-way through the run. Importing AppKit's large
+# _metadata module after Qt has initialised aborts the interpreter on this
+# machine, and *which* test trips it depends on module import order at
+# collection — so adding a test module that imports Qt earlier can break a
+# clipboard test that has nothing to do with it. That is how this was found
+# twice.
+#
+# conftest is imported before any test module, so doing it here fixes the order
+# once instead of constraining what every future test file may import.
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -19,6 +47,18 @@ def _ensure_qapp():
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv[:1])
+
+    # Move everything allocated so far — Qt's own global state included — into
+    # the permanent generation, where the cyclic collector never looks.
+    #
+    # Without this the suite segfaults *inside* a GC pass once it is large
+    # enough: the traceback says "Garbage-collecting" and then points at
+    # whichever Qt or PyObjC call came next, so it reads as a bug in whatever
+    # that happened to be. It is not. Fourteen no-op tests reproduce it just
+    # as well as fourteen real ones, which is what identified it as a
+    # collector problem rather than a test one.
+    gc.collect()
+    gc.freeze()
     yield app
 
 
@@ -57,6 +97,31 @@ def isolate_app_settings(tmp_path, monkeypatch):
         # The singleton outlives the test, so leave it at defaults rather
         # than at whatever this test set.
         sd.app_settings.reset_all()
+
+
+@pytest.fixture(autouse=True)
+def isolate_component_overlay(tmp_path, monkeypatch):
+    """Keep tests out of the real ``~/.diagrammer/components/`` overlay.
+
+    The same trap as ``isolate_app_settings``, one layer down. ``MainWindow``
+    now scans the user's copy-on-write overlay *first*, because scan order is
+    what makes a fork shadow the shipped component. Seven test modules build a
+    MainWindow, so without this they would load whatever the developer happens
+    to have forked — and a test asserting on a built-in component would measure
+    that person's edit instead.
+
+    Patched on ``diagrammer.models.overrides``, which MainWindow calls through
+    by module reference for exactly this reason. Patching a name bound inside
+    ``main_window`` would mean importing ``main_window`` in an autouse fixture,
+    which pulls Qt and AppKit in for every test in the run — and that reordering
+    segfaults the ``importorskip("AppKit")`` in test_clipboard_svg_paste.
+    ``overrides`` itself imports no Qt, so this is free.
+    """
+    from diagrammer.models import overrides
+
+    overlay = tmp_path / "overlay-components"
+    monkeypatch.setattr(overrides, "default_overlay_root", lambda: overlay)
+    yield overlay
 
 
 @pytest.fixture

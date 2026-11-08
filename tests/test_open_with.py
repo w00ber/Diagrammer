@@ -127,7 +127,8 @@ def test_grid_thumbnail_menu_offers_open_actions(svg_file, monkeypatch):
     comp_def = ComponentDef.from_svg(svg_file)
     thumb = _DragThumbnail(comp_def, LibraryPanel(ComponentLibrary()))
 
-    menu, fav_act, show_act = thumb.build_menu()
+    cm = thumb.build_menu()
+    menu, fav_act, show_act = cm.menu, cm.fav_act, cm.show_act
     texts = _action_texts(menu)
     assert "Open in Default App" in texts
     assert "Open With" in texts
@@ -142,7 +143,8 @@ def test_grid_thumbnail_menu_hides_open_for_embedded(svg_file, monkeypatch):
     comp_def.is_embedded = True
     thumb = _DragThumbnail(comp_def, LibraryPanel(ComponentLibrary()))
 
-    menu, fav_act, show_act = thumb.build_menu()
+    cm = thumb.build_menu()
+    menu, fav_act, show_act = cm.menu, cm.fav_act, cm.show_act
     texts = _action_texts(menu)
     assert "Open in Default App" not in texts
     assert "Open With" not in texts
@@ -155,8 +157,9 @@ def test_tree_and_grid_menus_match(svg_file, monkeypatch):
     monkeypatch.setattr(open_with, "detect_apps", lambda: ["/Applications/Found.app"])
     comp_def = ComponentDef.from_svg(svg_file)
     panel = LibraryPanel(ComponentLibrary())
-    tree_menu, _, _ = build_component_menu(panel, comp_def, is_favorite=False)
-    grid_menu, _, _ = _DragThumbnail(comp_def, panel).build_menu()
+    tree_menu = build_component_menu(
+        panel, comp_def, is_favorite=False).menu
+    grid_menu = _DragThumbnail(comp_def, panel).build_menu().menu
     assert _action_texts(tree_menu) == _action_texts(grid_menu)
 
 
@@ -178,7 +181,8 @@ def test_table_view_cell_menu_matches_panel_menu(svg_file, monkeypatch):
 
     panel = LibraryPanel(ComponentLibrary())
     view.set_library_panel(panel)
-    menu, fav_act, show_act = build_component_menu(view, comp_def, is_favorite=False)
+    cm = build_component_menu(view, comp_def, is_favorite=False)
+    menu, fav_act, show_act = cm.menu, cm.fav_act, cm.show_act
     texts = _action_texts(menu)
     assert "Open in Default App" in texts and "Open With" in texts
     assert show_act is not None and fav_act is not None

@@ -44,7 +44,10 @@ def _get_lead_stroke_width(port: PortItem) -> float | None:
                 props = {}
                 for pm in re.finditer(r'([\w-]+)\s*:\s*([^;]+)', m.group(2)):
                     props[pm.group(1).strip()] = pm.group(2).strip()
-                for cm in re.finditer(r'\.(\w+)', m.group(1)):
+                # [\w-] not \w: a hyphen is legal in a CSS class name, and
+                # \w+ would read ".foo-bar" as "foo" — recording the wrong
+                # class and then failing to resolve the element's real one.
+                for cm in re.finditer(r'\.([\w-]+)', m.group(1)):
                     css_classes.setdefault(cm.group(1), {}).update(props)
 
     # Find any lead layer (legacy "leads" or direction-tagged variants).

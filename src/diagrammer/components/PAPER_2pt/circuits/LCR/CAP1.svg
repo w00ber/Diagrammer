@@ -14,6 +14,14 @@
         stroke-linejoin: bevel;
         stroke-width: 2px;
       }
+
+      .st1lead {
+        fill: none;
+        stroke: #000;
+        stroke-linecap: butt;
+        stroke-linejoin: bevel;
+        stroke-width: 2px;
+      }
     </style>
   </defs>
   <g id="artwork">
@@ -23,8 +31,8 @@
     </g>
   </g>
   <g id="leads">
-    <path class="st1" d="M30,0v45.4"/>
-    <path class="st1" d="M30,100v-44.9"/>
+    <path class="st1lead" d="M30,0v45.4"/>
+    <path class="st1lead" d="M30,100v-44.9"/>
   </g>
   <g id="ports">
     <circle id="port:left" class="st0" cx="30" r="3"/>
