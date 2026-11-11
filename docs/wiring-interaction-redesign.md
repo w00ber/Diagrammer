@@ -330,6 +330,15 @@ decision; C does.
   commit; `_snap_to_grid` survives only for Ctrl+click waypoint
   insertion, which is a placement, not a drag.
 
+- 2026-11-11: **One pruning loop.** `_simplify_closed` is gone:
+  `simplify_waypoints` handles both shapes, differing only in
+  `_bend_sequence()` (`[src, *waypoints, tgt]` for an open wire, the
+  wrapping vertex list for a polygon) and `_min_waypoints()` (0 against
+  3, since a polygon pruned below three vertices would vanish under the
+  user). The fork had drifted: the closed loop never skipped the handle
+  the user was holding, so a closed polygon could have a vertex pruned
+  out from under a drag. It now inherits that rule.
+
 - 2026-11-11: **`segment_count()` / `segment_endpoints()`** replace the
   four independent `n if self._closed else n - 1` re-derivations in
   hit-testing, painting, the crossover-hop scan and the segment-drag
@@ -340,13 +349,12 @@ decision; C does.
 
 Candidates for a later pass, none of them load-bearing.
 
-1. **The closed-polygon paths still duplicate the open-wire ones.**
-   `segment_count()` absorbed the index arithmetic, but
-   `simplify_waypoints` still forks to a whole separate
-   `_simplify_closed`, and for a closed wire "waypoints *are* the
-   vertices" — a second meaning for the same field, which
-   `DiagramScene` compensates for at creation time by prepending the
-   source position.
+1. **"Waypoints *are* the vertices" for a closed wire** — a second
+   meaning for the same field, which `DiagramScene` compensates for at
+   creation time by prepending the source position. The index
+   arithmetic and the pruning loop are now shared; this last difference
+   is in the data model, so it is the one that would actually cost
+   something to remove.
 2. **The gesture decision still lives on the item.** `DragSession` now
    owns the state and the undo for a wire drag, but
    `ConnectionItem.mousePressEvent` still hit-tests and decides, where

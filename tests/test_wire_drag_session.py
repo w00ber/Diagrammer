@@ -389,3 +389,56 @@ class TestThroughTheRealHandlers:
 
         assert w._drag is None
         assert w._selected_waypoints == set(range(len(w.vertices)))
+
+
+class TestOnePruningLoop:
+    """``simplify_waypoints`` handles open wires and closed polygons in
+    one loop. They differ only in which three points decide a bend and in
+    how few may be left, both of which ``_bend_sequence`` /
+    ``_min_waypoints`` answer."""
+
+    def _square(self, scene):
+        a = _junction(scene, 0, 0)
+        w = _connect(scene, a, a)
+        w.closed = True
+        return w
+
+    def test_a_collinear_vertex_is_pruned_from_a_closed_polygon(self, scene):
+        w = self._square(scene)
+        w.vertices = [QPointF(0, 0), QPointF(50, 0), QPointF(100, 0),
+                      QPointF(100, 100), QPointF(0, 100)]
+        assert w.simplify_waypoints() is True
+        assert _xy(w.vertices) == [(0.0, 0.0), (100.0, 0.0),
+                                   (100.0, 100.0), (0.0, 100.0)]
+
+    def test_a_closed_polygon_never_prunes_below_three_vertices(self, scene):
+        """A triangle of collinear points is degenerate, but pruning it
+        away would make the shape vanish under the user."""
+        w = self._square(scene)
+        w.vertices = [QPointF(0, 0), QPointF(50, 0), QPointF(100, 0)]
+        assert w.simplify_waypoints() is False
+        assert len(w.vertices) == 3
+
+    def test_a_held_vertex_survives_pruning_on_a_closed_polygon(self, scene):
+        """The open-wire loop always skipped the handle the user is
+        holding; ``_simplify_closed`` did not, so a closed polygon could
+        have a vertex pruned out from under a drag."""
+        w = self._square(scene)
+        w.vertices = [QPointF(0, 0), QPointF(50, 0), QPointF(100, 0),
+                      QPointF(100, 100), QPointF(0, 100)]
+        w._selected_waypoints = {1}          # the collinear one, grabbed
+        assert w.simplify_waypoints() is False
+        assert (50.0, 0.0) in _xy(w.vertices)
+
+    def test_an_open_wire_judges_its_end_waypoints_against_the_ports(self, scene):
+        """The open sequence is ``[src, *waypoints, tgt]``, so a waypoint
+        collinear with a *port* goes — which is how a stub left on a
+        moved port heals."""
+        a = _junction(scene, 0, 0)
+        b = _junction(scene, 400, 0)
+        w = _connect(scene, a, b)
+        # (100,0) sits on the straight run from the source port at (0,0)
+        # to the bend at (200,0), so it contributes nothing and goes.
+        w.vertices = [QPointF(100, 0), QPointF(200, 0), QPointF(200, 60)]
+        assert w.simplify_waypoints() is True
+        assert _xy(w.vertices) == [(200.0, 0.0), (200.0, 60.0)]

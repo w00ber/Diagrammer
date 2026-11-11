@@ -502,26 +502,29 @@ class ConnectionItem(QGraphicsPathItem):
         the junction is its own item and its own grab handle now, so
         older files' handle waypoints heal away on first touch.
 
+        Open wires and closed polygons differ only in which three points
+        decide a bend and in how few may be left; both go through this
+        one loop, so a closed polygon also keeps the handle the user is
+        holding — the separate ``_simplify_closed`` used to prune it out
+        from under them.
+
         The caller is responsible for :meth:`update_route`.
         """
-        if self._closed:
-            return self._simplify_closed()
-
         removed_any = False
-        while True:
-            n = len(self._waypoints)
-            if n == 0:
-                break
-            kps = self._key_points()  # [src, *waypoints, tgt]
+        floor = self._min_waypoints()
+        while len(self._waypoints) > floor:
+            # Once per pass, not once per candidate: for an open wire
+            # this reads both ports out of the scene.
+            seq = self._bend_sequence()
             victim = None
-            for wi in range(n):
+            for wi in range(len(self._waypoints)):
                 if wi in self._selected_waypoints:
                     # The user is holding this handle (or just placed it
                     # with Ctrl+click, which lands it right on the line).
                     # Pruning it out from under them is never helpful.
                     continue
-                if is_redundant_bend(kps[wi], kps[wi + 1], kps[wi + 2],
-                                     _SIMPLIFY_TOL):
+                a, b, c = self._bend_neighbours(seq, wi)
+                if is_redundant_bend(a, b, c, _SIMPLIFY_TOL):
                     victim = wi
                     break
             if victim is None:
@@ -530,6 +533,36 @@ class ConnectionItem(QGraphicsPathItem):
             self._reindex_selected_waypoints(victim)
             removed_any = True
         return removed_any
+
+    def _bend_sequence(self) -> list[QPointF]:
+        """The point sequence pruning reads its neighbours from.
+
+        An open wire's end waypoints are judged against the ports, so
+        the sequence is ``[src, *waypoints, tgt]``. A closed polygon has
+        no ports in its shape: every point is a vertex and the sequence
+        wraps.
+        """
+        if self._closed:
+            return [QPointF(w) for w in self._waypoints]
+        return self._key_points()
+
+    def _bend_neighbours(
+        self, seq: list[QPointF], i: int,
+    ) -> tuple[QPointF, QPointF, QPointF]:
+        """The three points of *seq* that decide whether waypoint *i* bends."""
+        if self._closed:
+            n = len(seq)
+            return seq[(i - 1) % n], seq[i], seq[(i + 1) % n]
+        return seq[i], seq[i + 1], seq[i + 2]
+
+    def _min_waypoints(self) -> int:
+        """How few waypoints pruning may leave.
+
+        A closed polygon needs three vertices or there is no shape left
+        to draw and it would vanish under the user; an open wire with
+        none at all is simply a straight line.
+        """
+        return 3 if self._closed else 0
 
     def _reindex_selected_waypoints(self, removed: int) -> None:
         """Shift the multi-select set down after waypoint *removed* went.
@@ -545,31 +578,6 @@ class ConnectionItem(QGraphicsPathItem):
             for i in self._selected_waypoints
             if i != removed
         }
-
-    def _simplify_closed(self) -> bool:
-        """``simplify_waypoints`` for a closed polygon (all points are vertices).
-
-        Stops at three vertices — below that there is no polygon left to
-        draw, so a degenerate shape keeps its points rather than
-        vanishing under the user.
-        """
-        removed_any = False
-        while len(self._waypoints) > 3:
-            n = len(self._waypoints)
-            victim = None
-            for i in range(n):
-                if is_redundant_bend(self._waypoints[(i - 1) % n],
-                                     self._waypoints[i],
-                                     self._waypoints[(i + 1) % n],
-                                     _SIMPLIFY_TOL):
-                    victim = i
-                    break
-            if victim is None:
-                break
-            self._pop_waypoint_at(victim)
-            self._reindex_selected_waypoints(victim)
-            removed_any = True
-        return removed_any
 
     # =====================================================================
     # Route expansion
