@@ -48,14 +48,9 @@ def _xy(points) -> list[tuple[float, float]]:
 
 
 def _segment_drag(conn: ConnectionItem, seg_idx: int, dx: float, dy: float) -> None:
-    """Replay what ``mouseMoveEvent`` does for a segment drag."""
+    """Replay one step of a segment drag, through the app's own method."""
     base = [QPointF(p) for p in conn.all_points()]
-    new = conn._apply_segment_drag(seg_idx, QPointF(dx, dy), base)
-    for comp, pt in ((conn.source_port.component, new[0]),
-                     (conn.target_port.component, new[-1])):
-        if isinstance(comp, JunctionItem):
-            comp.setPos(pt)
-    conn._adopt_route(new)
+    conn.reshape_from_segment(seg_idx, QPointF(dx, dy), base)
 
 
 class TestSimplifyWaypoints:

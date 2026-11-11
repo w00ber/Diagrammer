@@ -505,8 +505,8 @@ class TestWaypointDrag:
     """
 
     def test_single_waypoint_drag_persists_through_update_route(self, scene, library):
-        """Simulate the connection_item drag flow: set _dragging_waypoint
-        and feed a mouseMoveEvent. The new position must survive the
+        """Simulate the connection_item drag flow: begin the gesture and
+        feed a mouseMoveEvent. The new position must survive the
         update_route() refresh that fires inside the move handler."""
         cdef = _two_port_def(library)
         comp_a = _place_component(scene, cdef, QPointF(0, 0))
@@ -518,8 +518,8 @@ class TestWaypointDrag:
         conn = _connect(scene, comp_a, comp_a.ports[-1].port_name,
                         comp_b, comp_b.ports[0].port_name, waypoints=[wp])
         # Bypass the press handler (which needs view-level event setup)
-        # and put the connection straight into "dragging waypoint 0".
-        conn._dragging_waypoint = 0
+        # and start the gesture directly.
+        conn.begin_waypoint_drag(0, wp)
 
         # Drag the waypoint 50 units up. Build a synthetic QMouseEvent
         # that the connection's mouseMoveEvent can read scenePos from.

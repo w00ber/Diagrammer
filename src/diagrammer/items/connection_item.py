@@ -208,15 +208,17 @@ class ConnectionItem(QGraphicsPathItem):
         self._hover_segment: int | None = None  # index into _expanded
 
         # Dragging state --------------------------------------------------
-        self._dragging_waypoint: int | None = None  # index into _waypoints
-        self._dragging_group: bool = False           # True when dragging selected group
-        self._dragging_segment: int | None = None    # index into _expanded
+        # The wire's own reshape gesture — waypoint or segment drag — is
+        # one ``DragSession`` like every other drag on the canvas, so the
+        # only state here is which session is running, where the mouse
+        # started, and which point the grid snap anchors on. See
+        # ``docs/wiring-interaction-redesign.md``, invariant I5.
+        self._drag = None                            # DragSession | None
+        self._drag_anchor: QPointF | None = None     # grabbed point, for the snap
+        self._drag_label: str = "Move waypoints"
         self._dragging_arrow: int | None = None      # index into _arrows
         self._drag_start_pos: QPointF | None = None
-        self._drag_start_expanded: list[QPointF] | None = None
-        self._drag_start_waypoints: list[QPointF] | None = None  # for undo
         self._drag_start_arrows: list[WireArrow] | None = None   # for undo
-        self._drag_start_junction_pos: dict[str, QPointF] = {}  # instance_id → start pos
 
         # Flags -----------------------------------------------------------
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
@@ -909,12 +911,11 @@ class ConnectionItem(QGraphicsPathItem):
             if m < 2:
                 continue
             sign = -1 if flip else 1
-            num_other_segs = m if other._closed else m - 1
             for i in range(len(my_pts) - 1):
-                for j in range(num_other_segs):
+                for j in range(other.segment_count()):
+                    oa, ob = other.segment_endpoints(j)
                     hit = segment_intersection(
-                        my_pts[i], my_pts[i + 1],
-                        opts[j], opts[(j + 1) % m],
+                        my_pts[i], my_pts[i + 1], oa, ob,
                         endpoint_exclusion=1.0,
                     )
                     if hit is not None:
@@ -1023,18 +1024,14 @@ class ConnectionItem(QGraphicsPathItem):
             painter.drawPath(self.path())
         # When a selected wire is hovered, emphasise the segment a drag
         # would move — also beneath the wire, a touch stronger than the halo.
-        if self._hover_segment is not None and selected:
-            pts = self._expanded
-            n = len(pts)
-            num_segs = n if self._closed else n - 1
-            if 0 <= self._hover_segment < num_segs:
-                seg_color = QColor(SELECTION_COLOR)
-                seg_color.setAlpha(150)
-                seg_pen = QPen(seg_color, self._line_width + SELECTION_HALO_EXTRA)
-                seg_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-                painter.setPen(seg_pen)
-                painter.drawLine(pts[self._hover_segment],
-                                 pts[(self._hover_segment + 1) % n])
+        if (selected and self._hover_segment is not None
+                and 0 <= self._hover_segment < self.segment_count()):
+            seg_color = QColor(SELECTION_COLOR)
+            seg_color.setAlpha(150)
+            seg_pen = QPen(seg_color, self._line_width + SELECTION_HALO_EXTRA)
+            seg_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(seg_pen)
+            painter.drawLine(*self.segment_endpoints(self._hover_segment))
 
         # The wire itself, always in its own colour — selection never
         # hides it.
@@ -1150,19 +1147,6 @@ class ConnectionItem(QGraphicsPathItem):
             return pos
         return snap_to_grid(pos, view.grid_spacing)
 
-    def _record_endpoint_junction_starts(self) -> None:
-        """Record starting positions of endpoint junctions before a waypoint drag."""
-        from diagrammer.items.junction_item import JunctionItem
-        self._drag_start_junction_pos = {}
-        if not self._waypoints:
-            return
-        src_comp = self._source_port.component if self._source_port else None
-        if isinstance(src_comp, JunctionItem):
-            self._drag_start_junction_pos[src_comp.instance_id] = QPointF(src_comp.pos())
-        tgt_comp = self._target_port.component if self._target_port else None
-        if isinstance(tgt_comp, JunctionItem):
-            self._drag_start_junction_pos[tgt_comp.instance_id] = QPointF(tgt_comp.pos())
-
     # =====================================================================
     # Hit-testing helpers
     # =====================================================================
@@ -1184,6 +1168,31 @@ class ConnectionItem(QGraphicsPathItem):
                 return i
         return None
 
+    def segment_count(self, points: list[QPointF] | None = None) -> int:
+        """How many drawn segments the route has.
+
+        A closed polygon has one more than an open wire — the segment
+        from the last point back to the first. Hit-testing, painting,
+        crossover hops and the segment-drag clamp each used to
+        re-derive ``n if self._closed else n - 1`` for themselves, and a
+        closed wire's last segment was dropped wherever one of them
+        forgot. *points* overrides the live route, for code working from
+        a drag snapshot.
+        """
+        pts = self._expanded if points is None else points
+        n = len(pts)
+        if n < 2:
+            return 0
+        return n if self._closed else n - 1
+
+    def segment_endpoints(
+        self, i: int, points: list[QPointF] | None = None,
+    ) -> tuple[QPointF, QPointF]:
+        """The two ends of segment *i*, wrapping for a closed polygon."""
+        pts = self._expanded if points is None else points
+        n = len(pts)
+        return pts[i], pts[(i + 1) % n]
+
     def _find_segment_at(self, scene_pos: QPointF) -> int | None:
         """Return the segment index in the expanded route nearest to *scene_pos*.
 
@@ -1191,16 +1200,11 @@ class ConnectionItem(QGraphicsPathItem):
         (wrapping for closed polygons).
         Returns ``None`` if nothing is within ``HIT_TOLERANCE * 2`` screen px.
         """
-        pts = self._expanded
-        if len(pts) < 2:
-            return None
-
-        n = len(pts)
-        num_segs = n if self._closed else n - 1
         best_dist = self._pick_tolerance(HIT_TOLERANCE * 2)
         best_idx: int | None = None
-        for i in range(num_segs):
-            _, dist = closest_point_on_segment(scene_pos, pts[i], pts[(i + 1) % n])
+        for i in range(self.segment_count()):
+            a, b = self.segment_endpoints(i)
+            _, dist = closest_point_on_segment(scene_pos, a, b)
             if dist < best_dist:
                 best_dist = dist
                 best_idx = i
@@ -1239,12 +1243,10 @@ class ConnectionItem(QGraphicsPathItem):
         """
         pts = [QPointF(p) for p in base_expanded]
         n = len(pts)
-        max_seg = n if self._closed else n - 1
-        if seg_idx < 0 or seg_idx >= max_seg:
+        if seg_idx < 0 or seg_idx >= self.segment_count(base_expanded):
             return pts
 
-        p1 = base_expanded[seg_idx]
-        p2 = base_expanded[(seg_idx + 1) % n]
+        p1, p2 = self.segment_endpoints(seg_idx, base_expanded)
         is_h = self._seg_is_horizontal(p1, p2)
 
         # Indices of the two endpoints of the dragged segment
@@ -1322,6 +1324,147 @@ class ConnectionItem(QGraphicsPathItem):
         if not isinstance(tgt_comp, JunctionItem):
             pts[-1] = QPointF(base_expanded[-1])
         return pts
+
+    def endpoint_junctions(self) -> list:
+        """This wire's ``JunctionItem`` endpoints, source before target.
+
+        A junction endpoint is a free anchor: a segment drag carries it
+        along with the route instead of clamping it. The drag session
+        needs them so it can snapshot their positions for undo.
+        """
+        from diagrammer.items.junction_item import JunctionItem
+
+        out = []
+        for port in (self._source_port, self._target_port):
+            comp = port.component if port else None
+            if isinstance(comp, JunctionItem):
+                out.append(comp)
+        return out
+
+    def reshape_from_segment(
+        self, seg_idx: int, delta: QPointF, base_expanded: list[QPointF],
+    ) -> None:
+        """Drag segment *seg_idx* by *delta*, from the *base_expanded* snapshot.
+
+        One idempotent step of a segment drag: always computed from the
+        snapshot, never from the wire's current shape, so the same delta
+        twice is the same result. ``DragSession`` drives this through
+        ``SegmentReshape``.
+
+        Junction endpoints are placed before ``_adopt_route``, which
+        re-derives the route from the ports' *current* positions — move
+        them after and the adopted shape is one frame stale.
+        """
+        from diagrammer.items.junction_item import JunctionItem
+
+        route = self._apply_segment_drag(seg_idx, delta, base_expanded)
+        if route:
+            src_comp = self._source_port.component if self._source_port else None
+            if isinstance(src_comp, JunctionItem):
+                src_comp.setPos(route[0])
+            tgt_comp = self._target_port.component if self._target_port else None
+            if isinstance(tgt_comp, JunctionItem):
+                tgt_comp.setPos(route[-1])
+        self._adopt_route(route)
+
+    # =====================================================================
+    # The wire's own drag — one DragSession, like every other
+    # =====================================================================
+
+    def _grid_snap(self) -> tuple[float, bool]:
+        """``(spacing, enabled)`` for the view showing this wire."""
+        scene = self.scene()
+        views = scene.views() if scene is not None else []
+        if not views:
+            return 20.0, False
+        view = views[0]
+        return (getattr(view, "grid_spacing", 20.0),
+                bool(getattr(view, "_snap_enabled", True)))
+
+    def _begin_wire_drag(
+        self, *, anchor: QPointF, scene_pos: QPointF, label: str,
+        waypoints=None, segment: int | None = None,
+    ) -> None:
+        """Start a ``DragSession`` for this wire's own reshape gesture.
+
+        *waypoints* drives those waypoint indices by the delta; *segment*
+        reshapes the whole route from one dragged segment. *anchor* is
+        the point the grid snap lands — the grabbed handle, or the
+        dragged segment's corner — so an off-grid wire is pulled *onto*
+        the grid by the drag instead of sliding in rigid grid-sized steps
+        forever. That used to be three different rules in three
+        branches, which is why a run could refuse to straighten.
+        """
+        from diagrammer.canvas.closure import Closure
+        from diagrammer.canvas.drag import DragSession, SegmentReshape
+
+        scene = self.scene()
+        if scene is None or not hasattr(scene, "undo_stack"):
+            return
+        self._drag = DragSession(
+            scene, Closure(),
+            waypoint_selection=({self.instance_id: set(waypoints)}
+                                if waypoints else None),
+            wires_by_id={self.instance_id: self},
+            reshape=(SegmentReshape(self, segment)
+                     if segment is not None else None),
+        )
+        self._drag_start_pos = QPointF(scene_pos)
+        self._drag_anchor = QPointF(anchor)
+        self._drag_label = label
+
+    def begin_waypoint_drag(self, index: int, scene_pos: QPointF | None = None) -> None:
+        """Start dragging waypoint *index*, with any others the user selected."""
+        if not (0 <= index < len(self._waypoints)):
+            return
+        idxs = (set(self._selected_waypoints)
+                if index in self._selected_waypoints else set())
+        idxs.add(index)
+        anchor = QPointF(self._waypoints[index])
+        self._begin_wire_drag(
+            anchor=anchor, scene_pos=anchor if scene_pos is None else scene_pos,
+            label="Move waypoints", waypoints=idxs,
+        )
+
+    def begin_segment_drag(self, seg_idx: int, scene_pos: QPointF | None = None) -> None:
+        """Start dragging segment *seg_idx* of the expanded route."""
+        pts = self._expanded
+        if seg_idx < 0 or seg_idx >= self.segment_count():
+            return
+        anchor = QPointF(pts[seg_idx])
+        self._begin_wire_drag(
+            anchor=anchor, scene_pos=anchor if scene_pos is None else scene_pos,
+            label="Drag segment", segment=seg_idx,
+        )
+
+    def _advance_wire_drag(self, mouse: QPointF) -> None:
+        """Apply the gesture for the cursor at *mouse*. Idempotent."""
+        from diagrammer.canvas.drag import delta_landing_on_grid
+
+        if self._drag is None or self._drag_start_pos is None:
+            return
+        raw = mouse - self._drag_start_pos
+        spacing, enabled = self._grid_snap()
+        self._drag.move_to(delta_landing_on_grid(
+            self._drag_anchor, raw, spacing, enabled=enabled))
+
+    def _end_wire_drag(self) -> bool:
+        """Commit the gesture as one undo macro. False if nothing moved."""
+        drag, label = self._drag, self._drag_label
+        self._drag = None
+        self._drag_start_pos = None
+        self._drag_anchor = None
+        if drag is None:
+            return False
+        return drag.commit(label)
+
+    def _cancel_wire_drag(self) -> None:
+        """Abandon the gesture without touching the undo stack."""
+        if self._drag is not None:
+            self._drag.finish()
+        self._drag = None
+        self._drag_start_pos = None
+        self._drag_anchor = None
 
     # =====================================================================
     # Mouse interaction
@@ -1403,29 +1546,14 @@ class ConnectionItem(QGraphicsPathItem):
                 event.accept()
                 return
 
-            # Click on a selected waypoint → start group drag
-            if wi is not None and wi in self._selected_waypoints:
-                self._dragging_waypoint = wi
-                self._dragging_group = True
-                self._drag_start_pos = QPointF(pos)
-                self._drag_start_expanded = [QPointF(p) for p in self._expanded]
-                self._drag_start_waypoints = [QPointF(w) for w in self._waypoints]
-                self._record_endpoint_junction_starts()
-                event.accept()
-                return
-
-            # Click on an unselected waypoint → select it and start drag
+            # Click on a waypoint → drag it, with any others selected
             if wi is not None:
-                if not shift:
-                    self._selected_waypoints.clear()
-                self._selected_waypoints.add(wi)
-                self._dragging_waypoint = wi
-                self._dragging_group = len(self._selected_waypoints) > 1
-                self._drag_start_pos = QPointF(pos)
-                self._drag_start_expanded = [QPointF(p) for p in self._expanded]
-                self._drag_start_waypoints = [QPointF(w) for w in self._waypoints]
-                self._record_endpoint_junction_starts()
-                self.update()
+                if wi not in self._selected_waypoints:
+                    if not shift:
+                        self._selected_waypoints.clear()
+                    self._selected_waypoints.add(wi)
+                    self.update()
+                self.begin_waypoint_drag(wi, pos)
                 event.accept()
                 return
 
@@ -1437,19 +1565,7 @@ class ConnectionItem(QGraphicsPathItem):
             # Segment drag
             si = self._find_segment_at(pos)
             if si is not None:
-                self._dragging_segment = si
-                self._drag_start_pos = QPointF(pos)
-                self._drag_start_expanded = [QPointF(p) for p in self._expanded]
-                self._drag_start_waypoints = [QPointF(w) for w in self._waypoints]
-                # Record junction endpoint positions for undo.
-                from diagrammer.items.junction_item import JunctionItem
-                self._drag_start_junction_pos = {}
-                src_comp = self._source_port.component if self._source_port else None
-                if isinstance(src_comp, JunctionItem):
-                    self._drag_start_junction_pos[src_comp.instance_id] = QPointF(src_comp.pos())
-                tgt_comp = self._target_port.component if self._target_port else None
-                if isinstance(tgt_comp, JunctionItem):
-                    self._drag_start_junction_pos[tgt_comp.instance_id] = QPointF(tgt_comp.pos())
+                self.begin_segment_drag(si, pos)
                 event.accept()
                 return
 
@@ -1475,80 +1591,10 @@ class ConnectionItem(QGraphicsPathItem):
             event.accept()
             return
 
-        # --- Waypoint drag (single or group, snaps to grid) ---
-        if self._dragging_waypoint is not None:
-            if self._dragging_group and self._selected_waypoints and self._drag_start_pos:
-                # Group drag: snap the GRABBED handle to grid (not the
-                # mouse), so a wire whose handles sit off-grid gets
-                # pulled onto the grid by the drag instead of sliding in
-                # rigid grid-sized increments.
-                raw_delta = pos - self._drag_start_pos
-                anchor_idx = self._dragging_waypoint
-                if (self._drag_start_waypoints
-                        and anchor_idx is not None
-                        and 0 <= anchor_idx < len(self._drag_start_waypoints)):
-                    anchor_orig = self._drag_start_waypoints[anchor_idx]
-                    anchor_new = self._snap_to_grid(
-                        QPointF(anchor_orig.x() + raw_delta.x(),
-                                anchor_orig.y() + raw_delta.y())
-                    )
-                    delta = anchor_new - anchor_orig
-                else:
-                    delta = self._snap_to_grid(pos) - self._snap_to_grid(self._drag_start_pos)
-                if self._drag_start_waypoints:
-                    for si in self._selected_waypoints:
-                        if 0 <= si < len(self._waypoints) and si < len(self._drag_start_waypoints):
-                            orig = self._drag_start_waypoints[si]
-                            self._set_waypoint_at(
-                                si, QPointF(orig.x() + delta.x(), orig.y() + delta.y()),
-                            )
-                self.update_route()
-            else:
-                # Single waypoint drag
-                wi = self._dragging_waypoint
-                if 0 <= wi < len(self._waypoints):
-                    self._set_waypoint_at(wi, self._snap_to_grid(pos))
-                    self.update_route()
-            event.accept()
-            return
-
-        # --- Segment drag (KiCad-style, snapped to grid) ---
-        if (
-            self._dragging_segment is not None
-            and self._drag_start_pos is not None
-            and self._drag_start_expanded is not None
-        ):
-            # Snap the drag delta to grid increments for clean alignment
-            snapped_pos = self._snap_to_grid(pos)
-            snapped_start = self._snap_to_grid(self._drag_start_pos)
-            delta = snapped_pos - snapped_start
-            new_expanded = self._apply_segment_drag(
-                self._dragging_segment, delta, self._drag_start_expanded
-            )
-            # Sync junction endpoints to their corresponding positions
-            # in the new expanded route.  _apply_segment_drag now
-            # collapses duplicate head/tail points, so [0] and [-1] are
-            # the correct junction positions.  Must happen BEFORE
-            # _adopt_route so that update_route sees the
-            # new port positions.
-            from diagrammer.items.junction_item import JunctionItem
-            src_comp = self._source_port.component if self._source_port else None
-            tgt_comp = self._target_port.component if self._target_port else None
-            junctions_moved = False
-            if isinstance(src_comp, JunctionItem) and new_expanded:
-                src_comp.setPos(new_expanded[0])
-                junctions_moved = True
-            if isinstance(tgt_comp, JunctionItem) and new_expanded:
-                tgt_comp.setPos(new_expanded[-1])
-                junctions_moved = True
-            self._adopt_route(new_expanded)
-            # Update other connections attached to moved junctions
-            if junctions_moved:
-                scene = self.scene()
-                if scene:
-                    for item in scene.items():
-                        if isinstance(item, ConnectionItem) and item is not self:
-                            item.update_route()
+        # --- Waypoint or segment drag (one session, snapped to grid) ---
+        if self._drag is not None:
+            self._advance_wire_drag(pos)
+            self.update()
             event.accept()
             return
 
@@ -1621,48 +1667,11 @@ class ConnectionItem(QGraphicsPathItem):
                 self._push_arrows_change(old, new)
             event.accept()
             return
-        if self._dragging_waypoint is not None or self._dragging_segment is not None:
-            # Heal before snapshotting, so the undo entry records the
-            # tidied list and a redo can't resurrect the strays.
-            if self.simplify_waypoints():
-                self.update_route()
-            # Push undo command for the waypoint change (and any junction moves)
-            if self._drag_start_waypoints is not None:
-                new_waypoints = [QPointF(w) for w in self._waypoints]
-                if new_waypoints != self._drag_start_waypoints:
-                    from diagrammer.commands.connect_command import EditWaypointsCommand
-                    scene = self.scene()
-                    if scene and hasattr(scene, 'undo_stack'):
-                        # Bundle waypoint edit + junction moves in a macro
-                        has_junction_moves = bool(self._drag_start_junction_pos)
-                        if has_junction_moves:
-                            scene.undo_stack.beginMacro("Move waypoints")
-                        cmd = EditWaypointsCommand(
-                            self, self._drag_start_waypoints, new_waypoints,
-                        )
-                        scene.undo_stack.push(cmd)
-                        # Record junction position changes
-                        if has_junction_moves:
-                            from diagrammer.items.junction_item import JunctionItem
-                            from diagrammer.commands.add_command import MoveComponentCommand
-                            for port in (self._source_port, self._target_port):
-                                if port is None:
-                                    continue
-                                comp = port.component
-                                if not isinstance(comp, JunctionItem):
-                                    continue
-                                old_pos = self._drag_start_junction_pos.get(comp.instance_id)
-                                if old_pos is not None and old_pos != comp.pos():
-                                    jcmd = MoveComponentCommand(comp, old_pos, QPointF(comp.pos()))
-                                    scene.undo_stack.push(jcmd)
-                            scene.undo_stack.endMacro()
-            self._dragging_waypoint = None
-            self._dragging_group = False
-            self._dragging_segment = None
-            self._drag_start_pos = None
-            self._drag_start_expanded = None
-            self._drag_start_waypoints = None
-            self._drag_start_junction_pos = {}
+        if self._drag is not None:
+            # The session heals the route, diffs the scene and pushes one
+            # macro — waypoint edits and any junction the drag carried.
+            self._end_wire_drag()
+            self.update()
             event.accept()
             return
         super().mouseReleaseEvent(event)
@@ -1782,9 +1791,7 @@ class ConnectionItem(QGraphicsPathItem):
             wi = self._find_waypoint_at(pos)
             if wi is None and self._waypoints:
                 # Cancel any drag that the first click may have started
-                self._dragging_waypoint = None
-                self._dragging_segment = None
-                self._dragging_group = False
+                self._cancel_wire_drag()
                 # Select all waypoints
                 self._selected_waypoints = set(range(len(self._waypoints)))
                 self.update()
