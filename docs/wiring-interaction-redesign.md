@@ -1,7 +1,8 @@
 # Wiring interaction model — redesign
 
-Status: **steps A–E landed** on branch `refactor/wiring-interaction-model`
-(443 tests green). Baseline: `main` at `6852007` (434 tests green).
+Status: **complete — steps A through E are all on `main`**, shipped in
+v0.13.0. Baseline for the metrics below: `main` at `6852007` (434 tests
+green); the branch that landed A–E was green at 443.
 
 Before → after, same metrics as the "Structural cost" section below:
 `mousePressEvent` 480 → 345 lines; `mouseReleaseEvent` 193 → 125;
@@ -298,10 +299,65 @@ decision; C does.
   junctions` runs on load and collapses stacked junctions, re-pointing
   their wires and dropping the self-loops and duplicates that result.
 
+- 2026-11-11 (post-0.13.0): **The wire's own drag joined the pipeline.**
+  `ConnectionItem`'s waypoint and segment drags now run a `DragSession`
+  like everything else. `DragSession` gained a `reshape` hook — an
+  object that positions part of the scene itself, snapshotted so the
+  commit diff still records it — and `SegmentReshape` is the one
+  implementation: a segment drag is not a translation, so the wire's
+  route and its free-end junctions are placed from the shape while the
+  session's delta drives nothing. Deleted: `_dragging_waypoint`,
+  `_dragging_group`, `_dragging_segment`, `_drag_start_expanded`,
+  `_drag_start_waypoints`, `_drag_start_junction_pos`, the vestigial
+  `_record_endpoint_junction_starts` (a leftover from step B, when a free
+  end's handle still *was* a waypoint, which recorded junctions that the
+  waypoint drag then never moved), and the hand-assembled
+  `beginMacro("Move waypoints")` with its MoveComponentCommand loop.
+  `commit` now heals driven and reshaped wires too, so the unified
+  waypoint drag gets the pruning pass the in-class drag already had.
+
+- 2026-11-11: **One snap rule, where there were three.** Step D2's claim
+  that only `_snapped_drag_delta` and `AddComponentCommand` snap was
+  wrong: `ConnectionItem._snap_to_grid` was a third site, and the three
+  branches that used it did not agree — the group-waypoint drag anchored
+  the snap on the grabbed handle, the single-waypoint drag teleported
+  the waypoint to the snapped cursor (throwing the grab offset away),
+  and the segment drag snapped the mouse *displacement*, which for a
+  sub-cell nudge is zero, so an off-grid run could not be straightened
+  at all. All three now go through `delta_landing_on_grid(anchor, raw,
+  spacing)`: the delta is whatever lands the grabbed point — handle or
+  segment corner — on a grid line. This is the behaviour change in the
+  commit; `_snap_to_grid` survives only for Ctrl+click waypoint
+  insertion, which is a placement, not a drag.
+
+- 2026-11-11: **One pruning loop.** `_simplify_closed` is gone:
+  `simplify_waypoints` handles both shapes, differing only in
+  `_bend_sequence()` (`[src, *waypoints, tgt]` for an open wire, the
+  wrapping vertex list for a polygon) and `_min_waypoints()` (0 against
+  3, since a polygon pruned below three vertices would vanish under the
+  user). The fork had drifted: the closed loop never skipped the handle
+  the user was holding, so a closed polygon could have a vertex pruned
+  out from under a drag. It now inherits that rule.
+
+- 2026-11-11: **`segment_count()` / `segment_endpoints()`** replace the
+  four independent `n if self._closed else n - 1` re-derivations in
+  hit-testing, painting, the crossover-hop scan and the segment-drag
+  clamp. Both take an optional point list so code working from a drag
+  snapshot uses the same rule as code reading the live route.
+
 ## What is left
 
-Candidates for a later pass, none of them load-bearing:
-`ConnectionItem` is still {os.environ['M_CONN']} lines and could lose its
-own segment/waypoint drag in favour of a `DragSession` variant; the
-closed-polygon code paths duplicate the open-wire ones in several
-places.
+Candidates for a later pass, none of them load-bearing.
+
+1. **"Waypoints *are* the vertices" for a closed wire** — a second
+   meaning for the same field, which `DiagramScene` compensates for at
+   creation time by prepending the source position. The index
+   arithmetic and the pruning loop are now shared; this last difference
+   is in the data model, so it is the one that would actually cost
+   something to remove.
+2. **The gesture decision still lives on the item.** `DragSession` now
+   owns the state and the undo for a wire drag, but
+   `ConnectionItem.mousePressEvent` still hit-tests and decides, where
+   `DiagramView` decides for every other drag. Hit-testing a wire's own
+   handles arguably belongs to the wire, which owns `_waypoints` and
+   `_expanded`, so this may be the right place to stop.
