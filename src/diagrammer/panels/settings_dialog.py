@@ -106,6 +106,10 @@ class AppSettings:
         self.default_routing_mode = _d("wiring", "routing_mode", "ortho")
         self.default_crossover_style = _d("wiring", "crossover_style", "plain")
         self.show_junction_dots = _d("wiring", "junction_dots", True)
+        # Which components show their ports while a wire is being drawn:
+        # "all", "nearby" (source + components near the cursor) or
+        # "target" (only the snap target lights up).
+        self.wiring_port_reveal = _d("wiring", "port_reveal", "nearby")
         # Wire direction-arrow defaults (per-arrow overrides live on the
         # WireArrow itself; None fields resolve against these at paint time)
         self.default_wire_arrow_style = _d("wiring", "arrow_style", "filled")
@@ -275,6 +279,7 @@ class AppSettings:
                 "default_routing_mode": self.default_routing_mode,
                 "default_crossover_style": self.default_crossover_style,
                 "show_junction_dots": self.show_junction_dots,
+                "wiring_port_reveal": self.wiring_port_reveal,
                 "default_wire_arrow_style": self.default_wire_arrow_style,
                 "default_wire_arrow_size": self.default_wire_arrow_size,
                 "default_wire_arrow_line_width": self.default_wire_arrow_line_width,
@@ -352,6 +357,9 @@ class AppSettings:
                 self.default_routing_mode = data.get("default_routing_mode", self.default_routing_mode)
                 self.default_crossover_style = data.get("default_crossover_style", self.default_crossover_style)
                 self.show_junction_dots = data.get("show_junction_dots", self.show_junction_dots)
+                self.wiring_port_reveal = data.get("wiring_port_reveal", self.wiring_port_reveal)
+                if self.wiring_port_reveal not in ("all", "nearby", "target"):
+                    self.wiring_port_reveal = "nearby"
                 self.default_wire_arrow_style = data.get("default_wire_arrow_style", self.default_wire_arrow_style)
                 self.default_wire_arrow_size = data.get("default_wire_arrow_size", self.default_wire_arrow_size)
                 self.default_wire_arrow_line_width = data.get("default_wire_arrow_line_width", self.default_wire_arrow_line_width)
@@ -589,6 +597,21 @@ class SettingsDialog(QDialog):
             "Draw a filled dot where two or more wires meet at a junction. "
             "Visual only — the wires stay electrically connected either way.")
         line_form.addRow("", self._junction_dots_cb)
+
+        self._port_reveal_combo = QComboBox()
+        for label, key in (("Nearby components", "nearby"),
+                           ("All components", "all"),
+                           ("Snap target only", "target")):
+            self._port_reveal_combo.addItem(label, key)
+        idx = self._port_reveal_combo.findData(settings.wiring_port_reveal)
+        self._port_reveal_combo.setCurrentIndex(max(idx, 0))
+        self._port_reveal_combo.setToolTip(
+            "Which ports are shown while you draw a wire. 'Nearby' shows "
+            "ports on the source part and on parts close to the cursor; "
+            "'All' shows every port on the canvas; 'Snap target only' shows "
+            "just the port the wire will attach to. Snapping works the same "
+            "in every mode.")
+        line_form.addRow("Show ports while wiring:", self._port_reveal_combo)
 
         self._wire_arrow_style_combo = QComboBox()
         self._wire_arrow_style_combo.addItems(["filled", "open"])
@@ -1216,6 +1239,8 @@ class SettingsDialog(QDialog):
         self._routing_mode_combo.setCurrentText(ROUTE_ORTHO)
         self._crossover_combo.setCurrentText("plain")
         self._junction_dots_cb.setChecked(True)
+        self._port_reveal_combo.setCurrentIndex(
+            max(self._port_reveal_combo.findData("nearby"), 0))
         self._wire_arrow_style_combo.setCurrentText("filled")
         self._wire_arrow_size_spin.setValue(14.0)
         self._wire_arrow_lw_spin.setValue(2.0)
@@ -1745,6 +1770,7 @@ class SettingsDialog(QDialog):
         self._settings.default_routing_mode = self._routing_mode_combo.currentText()
         self._settings.default_crossover_style = self._crossover_combo.currentText()
         self._settings.show_junction_dots = self._junction_dots_cb.isChecked()
+        self._settings.wiring_port_reveal = self._port_reveal_combo.currentData()
         self._settings.default_wire_arrow_style = self._wire_arrow_style_combo.currentText()
         self._settings.default_wire_arrow_size = self._wire_arrow_size_spin.value()
         self._settings.default_wire_arrow_line_width = self._wire_arrow_lw_spin.value()
