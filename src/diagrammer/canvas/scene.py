@@ -94,6 +94,9 @@ class DiagramScene(QGraphicsScene):
         self._rubberband_path: QGraphicsPathItem | None = None
         self._rubberband_dots: list[QGraphicsEllipseItem] = []  # waypoint markers
         self._current_target_port = None   # PortItem currently highlighted as target
+        # Components whose ports are force-shown for the in-progress wire
+        # (see ``_update_wiring_port_reveal``).
+        self._wiring_revealed: set = set()
         # Junctions created for the in-progress connection. They are added
         # to the scene eagerly (the preview needs their port), then either
         # pushed onto the undo stack with the finished connection or
@@ -626,9 +629,11 @@ class DiagramScene(QGraphicsScene):
             return
         self._connecting_from_port = port
 
-        # Show ALL ports on ALL components so the user can see targets
-        for comp in self._all_component_items():
-            comp.show_all_ports()
+        # Reveal candidate target ports per the "Show ports while wiring"
+        # setting. Hover can't do this job: the view consumes mouse moves
+        # while a wire is in progress, so components never see hover events.
+        self._wiring_revealed = set()
+        self._update_wiring_port_reveal(port.scene_center())
 
         # Create rubber-band path (polyline that shows waypoints)
         self._rubberband_path = QGraphicsPathItem()
@@ -650,6 +655,8 @@ class DiagramScene(QGraphicsScene):
 
         start = self._connecting_from_port.scene_center()
 
+        self._update_wiring_port_reveal(scene_pos)
+
         # Find nearest valid target port
         nearest_port = self._find_nearest_target_port(scene_pos)
 
@@ -657,8 +664,11 @@ class DiagramScene(QGraphicsScene):
         if nearest_port is not self._current_target_port:
             if self._current_target_port is not None:
                 self._current_target_port.set_target_highlight(False)
+                self._restore_unrevealed_port(self._current_target_port)
             if nearest_port is not None:
                 nearest_port.set_target_highlight(True)
+                # The snap target is always shown, whatever the reveal mode.
+                nearest_port.setVisible(True)
             self._current_target_port = nearest_port
 
         # Determine end point — port, wire snap, or cursor
@@ -756,6 +766,54 @@ class DiagramScene(QGraphicsScene):
             jdot.setZValue(101)
             self.addItem(jdot)
             self._rubberband_dots.append(jdot)
+
+    # Screen-pixel margin around a component's bounds inside which its
+    # ports are revealed in "nearby" mode.
+    _WIRING_REVEAL_MARGIN_PX = 40.0
+
+    def _update_wiring_port_reveal(self, scene_pos: QPointF) -> None:
+        """Show ports on the components the in-progress wire could target.
+
+        ``wiring_port_reveal`` is ``"all"`` (every component), ``"nearby"``
+        (the source component plus any whose bounds lie within a screen
+        margin of the cursor) or ``"target"`` (none beyond the source;
+        only the snap target lights up). Snapping is geometric and ignores
+        visibility, so this is purely a visual aid.
+        """
+        from diagrammer.items.component_item import ComponentItem
+        from diagrammer.panels.settings_dialog import app_settings
+
+        mode = getattr(app_settings, "wiring_port_reveal", "nearby")
+        source = self._connecting_from_port
+        wanted: set = set()
+        src_comp = getattr(source, "component", None)
+        if isinstance(src_comp, ComponentItem):
+            wanted.add(src_comp)
+        if mode == "all":
+            wanted.update(self._all_component_items())
+        elif mode == "nearby":
+            m = self._pick_tolerance(self._WIRING_REVEAL_MARGIN_PX)
+            for comp in self._all_component_items():
+                if comp.sceneBoundingRect().adjusted(-m, -m, m, m).contains(scene_pos):
+                    wanted.add(comp)
+
+        for comp in self._wiring_revealed - wanted:
+            if comp.scene() is self:
+                comp.restore_port_visibility()
+        for comp in wanted - self._wiring_revealed:
+            comp.show_all_ports()
+        self._wiring_revealed = wanted
+        # A restore above may have re-hidden the current snap target.
+        if self._current_target_port is not None:
+            self._current_target_port.setVisible(True)
+
+    def _restore_unrevealed_port(self, port) -> None:
+        """Re-hide a former snap target unless its component is revealed."""
+        from diagrammer.items.component_item import ComponentItem
+        comp = getattr(port, "component", None)
+        if (isinstance(comp, ComponentItem) and comp not in self._wiring_revealed
+                and comp.scene() is self):
+            comp.restore_port_visibility()
 
     def _clear_rubberband_dots(self) -> None:
         for dot in self._rubberband_dots:
@@ -1413,6 +1471,7 @@ class DiagramScene(QGraphicsScene):
         self._pending_wire_split = None
 
         # Restore normal port visibility
+        self._wiring_revealed = set()
         for comp in self._all_component_items():
             comp.restore_port_visibility()
 

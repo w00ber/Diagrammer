@@ -197,6 +197,8 @@ By default, fine rotation (R key) pivots around the component's first port. To c
 
 The cursor changes to a **crosshair** when in wiring mode for clear visual feedback.
 
+While a wire is being drawn, ports are shown on the part you started from and on parts near the cursor; the port the wire will snap to pulses. **Settings → Line Styles → Show ports while wiring** changes this to every part on the canvas, or to the snap target only. Snapping works the same in every mode.
+
 ### Quick connect (drag)
 
 1. Hover over a component to reveal its ports (blue circles)
