@@ -6,7 +6,10 @@ then finish by hand in the app. It runs locally over stdio, with no window, and
 edits the scene through the same undo commands as the mouse — so the file it
 writes is an ordinary diagram.
 
-Status: **experimental.** The tool set is small and will change.
+Status: **experimental.** The tool set is small and will change. Treat what it
+draws as a starting point: it gets the parts, the wiring and the labels in
+place, and you tidy spacing and details in the app. See
+[Drawing from a picture](#drawing-from-a-picture) for worked examples.
 
 ## Install
 
@@ -68,6 +71,81 @@ d.add("PAPER_2pt/circuits/LCR/CAP1", (0, 0), anchor="left", id="C")
 d.attach("PAPER_2pt/circuits/gnds/GND1", "left", to=("C", "right"))
 d.save("~/Desktop/rc.dgm")
 ```
+
+## Drawing from a picture
+
+The most useful thing to do with the server is to hand Claude a picture, such as
+a whiteboard photo, a pencil sketch, or a figure from a paper, and get back a
+`.dgm` with the circuit already laid out. **The result is not perfect.** It is
+good for setting up the baseline geometry, meaning which parts, how they are
+wired, and roughly where they sit, and you then tweak it by hand. That is
+usually the slow part of drawing a schematic from scratch.
+
+In Claude Desktop, attach the image to the chat. In Claude Code, paste it or
+give its path. Then describe what you want.
+
+### Example 1: a hand sketch
+
+A hand-drawn RCSJ junction chain:
+
+![Hand sketch of an RCSJ junction chain](mcp-examples/rcsj_chain_sketch.png)
+
+Example prompt:
+
+> Here is a hand sketch of an RCSJ junction chain. Build it in Diagrammer with
+> the PAPER_2pt library: a bias current source $i_B$ with shunt $R_B$ on the
+> left, then nodes 0, 1, 2, each with a capacitor $C_n$ to ground, and between
+> neighbouring nodes a Josephson junction $\delta_n$ shunted by $R_n$ and
+> $C_{Jn}$ in parallel above it. Label the nodes, put a "+" on the left side
+> of each junction, one ground under the bottom rail, and "…" on the right to
+> show the chain continues. Render it, compare it with my sketch, fix what is
+> off, and save it to `~/Desktop/rcsj_chain.dgm`.
+
+Result, as exported from the saved `.dgm`
+([rcsj_chain.dgm](mcp-examples/rcsj_chain.dgm)):
+
+![Diagrammer rendering of the RCSJ chain](mcp-examples/rcsj_chain.png)
+
+### Example 2: redrawing a published figure
+
+Fig. 14(b) of O. Naaman and J. Aumentado, "Synthesis of parametrically coupled
+networks", *PRX Quantum* **3**, 020201 (2022):
+
+![Original figure: a filter network with a central dc SQUID](mcp-examples/naaman2022_fig14b_original.png)
+
+Example prompt:
+
+> Redraw this figure in Diagrammer with the PAPER_2pt library. Keep the
+> topology and every label as in the original, with $Z_0$ terminations at both
+> ends and the dc SQUID threaded by $\Phi(t)$ in the middle. Leave out the
+> shaded background regions. Render it and check it against the figure, then
+> save it as `~/Desktop/Naaman2022_Fig14b.dgm` and export a PDF next to it.
+
+Result ([naaman2022_fig14b.dgm](mcp-examples/naaman2022_fig14b.dgm)):
+
+![Diagrammer rendering of the filter network](mcp-examples/naaman2022_fig14b.png)
+
+The topology and labels came across. The shaded regions were left out, as asked,
+and the dashed flux lines are approximated by the SQUID part's own flux arrows.
+Those are the kind of details you finish in the app.
+
+### Getting better results
+
+- **Name the library** (`PAPER_2pt`, `SLIDES_3pt`, `CRYO_WIRING_6pt`). It sets
+  the line weight of the whole diagram, and mixing libraries looks wrong.
+- **Spell out what matters.** List the labels and say where things go, for
+  example "ground under the bottom rail" or "junctions in series along the top".
+  The picture alone usually gives the right topology, and the words fix the
+  details.
+- **Say what to leave out.** Shading, annotations and decorative arrows are
+  easier to add by hand than to get right through the tools.
+- **Ask it to render and compare.** Claude checks its work by looking at a
+  rendering. If something is off, point at it specifically, for example "C2
+  should be to the right of L1", rather than saying "tidy it up".
+- **Save early, then finish in the app.** The `.dgm` is an ordinary diagram.
+  To keep working with Claude later, have it `open_diagram` the file in a new
+  chat. The ids then become the file's 12-hex instance ids, not the short names
+  used while drawing.
 
 ## Things that will trip you up
 

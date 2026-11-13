@@ -555,8 +555,13 @@ Desktop or Claude Code) build a diagram from this component library: place and
 wire parts, look at a rendering, then save a `.dgm` you open here and finish by
 hand. It runs on your machine, separately from this app.
 
-It is experimental: the tools and their behavior may change. Setup and details
-are in `docs/mcp.md` in the source repository.
+A good use is to give Claude a picture, such as a hand sketch or a figure from
+a paper, and ask for the same circuit as a `.dgm`. Don't expect a finished
+figure. It gets the parts, the wiring and the labels in place, and you adjust
+spacing and details here.
+
+It is experimental: the tools and their behavior may change. Setup, worked
+examples with prompts, and tips are in `docs/mcp.md` in the source repository.
 
 ---
 
