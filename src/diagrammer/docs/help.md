@@ -21,8 +21,9 @@ Diagrammer is a tool for building diagrams using SVG components. Drag components
 | Pan | Middle-click drag, or two-finger scroll on trackpad |
 | Zoom at cursor | Scroll wheel (pinch on trackpad) |
 | Zoom in/out (centered) | Ctrl++ / Ctrl+- |
-| Zoom to fit all | **A** |
+| Zoom to fit all | **A** or Ctrl+0 |
 | Zoom to rectangle | **Z**, then click-drag a rectangle (click to zoom in, Shift+click to zoom out) |
+| Show / hide grid | **G** |
 
 ---
 
@@ -164,7 +165,10 @@ switches that check off rather than failing it. A folder can also carry its own
 | Cut | Ctrl+X |
 | Paste | Ctrl+V (offset from original) |
 | Duplicate | Option/Alt+drag |
+| Select all | Ctrl+A |
 | Delete | Delete or Backspace |
+| Bring forward / send backward | Ctrl+] / Ctrl+[ |
+| Bring to front / send to back | Ctrl+Alt+] / Ctrl+Alt+[ |
 
 When moving a component, the port nearest to your grab point snaps to the grid.
 
@@ -262,6 +266,16 @@ To tap into an existing wire:
 - Toggle junction dot visibility in Settings or via the Routing menu
 
 A junction gets the automatic dot only where three or more wires meet. Two wires meeting at a junction are just a bend or a straight run, so no dot is drawn there — for example, after you delete the branch of a tee.
+
+### Wire crossings
+
+Where two unconnected wires cross, the crossing is drawn plain or as a
+semicircle **hop** on the top wire. The default is set in **Settings → Line
+Styles → Wire crossings**. Right-click any crossing for **Wire Crossing →
+Default / Plain Crossing / Hop Over**, **Swap Which Wire Hops**, and **Flip
+Hop Side** to override that one crossing.
+
+### Joining wires that only look connected
 
 Wires that only *look* connected can be joined after the fact:
 - **Crossing:** right-click where two wires cross and choose **Wire Crossing → Convert Crossing to Junction**. Both wires are split so four legs meet at one dotted junction.
@@ -368,7 +382,7 @@ Add text annotations to your diagrams:
 
 - **Ctrl+Shift+T** — add a text annotation at the center of the view
 - Double-click an annotation to edit its text
-- Supports **LaTeX math**: wrap expressions in `$...$` for inline math
+- Supports **LaTeX math**: `$...$` for inline math, `$$...$$` for display math (matrices, `align`, …)
 - Edit font, size, bold/italic, and color in the Properties panel
 
 ---
@@ -382,6 +396,20 @@ Add text annotations to your diagrams:
 - **Line** — two-point line with optional arrowheads
 
 **Double-click** any shape to edit its properties (stroke color, width, fill, dash pattern, arrowheads).
+
+---
+
+## SVG Images
+
+Place any SVG — a logo, a plot, a figure from another program — on the canvas
+as a picture rather than a component:
+
+- **File → Import SVG Image…**, or
+- **Paste** SVG copied from another app (Illustrator, VectorCraft, a browser…).
+  Diagrammer's own Ctrl+C takes priority while it is the most recent copy.
+
+Images resize from 8 handles, and rotate and flip like components. They have no
+ports, so wires cannot attach to them.
 
 ---
 
@@ -413,6 +441,7 @@ Double-click a component to enter **isolation mode** for editing individual SVG 
 | Export SVG | File > Export as SVG |
 | Export PNG | File > Export as PNG |
 | Export PDF | File > Export as PDF |
+| Copy selection as image (for other apps) | Ctrl+Shift+C |
 | Close Tab | Ctrl+W |
 | Next / Previous Tab | Ctrl+Shift+] / Ctrl+Shift+[ |
 
@@ -425,6 +454,21 @@ its tab. Undo history, layers and selection belong to each diagram; grid, snap
 and routing settings apply to all of them. Copy in one tab and paste in another
 to move parts between diagrams. A **•** after a tab's name means unsaved
 changes; closing that tab, or quitting, asks first.
+
+### Pasting into other apps
+
+**Edit → Copy Selection as Image** (Ctrl+Shift+C) puts the selection on the
+system clipboard as PDF, SVG *and* PNG, so Keynote, PowerPoint, Illustrator,
+Inkscape and VectorCraft each take the best format they understand. Plain
+**Ctrl+C** copies inside Diagrammer only — for pasting into another diagram.
+
+### Examples and sessions
+
+- **File → Examples…** opens the bundled example diagrams.
+- On quit, the diagram in front is autosaved; **File → Restore Previous
+  Session** brings it back.
+
+### File format
 
 Diagrams are saved as `.dgm` JSON files. All component positions, connections, waypoints, styles, layers, and transforms are preserved.
 
@@ -447,7 +491,7 @@ Create reusable components from your diagrams:
 1. Select the components, wires, and shapes you want to combine
 2. File > **Create Component from Selection**
 3. Choose a name and save location
-4. The new component appears in the library (after rescan)
+4. The new component appears in the library (press **F5** / File → Refresh Libraries if it does not)
 
 Unconnected ports become the new component's ports. Stretched and styled components are baked into the exported SVG.
 
@@ -456,22 +500,33 @@ Unconnected ports become the new component's ports. Stretched and styled compone
 ## Settings (Ctrl+,)
 
 ### Line Styles
-- Default wire width, color, corner radius
+- Default wire width, color, corner radius and routing style
+- Wire crossings (plain or hop) and **Show junction dots**
+- **Show ports while wiring** — near the cursor (default), every part, or the snap target only
 - Default direction-arrow style (filled or hollow), size, and outline width — arrows without per-arrow overrides update live when these change
 
 ### Snap Behavior
-- Snap to port, snap to angle, angle increment
-
-### Junctions
-- Fill color, outline, radius
+- Snap to port, snap to angle, angle increment, nudge step
 
 ### Libraries
-- Toggle visibility of component library categories
-- Add custom library folder paths
+- Which component libraries are visible
+- Additional library folders
+- **External Editors** offered under Open With
+- Per-library conventions used by validation (see **Checking a Component**)
+
+### Appearance
+- Theme, and the background and grid colors for each theme
+- Keyboard shortcut hints overlay: shown at startup or not, and which corner
+
+### Annotations
+- Default font, size and color for new text
+- LaTeX: optional system-LaTeX path, matrix column gap and row stretch
 
 ### Export
-
 - Export scale (default 33 %) — controls the size of SVG/PNG/PDF exports and clipboard copies relative to the scene
+
+### Keyboard Shortcuts
+- Rebind any action; this help and the hints overlay follow your bindings
 
 Settings persist across sessions in `~/.diagrammer/settings.json`.
 
@@ -493,11 +548,23 @@ Key layers in a component SVG:
 
 ---
 
+## Building Diagrams with Claude (experimental)
+
+Diagrammer includes an MCP server, `diagrammer-mcp`, that lets Claude (Claude
+Desktop or Claude Code) build a diagram from this component library: place and
+wire parts, look at a rendering, then save a `.dgm` you open here and finish by
+hand. It runs on your machine, separately from this app.
+
+It is experimental: the tools and their behavior may change. Setup and details
+are in `docs/mcp.md` in the source repository.
+
+---
+
 ## Tips
 
 - **Grid alignment**: Design SVG ports at multiples of the grid spacing (default 20pt) for clean snapping
-- **Stroke matching**: Use 3pt strokes in SVG components to match the default wire width
-- **Round caps**: Use `stroke-linecap: round` in SVGs for smooth wire junctions
+- **Stroke matching**: A wire takes its width from the lead it starts at, so draw leads at the library's weight — 2 pt in PAPER_2pt, 3 pt in SLIDES_3pt, 6 pt in CRYO_WIRING_6pt
+- **Butt caps**: Use `stroke-linecap: butt` on leads so they end flush at the port; see the component spec
 - **Corner rounding**: The corner radius (Settings > Line Styles) controls how smoothly wires turn. Components with a `leads` layer get automatic lead shortening for seamless rounded corners.
 - **Zoom for precision**: Use Z (zoom window) to zoom into detailed areas
 - **Double-click wire to move**: Double-click a wire segment to select all its waypoints, then grab any handle to move the entire wire
