@@ -25,7 +25,8 @@ Components are simple SVGs with named layers (`artwork`,
 - **SVG component library** — drag-and-drop placement, search, favorites,
   and recently-used tracking. Components are plain SVG files you author.
 - **KiCad-style wire routing** — orthogonal and 45° autorouting, manual
-  waypoint placement, segment dragging, and wire-to-wire T-junctions.
+  waypoint placement, segment dragging, wire-to-wire T-junctions, end dots,
+  and plain or hopped wire crossings.
 - **Port-based connections** with snap-to-port, snap-to-grid, and
   snap-to-angle.
 - **Component transforms** — 90° rotation, fine 15° rotation, horizontal
@@ -46,6 +47,20 @@ Components are simple SVGs with named layers (`artwork`,
   (CMU Serif, STIX Two Text) and how to install them on each platform.
 - **Undo/redo** for every operation, plus cut/copy/paste that preserves
   connection topology.
+- **Several diagrams at once**, one per tab, with copy and paste between them.
+- **Paste into other apps** — Copy Selection as Image puts PDF, SVG and PNG
+  on the clipboard for Keynote, PowerPoint, Illustrator, Inkscape, VectorCraft.
+- **SVG images** — import or paste any SVG (a logo, a plot) as a resizable
+  picture alongside your components.
+- **Your own component copies** — edit a shipped component and Diagrammer
+  saves *your* copy under `~/.diagrammer/components/`, leaving the shipped one
+  intact and comparable; hide, move or revert components from the library.
+- **Component inspector and validation** — check a part, or a whole library,
+  for the defects that look fine but misbehave on the canvas (ports off the
+  frame, leads not reaching ports, wrong lead weight), with previewed fixes.
+- **Build diagrams with Claude** *(experimental)* — an MCP server lets Claude
+  place, wire and render parts from the library and save a `.dgm` you finish
+  by hand. See [docs/mcp.md](docs/mcp.md).
 - **Zoom & pan** — scroll-wheel zoom at cursor, zoom-window mode, fit-all,
   and middle-click pan.
 - **Configurable grid** with snap toggle and major/minor visual lines.
@@ -98,7 +113,7 @@ help reference. The overlay's default visibility and corner can be set in
 
 ## Keyboard Shortcuts
 
-The full reference lives in [docs/help.md](docs/help.md) (also reachable
+The full reference lives in [src/diagrammer/docs/help.md](src/diagrammer/docs/help.md) (also reachable
 via **F1**). The bindings below are the **defaults** — they can be
 overridden per-user in **Settings → Keyboard Shortcuts**, and the in-app
 help reflects whatever the user has currently bound. The most-used
@@ -112,6 +127,7 @@ defaults:
 | Middle-click drag | Pan |
 | Scroll wheel | Zoom at cursor |
 | Ctrl+/- | Zoom in/out (centered) |
+| G | Show / hide grid |
 | **Components** | |
 | Space | Rotate 90° CCW |
 | Shift+Space | Rotate 90° CW |
@@ -121,8 +137,9 @@ defaults:
 | Shift+F | Flip vertical |
 | Shift+click port | Set rotation pivot |
 | **Routing** | |
-| T | Toggle trace routing mode |
+| W | Toggle trace routing mode |
 | Shift (while routing) | Constrain to H/V |
+| D / Shift+D | Cycle a free wire end's dot |
 | **Layers** | |
 | Shift+H | Show / hide active layer |
 | Shift+L | Lock / unlock active layer |
@@ -136,6 +153,10 @@ defaults:
 | Ctrl+Z | Undo |
 | Ctrl+Shift+Z | Redo |
 | Ctrl+C / X / V | Copy / Cut / Paste |
+| Ctrl+Shift+C | Copy selection as image (for other apps) |
+| Ctrl+N / Ctrl+W | New diagram tab / close tab |
+| Ctrl+Shift+] / [ | Next / previous tab |
+| Ctrl+I | Inspect & validate component |
 | Ctrl+, | Settings |
 | Escape | Cancel current operation |
 | **Help** | |
@@ -158,6 +179,13 @@ Quick summary — an SVG component has these layers:
 | `labels` | Text label placeholders |
 | `stretch` | Break lines for stretchable components |
 
+To check a component the way the app reads it, use **Library ▸ Inspect &
+Validate Component** in the app, or from the command line:
+
+```bash
+python -m diagrammer.svglint path/to/component.svg
+```
+
 Place component SVGs in categorized subdirectories:
 
 ```
@@ -168,6 +196,24 @@ components/
   flowchart/
     process.svg
 ```
+
+Components you save from the app go to `~/.diagrammer/components/`, which is
+scanned before the shipped library, so a copy there overrides the shipped part
+of the same name without modifying it.
+
+## Building diagrams with Claude (experimental)
+
+Diagrammer ships an [MCP](https://modelcontextprotocol.io) server so Claude
+Desktop or Claude Code can build diagrams from the component library: search
+parts, place and wire them, render a preview to check its work, and save a
+`.dgm` you then open and finish by hand. It runs locally with no window.
+
+```bash
+pip install -e ".[mcp]"
+```
+
+This is experimental — the tool set will change. Setup for each client, and
+what to watch out for, is in [docs/mcp.md](docs/mcp.md).
 
 ## Building an app bundle/executable
 
@@ -190,8 +236,11 @@ The app bundle or executable will be created in the `dist/` directory. For macOS
   syntax, rendering backends, and system-LaTeX setup.
 - [src/diagrammer/docs/svg-component-spec.md](src/diagrammer/docs/svg-component-spec.md) — full SVG
   component specification.
-- [docs/help.md](docs/help.md) — in-app help and complete shortcut
-  reference.
+- [src/diagrammer/docs/help.md](src/diagrammer/docs/help.md) — in-app help
+  and complete shortcut reference.
+- [docs/tutorial.md](docs/tutorial.md) — a walk-through building a first
+  circuit (also Help ▸ Tutorial).
+- [docs/mcp.md](docs/mcp.md) — the experimental MCP server.
 
 ## License
 

@@ -13,6 +13,7 @@ See [README.md](README.md) for what it does and how to install it.
 | The user's component overlay (forks, tombstones, drift) | **[src/diagrammer/models/overrides.py](src/diagrammer/models/overrides.py)** |
 | LaTeX / math annotations | [docs/math-annotations.md](docs/math-annotations.md) |
 | User-facing behaviour | [docs/tutorial.md](docs/tutorial.md), [src/diagrammer/docs/help.md](src/diagrammer/docs/help.md) |
+| Headless API / MCP server (Claude building diagrams) | [docs/mcp.md](docs/mcp.md), then the docstring of `src/diagrammer/mcp_server.py` — tools must be `async` and wrapped in `_quiet` |
 | Wire / selection / drag / undo interaction | **[docs/wiring-interaction-redesign.md](docs/wiring-interaction-redesign.md)** — the target model and the staged refactor; do not add another per-operation junction policy |
 
 The component spec lives under `src/diagrammer/docs/` because it ships as in-app
