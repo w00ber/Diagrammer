@@ -4,14 +4,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QTextDocument
+from PySide6.QtCore import QEvent, Qt, QUrl
+from PySide6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QTextCharFormat,
+    QTextCursor,
+    QTextDocument,
+)
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QTextBrowser,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -80,6 +87,11 @@ class HelpWindow(QWidget):
         self._search.setPlaceholderText("Type to search...")
         self._search.setClearButtonEnabled(True)
         self._search.textChanged.connect(self._on_search)
+        # Return finds the next match, Shift+Return the previous one, as in
+        # a browser's find bar. An event filter, not returnPressed or a
+        # QShortcut: QLineEdit takes Return whatever the modifiers, so a
+        # Shift+Return shortcut never fires.
+        self._search.installEventFilter(self)
         self._prev_btn = QPushButton("Prev")
         self._next_btn = QPushButton("Next")
         self._prev_btn.setFixedWidth(50)
@@ -105,47 +117,76 @@ class HelpWindow(QWidget):
 
         self._load_help()
 
-    def _on_search(self, text: str) -> None:
-        """Highlight all matches and jump to the first one."""
-        # Clear previous highlights
-        cursor = self._browser.textCursor()
-        cursor.select(cursor.SelectionType.Document)
-        fmt = cursor.charFormat()
-        fmt.setBackground(Qt.GlobalColor.transparent)
-        cursor.mergeCharFormat(fmt)
-        cursor.clearSelection()
-        self._browser.setTextCursor(cursor)
+    def eventFilter(self, obj, event) -> bool:
+        if (obj is self._search and event.type() == QEvent.Type.KeyPress
+                and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)):
+            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                self._search_prev()
+            else:
+                self._search_next()
+            return True
+        return super().eventFilter(obj, event)
 
+    def _on_search(self, text: str) -> None:
+        """Highlight every match and jump to the first one in the document.
+
+        Highlights are extra selections, which sit on top of the document
+        without editing its formatting, so clearing them can never strip a
+        background the doc itself set.
+        """
+        self._highlight_all(text)
         if not text:
             self._match_label.setText("")
             return
+        # Search from the top: wherever the cursor was left (often the end of
+        # the document) must not decide whether a term is "found".
+        cursor = self._browser.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+        self._browser.setTextCursor(cursor)
+        self._browser.find(text)
+        self._update_match_label()
 
-        # Find and jump to first match
-        found = self._browser.find(text)
-        if found:
-            self._match_label.setText("")
-        else:
+    def _highlight_all(self, text: str) -> None:
+        selections = []
+        if text:
+            fmt = QTextCharFormat()
+            fmt.setBackground(QColor(255, 230, 120))
+            doc = self._browser.document()
+            cursor = doc.find(text)
+            while not cursor.isNull():
+                sel = QTextEdit.ExtraSelection()
+                sel.cursor = cursor
+                sel.format = fmt
+                selections.append(sel)
+                cursor = doc.find(text, cursor)
+        self._matches = len(selections)
+        self._browser.setExtraSelections(selections)
+
+    def _update_match_label(self) -> None:
+        n = getattr(self, "_matches", 0)
+        if n == 0:
             self._match_label.setText("No matches")
+        else:
+            self._match_label.setText(f"{n} match" + ("" if n == 1 else "es"))
 
     def _search_next(self) -> None:
-        text = self._search.text()
-        if text:
-            if not self._browser.find(text):
-                # Wrap around to start
-                cursor = self._browser.textCursor()
-                cursor.movePosition(cursor.MoveOperation.Start)
-                self._browser.setTextCursor(cursor)
-                self._browser.find(text)
+        self._step(QTextDocument.FindFlag(0), QTextCursor.MoveOperation.Start)
 
     def _search_prev(self) -> None:
+        self._step(QTextDocument.FindFlag.FindBackward,
+                   QTextCursor.MoveOperation.End)
+
+    def _step(self, flags, wrap_to) -> None:
+        """Move to the next/previous match, wrapping at the document's ends."""
         text = self._search.text()
-        if text:
-            if not self._browser.find(text, QTextDocument.FindFlag.FindBackward):
-                # Wrap around to end
-                cursor = self._browser.textCursor()
-                cursor.movePosition(cursor.MoveOperation.End)
-                self._browser.setTextCursor(cursor)
-                self._browser.find(text, QTextDocument.FindFlag.FindBackward)
+        if not text:
+            return
+        if not self._browser.find(text, flags):
+            cursor = self._browser.textCursor()
+            cursor.movePosition(wrap_to)
+            self._browser.setTextCursor(cursor)
+            self._browser.find(text, flags)
+        self._update_match_label()
 
     def _on_anchor_clicked(self, url: QUrl) -> None:
         """Route link clicks: render known .md docs in a HelpWindow,

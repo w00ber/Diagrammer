@@ -1,5 +1,7 @@
 # Diagrammer Help
 
+*To find something on this page, type in the **Search** box above it. Every match is highlighted; **Return** goes to the next one and **Shift+Return** to the previous one.*
+
 ## Getting Started
 
 Diagrammer is a tool for building diagrams using SVG components. Drag components from the **Component Library** panel onto the canvas, connect their ports with wires, and arrange them into circuit schematics, flowcharts, or general diagrams.
