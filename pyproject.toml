@@ -64,6 +64,8 @@ diagrammer = [
     "components/**/*.svg",
     "examples/*.dgm",
     "docs/*.md",
+    "docs/*.png",
+    "docs/*.svg",
     "fonts/*.otf",
     "fonts/OFL.txt",
 ]

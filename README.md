@@ -98,7 +98,7 @@ help reference. The overlay's default visibility and corner can be set in
 
 ## Keyboard Shortcuts
 
-The full reference lives in [docs/help.md](docs/help.md) (also reachable
+The full reference lives in [src/diagrammer/docs/help.md](src/diagrammer/docs/help.md) (also reachable
 via **F1**). The bindings below are the **defaults** — they can be
 overridden per-user in **Settings → Keyboard Shortcuts**, and the in-app
 help reflects whatever the user has currently bound. The most-used
@@ -186,11 +186,13 @@ The app bundle or executable will be created in the `dist/` directory. For macOS
 
 ## Further reading
 
+- [src/diagrammer/docs/tutorial.md](src/diagrammer/docs/tutorial.md) — the
+  walkthrough tutorial (also **Help ▸ Tutorial** in the app).
 - [docs/math-annotations.md](docs/math-annotations.md) — LaTeX math
   syntax, rendering backends, and system-LaTeX setup.
 - [src/diagrammer/docs/svg-component-spec.md](src/diagrammer/docs/svg-component-spec.md) — full SVG
   component specification.
-- [docs/help.md](docs/help.md) — in-app help and complete shortcut
+- [src/diagrammer/docs/help.md](src/diagrammer/docs/help.md) — in-app help and complete shortcut
   reference.
 
 ## License

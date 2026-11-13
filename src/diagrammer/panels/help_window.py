@@ -260,8 +260,14 @@ class HelpWindow(QWidget):
         return html
 
     def _find_help_file(self) -> Path | None:
-        """Locate the doc file in the package's docs/ directory, with a
-        fall-back to the repo-root docs/ folder for development checkouts."""
+        """Locate the doc file in the package's docs/ directory.
+
+        Every doc HelpWindow opens (help.md, tutorial.md) and the images
+        they reference must live in ``src/diagrammer/docs/`` so they ship in
+        the wheel. The repo-root ``docs/`` fall-back only exists for
+        development checkouts and is never present in an installed package;
+        a doc found only there is a packaging bug, which
+        ``tests/test_help_window_docs.py`` guards against."""
         here = Path(__file__).resolve().parent
         candidates = [
             here.parent / "docs" / self._doc_filename,

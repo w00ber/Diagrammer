@@ -121,12 +121,6 @@ datas = [
     (str(PKG / "fonts"), "diagrammer/fonts"),
     (str(PKG / "defaults.yaml"), "diagrammer"),
     (str(PKG / "examples"), "diagrammer/examples"),
-    # tutorial.md lives at the repo-root docs/ folder (not inside the
-    # package). HelpWindow looks for it under ``diagrammer/docs/`` at
-    # runtime, so bundle it into the same destination as the package
-    # docs. Without this, the frozen app shows "Document not found:
-    # tutorial.md" when the user picks Help → Tutorial.
-    (str(HERE / "docs" / "tutorial.md"), "diagrammer/docs"),
 ]
 
 # ziamath / ziafont ship MathML schema files, font metrics, and bundled
