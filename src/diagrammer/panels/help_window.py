@@ -1,4 +1,10 @@
-"""HelpWindow — modeless window displaying help.md as rendered HTML."""
+"""HelpWindow — modeless window displaying help.md as rendered HTML.
+
+A doc's ``##`` headings are its chapters. They are listed in a sidebar and,
+for Help, in the Help menu (:func:`help_chapters`). The doc stays one
+scrolling page, so the search box covers all of it; picking a chapter
+scrolls to it, and the sidebar follows whichever chapter is being read.
+"""
 
 from __future__ import annotations
 
@@ -16,12 +22,59 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
+    QSplitter,
     QTextBrowser,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
+
+
+# The shortcuts table is generated, not written in help.md, but it is a
+# chapter like any other: it is appended to Help as a trailing ``<h2>``.
+SHORTCUTS_CHAPTER = "Keyboard Shortcuts"
+
+_DIM = QColor(170, 170, 170)
+
+
+def find_doc(filename: str) -> Path | None:
+    """Locate a doc in the package's docs/ directory.
+
+    Every doc HelpWindow opens (help.md, tutorial.md) and the images they
+    reference must live in ``src/diagrammer/docs/`` so they ship in the
+    wheel. The repo-root ``docs/`` fall-back only exists for development
+    checkouts and is never present in an installed package; a doc found only
+    there is a packaging bug, which ``tests/test_help_window_docs.py`` guards
+    against.
+    """
+    here = Path(__file__).resolve().parent
+    for c in (here.parent / "docs" / filename,
+              here.parent.parent.parent / "docs" / filename):
+        if c.exists():
+            return c
+    return None
+
+
+def doc_chapters(md_text: str) -> list[str]:
+    """The ``##`` headings of a Markdown doc, in order (code fences skipped)."""
+    chapters, in_code = [], False
+    for line in md_text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_code = not in_code
+        elif not in_code and line.startswith("## "):
+            chapters.append(line[3:].strip())
+    return chapters
+
+
+def help_chapters() -> list[str]:
+    """Help's chapters, for the Help menu, without opening a window."""
+    path = find_doc("help.md")
+    if path is None:
+        return []
+    return doc_chapters(path.read_text(encoding="utf-8")) + [SHORTCUTS_CHAPTER]
 
 
 class HelpWindow(QWidget):
@@ -36,10 +89,10 @@ class HelpWindow(QWidget):
     _instances: dict[str, "HelpWindow"] = {}
 
     @classmethod
-    def show_help(cls, parent=None) -> None:
-        """Open (or raise) the Help window with keyboard shortcuts table."""
+    def show_help(cls, parent=None, chapter: str | None = None) -> None:
+        """Open (or raise) the Help window, optionally at *chapter*."""
         cls._show_doc("help.md", "Diagrammer Help",
-                      show_shortcuts=True, parent=parent)
+                      show_shortcuts=True, parent=parent, chapter=chapter)
 
     @classmethod
     def show_tutorial(cls, parent=None) -> None:
@@ -49,7 +102,8 @@ class HelpWindow(QWidget):
 
     @classmethod
     def _show_doc(cls, filename: str, title: str,
-                  show_shortcuts: bool, parent=None) -> None:
+                  show_shortcuts: bool, parent=None,
+                  chapter: str | None = None) -> None:
         inst = cls._instances.get(filename)
         if inst is None or not inst.isVisible():
             inst = cls(parent, filename=filename, title=title,
@@ -57,6 +111,8 @@ class HelpWindow(QWidget):
             cls._instances[filename] = inst
         inst.show()
         inst.raise_()
+        if chapter:
+            inst.go_to_chapter(chapter)
         # Note: do NOT call activateWindow() — we want the editor to keep
         # keyboard focus so users can follow along while reading.
 
@@ -74,7 +130,7 @@ class HelpWindow(QWidget):
         self._show_shortcuts = show_shortcuts
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setWindowTitle(title)
-        self.resize(650, 700)
+        self.resize(860, 720)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -113,9 +169,128 @@ class HelpWindow(QWidget):
         self._browser.setOpenExternalLinks(False)
         self._browser.setReadOnly(True)
         self._browser.anchorClicked.connect(self._on_anchor_clicked)
-        layout.addWidget(self._browser)
+        self._browser.verticalScrollBar().valueChanged.connect(
+            self._sync_chapter_to_scroll)
+
+        # Chapter sidebar: the doc's ## headings.
+        self._chapter_list = QListWidget()
+        self._chapter_list.setWordWrap(True)
+        self._chapter_list.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._chapter_list.setFrameShape(QListWidget.Shape.NoFrame)
+        self._chapter_list.itemClicked.connect(
+            lambda item: self._scroll_to_chapter(self._chapter_list.row(item)))
+        self._chapter_list.currentRowChanged.connect(self._on_chapter_row)
+        self._chapter_list.setStyleSheet(
+            "QListWidget::item { padding: 5px 6px; }")
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(self._chapter_list)
+        splitter.addWidget(self._browser)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([210, 650])
+        splitter.setChildrenCollapsible(False)
+        layout.addWidget(splitter, 1)
+
+        self._chapter_blocks: list = []   # QTextBlock of each ## heading
+        self._syncing = False
+        self._matches = 0
 
         self._load_help()
+        self._build_chapters()
+
+    # ------------------------------------------------------------------
+    # Chapters
+    # ------------------------------------------------------------------
+
+    def chapters(self) -> list[str]:
+        return [b.text().strip() for b in self._chapter_blocks]
+
+    def _build_chapters(self) -> None:
+        """Read the chapters from the rendered document, so the list is
+        exactly what is on the page, generated shortcuts table included."""
+        self._chapter_blocks = []
+        block = self._browser.document().begin()
+        while block.isValid():
+            if block.blockFormat().headingLevel() == 2:
+                self._chapter_blocks.append(block)
+            block = block.next()
+        self._chapter_list.clear()
+        for b in self._chapter_blocks:
+            QListWidgetItem(b.text().strip(), self._chapter_list)
+        # A doc with one chapter or none has nothing to navigate.
+        self._chapter_list.setVisible(len(self._chapter_blocks) > 1)
+        if self._chapter_blocks:
+            self._syncing = True
+            self._chapter_list.setCurrentRow(0)
+            self._syncing = False
+
+    def go_to_chapter(self, title: str) -> bool:
+        """Scroll to the chapter called *title* (case-insensitive)."""
+        wanted = title.strip().lower()
+        for i, name in enumerate(self.chapters()):
+            if name.lower() == wanted:
+                self._scroll_to_chapter(i)
+                return True
+        return False
+
+    def _on_chapter_row(self, row: int) -> None:
+        # Keyboard navigation in the sidebar; clicks go through itemClicked.
+        if not self._syncing and row >= 0:
+            self._scroll_to_chapter(row)
+
+    def _heading_top(self, i: int) -> float:
+        layout = self._browser.document().documentLayout()
+        return layout.blockBoundingRect(self._chapter_blocks[i]).top()
+
+    def _scroll_to_chapter(self, i: int) -> None:
+        if not 0 <= i < len(self._chapter_blocks):
+            return
+        # Put the cursor at the heading too, so Next continues from here.
+        cursor = QTextCursor(self._chapter_blocks[i])
+        self._browser.setTextCursor(cursor)
+        bar = self._browser.verticalScrollBar()
+        bar.setValue(min(int(self._heading_top(i)), bar.maximum()))
+        self._set_current_chapter(i)
+
+    def _sync_chapter_to_scroll(self, value: int) -> None:
+        """Highlight the chapter being read: the last heading at or above
+        the top of the view (or the last chapter, at the very bottom)."""
+        if not self._chapter_blocks:
+            return
+        bar = self._browser.verticalScrollBar()
+        if value >= bar.maximum() > 0:
+            current = len(self._chapter_blocks) - 1
+            # Unless that chapter's heading is still below the view: then the
+            # reader is at the end of an earlier, longer chapter.
+            while current > 0 and self._heading_top(current) > value + bar.pageStep():
+                current -= 1
+        else:
+            current = 0
+            for i in range(len(self._chapter_blocks)):
+                if self._heading_top(i) <= value + 8:
+                    current = i
+        self._set_current_chapter(current)
+
+    def _set_current_chapter(self, i: int) -> None:
+        if self._chapter_list.currentRow() != i:
+            self._syncing = True
+            self._chapter_list.setCurrentRow(i)
+            self._syncing = False
+
+    def _mark_chapters(self, positions: list[int], searching: bool) -> None:
+        """While searching, dim the chapters that have no match."""
+        starts = [b.position() for b in self._chapter_blocks]
+        for i in range(self._chapter_list.count()):
+            item = self._chapter_list.item(i)
+            if not searching:
+                item.setData(Qt.ItemDataRole.ForegroundRole, None)
+                item.setToolTip("")
+                continue
+            end = starts[i + 1] if i + 1 < len(starts) else float("inf")
+            n = sum(1 for p in positions if starts[i] <= p < end)
+            item.setData(Qt.ItemDataRole.ForegroundRole, None if n else _DIM)
+            item.setToolTip(f"{n} match" + ("" if n == 1 else "es"))
 
     def eventFilter(self, obj, event) -> bool:
         if (obj is self._search and event.type() == QEvent.Type.KeyPress
@@ -143,11 +318,23 @@ class HelpWindow(QWidget):
         cursor = self._browser.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         self._browser.setTextCursor(cursor)
-        self._browser.find(text)
+        if self._browser.find(text):
+            self._place_match()
         self._update_match_label()
 
+    def _place_match(self) -> None:
+        """Scroll so the selected match sits a third of the way down the view.
+
+        find() only makes the match visible, which often leaves it on the
+        bottom line with none of the text after it showing.
+        """
+        rect = self._browser.cursorRect()
+        bar = self._browser.verticalScrollBar()
+        target = bar.value() + rect.top() - self._browser.viewport().height() // 3
+        bar.setValue(max(0, min(target, bar.maximum())))
+
     def _highlight_all(self, text: str) -> None:
-        selections = []
+        selections, positions = [], []
         if text:
             fmt = QTextCharFormat()
             fmt.setBackground(QColor(255, 230, 120))
@@ -158,12 +345,14 @@ class HelpWindow(QWidget):
                 sel.cursor = cursor
                 sel.format = fmt
                 selections.append(sel)
+                positions.append(cursor.selectionStart())
                 cursor = doc.find(text, cursor)
         self._matches = len(selections)
         self._browser.setExtraSelections(selections)
+        self._mark_chapters(positions, bool(text))
 
     def _update_match_label(self) -> None:
-        n = getattr(self, "_matches", 0)
+        n = self._matches
         if n == 0:
             self._match_label.setText("No matches")
         else:
@@ -181,11 +370,14 @@ class HelpWindow(QWidget):
         text = self._search.text()
         if not text:
             return
-        if not self._browser.find(text, flags):
+        found = self._browser.find(text, flags)
+        if not found:
             cursor = self._browser.textCursor()
             cursor.movePosition(wrap_to)
             self._browser.setTextCursor(cursor)
-            self._browser.find(text, flags)
+            found = self._browser.find(text, flags)
+        if found:
+            self._place_match()
         self._update_match_label()
 
     def _on_anchor_clicked(self, url: QUrl) -> None:
@@ -249,6 +441,7 @@ class HelpWindow(QWidget):
             h2 {{ font-size: 16px; margin-top: 20px; color: #000000;
                   border-bottom: 1px solid #eee; padding-bottom: 4px; }}
             h3 {{ font-size: 14px; margin-top: 16px; color: #000000; }}
+            h4 {{ font-size: 13px; margin-top: 12px; color: #000000; }}
             p, li {{ color: #000000; }}
             table {{ border-collapse: collapse; margin: 8px 0; }}
             th, td {{ border: 1px solid #ddd; padding: 4px 10px;
@@ -301,23 +494,7 @@ class HelpWindow(QWidget):
         return html
 
     def _find_help_file(self) -> Path | None:
-        """Locate the doc file in the package's docs/ directory.
-
-        Every doc HelpWindow opens (help.md, tutorial.md) and the images
-        they reference must live in ``src/diagrammer/docs/`` so they ship in
-        the wheel. The repo-root ``docs/`` fall-back only exists for
-        development checkouts and is never present in an installed package;
-        a doc found only there is a packaging bug, which
-        ``tests/test_help_window_docs.py`` guards against."""
-        here = Path(__file__).resolve().parent
-        candidates = [
-            here.parent / "docs" / self._doc_filename,
-            here.parent.parent.parent / "docs" / self._doc_filename,
-        ]
-        for c in candidates:
-            if c.exists():
-                return c
-        return None
+        return find_doc(self._doc_filename)
 
     @staticmethod
     def _basic_md_to_html(md: str) -> str:

@@ -1,6 +1,8 @@
 # Diagrammer Help
 
-*To find something on this page, type in the **Search** box above it. Every match is highlighted; **Return** goes to the next one and **Shift+Return** to the previous one.*
+*Help is divided into chapters, listed on the left and in the **Help** menu; click one to jump to it. To find something, type in the **Search** box above. Every match is highlighted, chapters without a match are dimmed, **Return** goes to the next match and **Shift+Return** to the previous one.*
+
+---
 
 ## Getting Started
 
@@ -14,9 +16,7 @@ Diagrammer is a tool for building diagrams using SVG components. Drag components
 4. **Arrange** — move, rotate, flip, align components
 5. **Save** — Ctrl+S to save as `.dgm`, or export as SVG/PNG/PDF
 
----
-
-## Navigation
+### Navigation
 
 | Action | How |
 |--------|-----|
@@ -27,9 +27,21 @@ Diagrammer is a tool for building diagrams using SVG components. Drag components
 | Zoom to rectangle | **Z**, then click-drag a rectangle (click to zoom in, Shift+click to zoom out) |
 | Show / hide grid | **G** |
 
+### Tips
+
+- **Grid alignment**: Design SVG ports at multiples of the grid spacing (default 20pt) for clean snapping
+- **Stroke matching**: A wire takes its width from the lead it starts at, so draw leads at the library's weight — 2 pt in PAPER_2pt, 3 pt in SLIDES_3pt, 6 pt in CRYO_WIRING_6pt
+- **Butt caps**: Use `stroke-linecap: butt` on leads so they end flush at the port; see the component spec
+- **Corner rounding**: The corner radius (Settings > Line Styles) controls how smoothly wires turn. Components with a `leads` layer get automatic lead shortening for seamless rounded corners.
+- **Zoom for precision**: Use Z (zoom window) to zoom into detailed areas
+- **Double-click wire to move**: Double-click a wire segment to select all its waypoints, then grab any handle to move the entire wire
+- **Wire extension**: In trace mode (W), click a wire endpoint to extend it with new segments
+
 ---
 
-## Placing Components
+## Placing and Managing Components
+
+### Placing Components
 
 - **Drag and drop** from the Component Library panel on the left
 - **Search** by typing in the search box at the top of the library
@@ -43,9 +55,7 @@ Diagrammer is a tool for building diagrams using SVG components. Drag components
 
 Components snap to the grid by default. The nearest port to your click determines which grid point the component snaps to.
 
----
-
-## Library Table View
+### Library Table View
 
 View all components in a library category as a reference table:
 
@@ -59,9 +69,7 @@ Table views open in separate tabs. They support zoom (scroll wheel), pan (click-
 - **Ctrl+Shift+]** / **Ctrl+Shift+[** — show the next / previous tab (diagrams, tables and the Validation report alike)
 - The tab bar is hidden while only one diagram is open
 
----
-
-## Managing Your Components
+### Managing Your Components
 
 Everything in the Library panel is one of two things, and the panel says which:
 
@@ -69,7 +77,7 @@ Everything in the Library panel is one of two things, and the panel says which:
 - **Your copies**, marked with a small blue dot, live in
   `~/.diagrammer/components/` and are never touched by an update.
 
-### Editing a shipped component
+#### Editing a shipped component
 
 Just edit it. Diagrammer cannot change a shipped file — it lives inside the
 application — so when you save, it writes **your own copy** instead and uses
@@ -81,7 +89,7 @@ receiving updates. If a future release changes something you have edited,
 Diagrammer tells you in the status bar and **Library ▸ Library Overrides** lets
 you compare the two side by side, keep yours, or revert.
 
-### Right-click a component
+#### Right-click a component
 
 - **Inspect & Validate…** (⌘I) — see below
 - **Move to Category…** — for a shipped component this puts *your copy* in the
@@ -93,70 +101,26 @@ you compare the two side by side, keep yours, or revert.
 - **Open With** — hand the file to Illustrator, Inkscape or any editor you
   choose, then come back and re-check it
 
----
+### Stretchable Components
 
-## Checking a Component
+Some components (e.g., coax cables) can be stretched. When selected, orange diamond handles appear at the edges. Drag a handle to stretch the component while keeping connections intact.
 
-Components are data, and a component can be wrong in ways that look perfectly
-fine as a picture: a port a few points off the frame edge makes wires approach
-from the wrong side, a lead that does not quite touch its port stops being
-shortened, and a lead drawn at the wrong weight makes the attached wire step in
-thickness at the join. Round-tripping a file through a vector editor causes all
-three.
+### Compound Components
 
-**Library ▸ Inspect & Validate Component** (⌘I) opens the component on a grid,
-with its frame outlined, and marks anything it finds. Hover a mark for an
-explanation of why it matters.
+Create reusable components from your diagrams:
 
-- **Grid** — 5, 10, 20 pt or your own. Components are designed on a 20 pt grid,
-  but plenty of good ones sit off it deliberately, so the grid is shown rather
-  than enforced.
-- **Show ports** — ports, labels and stretch axes are drawn behind the symbol
-  and faded, so a lead end stays visible under its port marker. Switch it off
-  to see the drawing on its own.
-- **Highlight changes** — rings the places where the fixed version actually
-  draws differently. Worth reading the line above the diff: **many fixes change
-  the file without changing the drawing at all**, and it says so when that is
-  the case. Restoring a mangled port id or wrapping the artwork in a layer
-  render identically by design — the preview looking unchanged is the fix
-  working, not failing. When something *does* change it is often a single point
-  at the end of a lead, which is what the rings are for.
-- **Suggested fixes** — tick any you want. The preview updates as you tick, and
-  the **Changes** box shows exactly what would be written. A fix marked ▲ moves
-  geometry and is never pre-selected.
-- **Fixed / Side by side / Overlay** — Side by side puts the original and the
-  result over one continuous grid; Overlay ghosts the original underneath, which
-  is the only way to see a change smaller than a point.
-- **Save** writes the component (creating your copy if it was a shipped one);
-  **Save as New** keeps both.
+1. Select the components, wires, and shapes you want to combine
+2. File > **Create Component from Selection**
+3. Choose a name and save location
+4. The new component appears in the library (press **F5** / File → Refresh Libraries if it does not)
 
-**Library ▸ Inspect SVG File…** does the same for any SVG, in a library or not —
-use it after editing a component in an external editor. If the file changes while
-the window is open, a bar offers to reload it.
-
-**Library ▸ Validate Component Libraries…** checks a whole library and groups
-what it finds by issue rather than by file, so a style point affecting seventy
-components is one line with one button rather than seventy lines. Double-click
-any row to open that component.
-
-The report opens in a **Validation** tab beside your diagrams (⇧⌘] / ⇧⌘[ to
-reach it) and keeps itself current: saving a component from the inspector
-re-checks it at once, and coming back to the tab or the app re-checks any file
-that changed on disk, e.g. in an external editor. Saving a shipped component
-usually makes your own copy instead of changing the shipped file; the shipped
-file's rows then read *replaced by your copy*, and opening one opens the copy.
-
-### Library conventions
-
-Each library has its own house style — lead weight above all, since the wire you
-attach takes its width from the lead. Settings ▸ Libraries lets you adjust what
-each one is checked against, and a blank field means "no convention", which
-switches that check off rather than failing it. A folder can also carry its own
-`library.json`, which travels with the folder and wins over the setting.
+Unconnected ports become the new component's ports. Stretched and styled components are baked into the exported SVG.
 
 ---
 
-## Selecting and Moving
+## Selecting and Arranging
+
+### Selecting and Moving
 
 | Action | How |
 |--------|-----|
@@ -174,9 +138,7 @@ switches that check off rather than failing it. A folder can also carry its own
 
 When moving a component, the port nearest to your grab point snaps to the grid.
 
----
-
-## Transforms
+### Transforms
 
 | Key | Action |
 |-----|--------|
@@ -189,7 +151,7 @@ When moving a component, the port nearest to your grab point snaps to the grid.
 
 With grid snapping on, 90° rotations and flips keep parts on the grid: the selection turns about the grid point (or grid-cell centre) nearest its centre, so ports that were on the grid stay on it. A single part may shift slightly — up to about half a grid cell — to make this work. Wires inside the selection keep their shape and their routing mode, so they still route orthogonally when you move a part afterwards. Fine rotation can't keep the grid, and wires inside the selection switch to Direct routing.
 
-### Rotation pivot
+#### Rotation pivot
 
 By default, fine rotation (R key) pivots around the component's first port. To choose a different pivot:
 
@@ -197,9 +159,62 @@ By default, fine rotation (R key) pivots around the component's first port. To c
 2. Press **R** or **Shift+R** to rotate around that port
 3. Press **Escape** to clear the pivot
 
+### Groups
+
+| Shortcut | Action |
+|----------|--------|
+| **Ctrl+G** | Group selected items |
+| **Ctrl+Shift+G** | Ungroup (pops one nesting level) |
+| **Ctrl+J** | Join two wires at overlapping endpoints |
+
+Groups support nesting — grouping already-grouped items creates an outer group. Ungrouping removes only the outermost level.
+
+### Layers
+
+Layers let you organize diagram elements and control their visibility and editability.
+
+#### Layers panel (right side)
+
+- **Click** a layer to make it active — new items go to this layer
+- Items on the active layer **flash briefly** when you switch layers
+- **Double-click** a layer to toggle visibility
+- **Right-click** a layer for Show/Hide, Lock/Unlock, Rename
+
+#### Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| **Shift+H** | Show / hide active layer |
+| **Shift+L** | Lock / unlock active layer |
+
+Both toggles are undoable, and the status bar carries a standing
+⚠ warning for as long as any layer is hidden or locked — a hidden
+layer otherwise looks exactly like an empty canvas.
+
+**Hidden layers** — items are invisible but preserved. Wires to hidden items remain in the file.
+
+**Locked layers** — items cannot be selected, moved, or modified. Useful for protecting a finished layer while working on another.
+
+### Alignment
+
+Select two or more components, then:
+
+| Shortcut | Action |
+|----------|--------|
+| **Ctrl+Shift+H** | Align centers horizontally (same Y) |
+| **Ctrl+Shift+V** | Align centers vertically (same X) |
+
+#### Port-based alignment
+
+For precise port alignment instead of center alignment:
+
+1. **Ctrl+click** specific ports on different components (they turn red)
+2. Press **Ctrl+Shift+H** or **Ctrl+Shift+V**
+3. The components move so the selected ports line up
+
 ---
 
-## Wiring / Connections
+## Wiring
 
 The cursor changes to a **crosshair** when in wiring mode for clear visual feedback.
 
@@ -319,66 +334,9 @@ Select a wire to edit in the Properties panel: width, color, corner radius, and 
 
 ---
 
-## Groups
+## Text, Shapes and Images
 
-| Shortcut | Action |
-|----------|--------|
-| **Ctrl+G** | Group selected items |
-| **Ctrl+Shift+G** | Ungroup (pops one nesting level) |
-| **Ctrl+J** | Join two wires at overlapping endpoints |
-
-Groups support nesting — grouping already-grouped items creates an outer group. Ungrouping removes only the outermost level.
-
----
-
-## Layers
-
-Layers let you organize diagram elements and control their visibility and editability.
-
-### Layers panel (right side)
-
-- **Click** a layer to make it active — new items go to this layer
-- Items on the active layer **flash briefly** when you switch layers
-- **Double-click** a layer to toggle visibility
-- **Right-click** a layer for Show/Hide, Lock/Unlock, Rename
-
-### Keyboard shortcuts
-
-| Key | Action |
-|-----|--------|
-| **Shift+H** | Show / hide active layer |
-| **Shift+L** | Lock / unlock active layer |
-
-Both toggles are undoable, and the status bar carries a standing
-⚠ warning for as long as any layer is hidden or locked — a hidden
-layer otherwise looks exactly like an empty canvas.
-
-**Hidden layers** — items are invisible but preserved. Wires to hidden items remain in the file.
-
-**Locked layers** — items cannot be selected, moved, or modified. Useful for protecting a finished layer while working on another.
-
----
-
-## Alignment
-
-Select two or more components, then:
-
-| Shortcut | Action |
-|----------|--------|
-| **Ctrl+Shift+H** | Align centers horizontally (same Y) |
-| **Ctrl+Shift+V** | Align centers vertically (same X) |
-
-### Port-based alignment
-
-For precise port alignment instead of center alignment:
-
-1. **Ctrl+click** specific ports on different components (they turn red)
-2. Press **Ctrl+Shift+H** or **Ctrl+Shift+V**
-3. The components move so the selected ports line up
-
----
-
-## Annotations
+### Annotations
 
 Add text annotations to your diagrams:
 
@@ -387,9 +345,7 @@ Add text annotations to your diagrams:
 - Supports **LaTeX math**: `$...$` for inline math, `$$...$$` for display math (matrices, `align`, …)
 - Edit font, size, bold/italic, and color in the Properties panel
 
----
-
-## Simple Shapes
+### Simple Shapes
 
 **Draw menu** provides basic shapes:
 
@@ -399,9 +355,7 @@ Add text annotations to your diagrams:
 
 **Double-click** any shape to edit its properties (stroke color, width, fill, dash pattern, arrowheads).
 
----
-
-## SVG Images
+### SVG Images
 
 Place any SVG — a logo, a plot, a figure from another program — on the canvas
 as a picture rather than a component:
@@ -413,15 +367,7 @@ as a picture rather than a component:
 Images resize from 8 handles, and rotate and flip like components. They have no
 ports, so wires cannot attach to them.
 
----
-
-## Stretchable Components
-
-Some components (e.g., coax cables) can be stretched. When selected, orange diamond handles appear at the edges. Drag a handle to stretch the component while keeping connections intact.
-
----
-
-## Per-Instance Style Overrides
+### Per-Instance Style Overrides
 
 Double-click a component to enter **isolation mode** for editing individual SVG elements:
 
@@ -486,20 +432,9 @@ Use **Reset to Default** in the Export settings tab to restore the factory defau
 
 ---
 
-## Compound Components
+## Settings
 
-Create reusable components from your diagrams:
-
-1. Select the components, wires, and shapes you want to combine
-2. File > **Create Component from Selection**
-3. Choose a name and save location
-4. The new component appears in the library (press **F5** / File → Refresh Libraries if it does not)
-
-Unconnected ports become the new component's ports. Stretched and styled components are baked into the exported SVG.
-
----
-
-## Settings (Ctrl+,)
+Open Settings with **Ctrl+,**.
 
 ### Line Styles
 - Default wire width, color, corner radius and routing style
@@ -534,7 +469,9 @@ Settings persist across sessions in `~/.diagrammer/settings.json`.
 
 ---
 
-## SVG Component Design
+## Making Components
+
+### SVG Component Design
 
 See [svg-component-spec.md](svg-component-spec.md) for the full specification on creating custom SVG components.
 
@@ -547,6 +484,65 @@ Key layers in a component SVG:
 - `tile` — repeating stretch content
 - `snap` — snap anchor for decorative components
 - `decorative` — marks component as freely resizable
+
+### Checking a Component
+
+Components are data, and a component can be wrong in ways that look perfectly
+fine as a picture: a port a few points off the frame edge makes wires approach
+from the wrong side, a lead that does not quite touch its port stops being
+shortened, and a lead drawn at the wrong weight makes the attached wire step in
+thickness at the join. Round-tripping a file through a vector editor causes all
+three.
+
+**Library ▸ Inspect & Validate Component** (⌘I) opens the component on a grid,
+with its frame outlined, and marks anything it finds. Hover a mark for an
+explanation of why it matters.
+
+- **Grid** — 5, 10, 20 pt or your own. Components are designed on a 20 pt grid,
+  but plenty of good ones sit off it deliberately, so the grid is shown rather
+  than enforced.
+- **Show ports** — ports, labels and stretch axes are drawn behind the symbol
+  and faded, so a lead end stays visible under its port marker. Switch it off
+  to see the drawing on its own.
+- **Highlight changes** — rings the places where the fixed version actually
+  draws differently. Worth reading the line above the diff: **many fixes change
+  the file without changing the drawing at all**, and it says so when that is
+  the case. Restoring a mangled port id or wrapping the artwork in a layer
+  render identically by design — the preview looking unchanged is the fix
+  working, not failing. When something *does* change it is often a single point
+  at the end of a lead, which is what the rings are for.
+- **Suggested fixes** — tick any you want. The preview updates as you tick, and
+  the **Changes** box shows exactly what would be written. A fix marked ▲ moves
+  geometry and is never pre-selected.
+- **Fixed / Side by side / Overlay** — Side by side puts the original and the
+  result over one continuous grid; Overlay ghosts the original underneath, which
+  is the only way to see a change smaller than a point.
+- **Save** writes the component (creating your copy if it was a shipped one);
+  **Save as New** keeps both.
+
+**Library ▸ Inspect SVG File…** does the same for any SVG, in a library or not —
+use it after editing a component in an external editor. If the file changes while
+the window is open, a bar offers to reload it.
+
+**Library ▸ Validate Component Libraries…** checks a whole library and groups
+what it finds by issue rather than by file, so a style point affecting seventy
+components is one line with one button rather than seventy lines. Double-click
+any row to open that component.
+
+The report opens in a **Validation** tab beside your diagrams (⇧⌘] / ⇧⌘[ to
+reach it) and keeps itself current: saving a component from the inspector
+re-checks it at once, and coming back to the tab or the app re-checks any file
+that changed on disk, e.g. in an external editor. Saving a shipped component
+usually makes your own copy instead of changing the shipped file; the shipped
+file's rows then read *replaced by your copy*, and opening one opens the copy.
+
+#### Library conventions
+
+Each library has its own house style — lead weight above all, since the wire you
+attach takes its width from the lead. Settings ▸ Libraries lets you adjust what
+each one is checked against, and a blank field means "no convention", which
+switches that check off rather than failing it. A folder can also carry its own
+`library.json`, which travels with the folder and wins over the setting.
 
 ---
 
@@ -564,15 +560,3 @@ spacing and details here.
 
 It is experimental: the tools and their behavior may change. Setup, worked
 examples with prompts, and tips are in `docs/mcp.md` in the source repository.
-
----
-
-## Tips
-
-- **Grid alignment**: Design SVG ports at multiples of the grid spacing (default 20pt) for clean snapping
-- **Stroke matching**: A wire takes its width from the lead it starts at, so draw leads at the library's weight — 2 pt in PAPER_2pt, 3 pt in SLIDES_3pt, 6 pt in CRYO_WIRING_6pt
-- **Butt caps**: Use `stroke-linecap: butt` on leads so they end flush at the port; see the component spec
-- **Corner rounding**: The corner radius (Settings > Line Styles) controls how smoothly wires turn. Components with a `leads` layer get automatic lead shortening for seamless rounded corners.
-- **Zoom for precision**: Use Z (zoom window) to zoom into detailed areas
-- **Double-click wire to move**: Double-click a wire segment to select all its waypoints, then grab any handle to move the entire wire
-- **Wire extension**: In trace mode (W), click a wire endpoint to extend it with new segments
