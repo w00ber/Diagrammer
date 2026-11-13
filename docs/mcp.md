@@ -82,7 +82,9 @@ wired, and roughly where they sit, and you then tweak it by hand. That is
 usually the slow part of drawing a schematic from scratch.
 
 In Claude Desktop, attach the image to the chat. In Claude Code, paste it or
-give its path. Then describe what you want.
+give its path. The prompt can be very short: both examples below were drawn
+from a one-line request, and in both Claude picked the `PAPER_2pt` library on
+its own.
 
 ### Example 1: a hand sketch
 
@@ -90,21 +92,18 @@ A hand-drawn RCSJ junction chain:
 
 ![Hand sketch of an RCSJ junction chain](mcp-examples/rcsj_chain_sketch.png)
 
-Example prompt:
+The prompt, with the sketch attached:
 
-> Here is a hand sketch of an RCSJ junction chain. Build it in Diagrammer with
-> the PAPER_2pt library: a bias current source $i_B$ with shunt $R_B$ on the
-> left, then nodes 0, 1, 2, each with a capacitor $C_n$ to ground, and between
-> neighbouring nodes a Josephson junction $\delta_n$ shunted by $R_n$ and
-> $C_{Jn}$ in parallel above it. Label the nodes, put a "+" on the left side
-> of each junction, one ground under the bottom rail, and "…" on the right to
-> show the chain continues. Render it, compare it with my sketch, fix what is
-> off, and save it to `~/Desktop/rcsj_chain.dgm`.
+> Do you have access to the Diagrammer MCP? Can you reproduce this figure as
+> Diagrammer file?
 
 Result, as exported from the saved `.dgm`
 ([rcsj_chain.dgm](mcp-examples/rcsj_chain.dgm)):
 
 ![Diagrammer rendering of the RCSJ chain](mcp-examples/rcsj_chain.png)
+
+The handwriting was read into proper labels ($R_0$, $C_{J0}$, $\delta_0$, …),
+and the "NODE" arrows became text labels on the rail.
 
 ### Example 2: redrawing a published figure
 
@@ -113,35 +112,38 @@ networks", *PRX Quantum* **3**, 020201 (2022):
 
 ![Original figure: a filter network with a central dc SQUID](mcp-examples/naaman2022_fig14b_original.png)
 
-Example prompt:
+The prompt:
 
-> Redraw this figure in Diagrammer with the PAPER_2pt library. Keep the
-> topology and every label as in the original, with $Z_0$ terminations at both
-> ends and the dc SQUID threaded by $\Phi(t)$ in the middle. Leave out the
-> shaded background regions. Render it and check it against the figure, then
-> save it as `~/Desktop/Naaman2022_Fig14b.dgm` and export a PDF next to it.
+> Ok- now try to reproduce Fig14(b) of the Naaman and Aumentado PRXQ (2022)
+
+**Claude has to see the figure.** This prompt first sent Claude to a paper
+library connected through another MCP server, which returned the paper's text
+but not its figures. From the text alone, Claude listed the parts and their
+values, but it could only guess where the SQUID connects, and it said so and
+asked for the image. Pasting a screenshot of the figure fixed that. If a tool
+hands Claude a paper but not its images, paste the figure.
 
 Result ([naaman2022_fig14b.dgm](mcp-examples/naaman2022_fig14b.dgm)):
 
 ![Diagrammer rendering of the filter network](mcp-examples/naaman2022_fig14b.png)
 
-The topology and labels came across. The shaded regions were left out, as asked,
-and the dashed flux lines are approximated by the SQUID part's own flux arrows.
-Those are the kind of details you finish in the app.
+The topology and labels came across. The shaded background regions were
+dropped, and the dashed flux lines are approximated by the SQUID part's own
+flux arrows. Those are the kind of details you finish in the app.
 
-### Getting better results
+### When the first try misses
 
-- **Name the library** (`PAPER_2pt`, `SLIDES_3pt`, `CRYO_WIRING_6pt`). It sets
-  the line weight of the whole diagram, and mixing libraries looks wrong.
-- **Spell out what matters.** List the labels and say where things go, for
-  example "ground under the bottom rail" or "junctions in series along the top".
-  The picture alone usually gives the right topology, and the words fix the
-  details.
+Start short, as above, and add detail only where the result is wrong:
+
+- **Point at specific problems**, for example "C2 should be to the right of
+  L1" or "one ground under the bottom rail", rather than saying "tidy it up".
+  Claude checks its work by rendering the diagram and looking at it.
+- **Name the library** (`PAPER_2pt`, `SLIDES_3pt`, `CRYO_WIRING_6pt`) if you
+  want a different one from the one Claude picked. It sets the line weight of
+  the whole diagram.
+- **List the labels** if a hand-written one was misread.
 - **Say what to leave out.** Shading, annotations and decorative arrows are
   easier to add by hand than to get right through the tools.
-- **Ask it to render and compare.** Claude checks its work by looking at a
-  rendering. If something is off, point at it specifically, for example "C2
-  should be to the right of L1", rather than saying "tidy it up".
 - **Save early, then finish in the app.** The `.dgm` is an ordinary diagram.
   To keep working with Claude later, have it `open_diagram` the file in a new
   chat. The ids then become the file's 12-hex instance ids, not the short names
