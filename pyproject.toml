@@ -44,9 +44,15 @@ dev = [
     "pytest>=7.0",
     "pyinstaller>=6.0",
 ]
+# MCP server so Claude can build diagrams: `diagrammer-mcp` (see docs/mcp.md).
+# Works with the 1.x (FastMCP) and 2.x (MCPServer) SDKs.
+mcp = [
+    "mcp>=1.2",
+]
 
 [project.scripts]
 diagrammer = "diagrammer.__main__:main"
+diagrammer-mcp = "diagrammer.mcp_server:main"
 
 [project.gui-scripts]
 diagrammer-gui = "diagrammer.__main__:main"
