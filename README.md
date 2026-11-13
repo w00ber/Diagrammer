@@ -213,7 +213,8 @@ pip install -e ".[mcp]"
 ```
 
 This is experimental — the tool set will change. Setup for each client, and
-what to watch out for, is in [docs/mcp.md](docs/mcp.md).
+what to watch out for, is in [docs/mcp.md](docs/mcp.md), along with worked
+examples of turning a sketch or a published figure into a `.dgm`.
 
 ## Building an app bundle/executable
 
