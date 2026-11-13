@@ -6,7 +6,7 @@ then finish by hand in the app. It runs locally over stdio, with no window, and
 edits the scene through the same undo commands as the mouse — so the file it
 writes is an ordinary diagram.
 
-Status: **prototype.** The API is small and will change.
+Status: **experimental.** The tool set is small and will change.
 
 ## Install
 
@@ -36,7 +36,13 @@ claude mcp add diagrammer -- ~/miniforge3/envs/CMT/bin/diagrammer-mcp
 }
 ```
 
-Then restart Desktop. The plain claude.ai web chat cannot reach a local server.
+(**Settings → Developer → Edit Config** opens this file.) Use the absolute
+path: Desktop does not activate conda or read your shell's `PATH`. Then quit
+Desktop fully (⌘Q — closing the window is not enough) and reopen it. The tools
+menu in a new chat should list `diagrammer`; if not, read
+`~/Library/Logs/Claude/mcp-server-diagrammer.log`.
+
+The plain claude.ai web chat cannot reach a local server.
 
 ## What Claude gets
 
@@ -71,6 +77,21 @@ d.save("~/Desktop/rc.dgm")
 - **Short ids are not saved.** `J1`, `Cc` live only in the server session; a
   reopened `.dgm` uses its 12-hex instance ids.
 - **One diagram per server process.** `new_diagram` discards the current one.
+  Desktop appears to run one server for all chats, so two chats drawing at
+  once would share — and overwrite — the same diagram.
+- **Restart to pick up changes.** The server reads the component library and
+  its own code once, at startup: after a `git pull`, a branch switch, or a new
+  component, restart the client.
+
+## Costs
+
+- **Memory:** about 100 MB idle (mostly the MCP SDK and Qt; the component
+  library itself is ~3 MB), about 155 MB once a LaTeX label has loaded
+  matplotlib. No CPU when idle.
+- **Context:** the tool definitions are ~2,000 tokens in every chat where the
+  server is enabled — switch it off per chat when you are not drawing. Each
+  `render` returns an image, roughly 1–1.5k tokens; render after a batch of
+  edits rather than after each one.
 
 ## For developers
 
