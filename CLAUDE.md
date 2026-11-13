@@ -22,6 +22,15 @@ layer contract (`artwork` / `leads` / `ports` / `labels` / `stretch`), and its
 that the shipped libraries follow. Do not infer these by reading example SVGs;
 they are not self-consistent.
 
+## Open work lives in GitHub issues
+
+There is no TODO file in the repo. Future work is tracked as issues on
+`w00ber/Diagrammer`: #3 is the general TODO list, and larger topics get their
+own issue (e.g. #17 junction placement, #18 component requests, #42 the
+experimental MCP server's known gaps). Check the open issues before starting
+work in an area, and record gaps you find but don't fix as a new issue or an
+item on the relevant one — not as a note in this file.
+
 ## Layout
 
 ```
