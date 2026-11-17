@@ -490,6 +490,16 @@ class MenuMixin:
         help_act.triggered.connect(self._show_help)
         help_menu.addAction(help_act)
 
+        # Each Help chapter (a ## heading in help.md) directly in the menu.
+        from diagrammer.panels.help_window import HelpWindow, help_chapters
+        help_menu.addSeparator()
+        for chapter in help_chapters():
+            act = QAction(chapter, self)
+            act.triggered.connect(
+                lambda _=False, c=chapter: HelpWindow.show_help(self, chapter=c))
+            help_menu.addAction(act)
+        help_menu.addSeparator()
+
         tutorial_act = QAction("&Tutorial", self)
         tutorial_act.triggered.connect(self._show_tutorial)
         help_menu.addAction(tutorial_act)
