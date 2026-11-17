@@ -51,8 +51,10 @@ The plain claude.ai web chat cannot reach a local server.
 
 | Tool | Does |
 | ---- | ---- |
-| `search_components`, `describe_component` | Find parts; list ports with the direction each lead points |
-| `add_component` | Place a part so a chosen port (or its centre) lands on a point |
+| `list_categories` | Every folder of the catalogue with counts, and which library roots are loaded — the first call from a sketch |
+| `search_components`, `describe_component` | Find parts by key or description (reports `total` and `truncated`); list ports with the direction each lead points |
+| `add_component` | Place a part so a chosen port (or its centre) lands on a point; `stretch=` lengthens it first |
+| `stretch_component` | Lengthen or shorten a placed part, keeping one port in place; wires follow |
 | `attach_component` | Place a part next to an existing port, turned to face it, and wire them — chains are repeated calls |
 | `add_node`, `connect` | T-junctions; wires between existing ports |
 | `add_text` | Labels; `$...$` is LaTeX |
@@ -156,6 +158,27 @@ Start short, as above, and add detail only where the result is wrong:
   geometry after rotation and flip; Claude is told to use it.
 - **Short ids are not saved.** `J1`, `Cc` live only in the server session; a
   reopened `.dgm` uses its 12-hex instance ids.
+- **Stretch is in the part's own frame; `stretch_axes` is on screen.**
+  `stretch=[dx, dy]` is measured in the unrotated part, as
+  `ComponentItem.set_stretch` and the `.dgm` store it, so a coax rotated 90°
+  still takes `dx`. A placed part's `stretch_axes` says which way that is on
+  screen (`["vertical"]` for that coax). A bare number works for a part with
+  one stretch axis. Repeat-mode parts (JJ1, TWP1, the photons) snap to whole
+  tiles — `describe_component` gives `stretch_tile`, and the tools return the
+  value actually applied. `describe_component`'s older `stretch: {h, v}` field
+  names the *break line*, so `"v": true` means it lengthens horizontally.
+- **`stretch_component` keeps a port fixed, not the part.** By default it keeps
+  a port the stretch leaves in place, so the part grows away from it. Flip
+  decides which end that is on screen; pass `keep="<port>"` to pin the end
+  that is wired.
+- **Only the libraries this machine has.** A local server loads the shipped
+  parts, your edited copies in `~/.diagrammer/components/`, and the custom
+  library folders enabled in the app's settings. A cloud session has only
+  what is in the repository. `list_categories` lists the roots it loaded and
+  says so when only the shipped library is there.
+- **Search results are capped.** `search_components` returns `total` and
+  `truncated`; an empty query does not list everything. Words match the key
+  and the part's `<title>`/`<desc>` text, so "wavy arrow" finds the photons.
 - **One diagram per server process.** `new_diagram` discards the current one.
   Desktop appears to run one server for all chats, so two chats drawing at
   once would share — and overwrite — the same diagram.
@@ -168,8 +191,9 @@ Start short, as above, and add detail only where the result is wrong:
 - **Memory:** about 100 MB idle (mostly the MCP SDK and Qt; the component
   library itself is ~3 MB), about 155 MB once a LaTeX label has loaded
   matplotlib. No CPU when idle.
-- **Context:** the tool definitions are ~2,000 tokens in every chat where the
-  server is enabled — switch it off per chat when you are not drawing. Each
+- **Context:** the tool definitions and instructions are ~3,000 tokens in
+  every chat where the server is enabled — switch it off per chat when you
+  are not drawing. `list_categories` is ~400 tokens for the shipped tree. Each
   `render` returns an image, roughly 1–1.5k tokens; render after a batch of
   edits rather than after each one.
 

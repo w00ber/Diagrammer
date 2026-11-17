@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80">
+  <desc>Light blue filled rectangle: a shaded background region behind a group of parts, such as a chip, a temperature stage or a zone. Resize freely.</desc>
   <defs>
     <style>
       .bg { fill: #e8f0ff; stroke: #b0c4de; stroke-width: 1; }
