@@ -22,11 +22,15 @@ CAP = P + "LCR/CAP1"          # ports "left" (points up), "right" (down)
 JJ = P + "quantum/JJ1"         # ports "bot" (points up), "top" (down)
 GND = P + "gnds/GND1"          # port "left" (points up)
 TERM = P + "terminals/terminal_open"  # port at its centre: no direction
+COAX = P + "µwave/coax and twp/COAX1_MED"  # 40 wide, gap stretch along dx
+TOTAL_PARTS = 238   # shipped tree, decorative parts included
 
 
 @pytest.fixture(scope="module")
 def lib():
-    return load_library(include_overlay=False)
+    # include_custom=False: a module fixture runs before the settings
+    # isolation, so it would otherwise scan the developer's own libraries.
+    return load_library(include_overlay=False, include_custom=False)
 
 
 @pytest.fixture
@@ -34,16 +38,58 @@ def d(lib):
     return Diagram(lib)
 
 
+def _comp(d, cid):
+    return next(c for c in d.summary()["components"] if c["id"] == cid)
+
+
 def _ports(d, cid):
-    return next(c for c in d.summary()["components"] if c["id"] == cid)["ports"]
+    return _comp(d, cid)["ports"]
+
+
+def _key(d, tail):
+    """The loaded key ending in *tail*. git tracks ``flair/`` but a
+    case-insensitive checkout may hold ``FLAIR/``, so never spell the top."""
+    hits = [k for k in d.library._by_key if k.lower().endswith(tail.lower())]
+    assert len(hits) == 1, hits
+    return hits[0]
 
 
 # -- catalogue ----------------------------------------------------------------
 
 def test_search_matches_every_word_and_filters_library(d):
-    keys = [r["key"] for r in d.search("cap var", library="PAPER_2pt")]
+    keys = [r["key"] for r in d.search("cap var", library="PAPER_2pt")["results"]]
     assert keys and all(k.startswith("PAPER_2pt/") for k in keys)
     assert all("cap" in k.lower() and "var" in k.lower() for k in keys)
+
+
+def test_empty_search_says_it_was_cut_short(d):
+    """A capped list that looks complete is how the photon parts got missed."""
+    out = d.search("")
+    assert out["total"] == TOTAL_PARTS
+    assert out["truncated"] and len(out["results"]) == 40
+    assert not d.search("", limit=1000)["truncated"]
+
+
+def test_search_matches_descriptions_not_just_keys(d):
+    assert d.search("photon")["total"] == 6
+    keys = {r["key"].rsplit("/", 1)[-1] for r in d.search("wavy arrow")["results"]}
+    assert keys == {f"PHOTON_{c}{n}" for c in ("BLUE", "RED") for n in "012"}
+    assert d.search("propagating", library="flair/photons")["total"] == 6
+
+
+def test_search_includes_decorative_parts_flagged(d):
+    (hit,) = d.search("shaded region")["results"]
+    assert hit["decorative"] is True and hit["ports"] == []
+    assert hit["stretch_axes"] == ["horizontal", "vertical"]
+
+
+def test_list_categories_covers_every_part_and_names_roots(d):
+    cats = d.list_categories()
+    assert cats["total"] == TOTAL_PARTS == sum(cats["categories"].values())
+    photons = next(c for c in cats["categories"] if c.lower() == "flair/photons")
+    assert cats["categories"][photons] == 6
+    assert [r["kind"] for r in cats["roots"]] == ["builtin"]
+    assert "not available" in cats["note"]   # the gap is said, not silent
 
 
 def test_describe_reports_direction_from_geometry_not_name(d):
@@ -52,6 +98,15 @@ def test_describe_reports_direction_from_geometry_not_name(d):
     # the name would wire it wrongly; "points" is what it must use.
     assert ports["left"]["points"] == "up"
     assert ports["right"]["points"] == "down"
+
+
+def test_describe_reports_stretch_axes_and_tiles(d):
+    coax = d.describe(COAX)
+    # The raw flag reads backwards: "v" is a vertical *break line*.
+    assert coax["stretch"] == {"h": False, "v": True}
+    assert coax["stretch_axes"] == ["horizontal"]
+    assert d.describe(JJ)["stretch_tile"]
+    assert d.describe(CAP)["stretch_axes"] == []
 
 
 def test_unknown_key_suggests_near_names(d):
@@ -113,6 +168,99 @@ def test_node_joins_three_wires(d):
     assert len(d.summary()["wires"]) == 3
 
 
+# -- stretch ------------------------------------------------------------------
+
+def test_add_with_stretch_lands_anchor_and_is_one_undo_step(d):
+    d.add(COAX, (100, 40), anchor="left", stretch=200, id="TL")
+    ports = _ports(d, "TL")
+    assert ports["left"]["at"] == [100.0, 40.0]
+    assert ports["right"]["at"] == [340.0, 40.0]   # 40 wide + 200
+    assert _comp(d, "TL")["stretch"] == [200.0, 0.0]
+    assert d.undo_stack.count() == 1
+    d.undo()
+    assert d.summary()["components"] == []
+
+
+def test_add_stretch_after_flip_and_rotation(d):
+    d.add(COAX, (100, 40), anchor="left", stretch=200, flip_h=True,
+          rotation=90, id="TL")
+    c = _comp(d, "TL")
+    assert c["ports"]["left"]["at"] == [100.0, 40.0]
+    assert c["stretch_axes"] == ["vertical"]
+    (x, y) = c["ports"]["right"]["at"]
+    assert x == pytest.approx(100) and abs(y - 40) == pytest.approx(240)
+
+
+def test_stretch_keeps_port_and_wires_and_undoes(d):
+    d.add(CAP, (0, 0), anchor="left", rotation=-90, id="C")   # ports along x
+    right = _ports(d, "C")["right"]["at"]
+    d.add(COAX, tuple(right), anchor="right", flip_h=True, id="TL")
+    d.connect("C", "right", "TL", "right")
+    d.add(GND, (0, 0), id="G")
+    d.connect("TL", "left", "G", "left")
+    before = _comp(d, "TL")
+    n = d.undo_stack.count()
+
+    out = d.stretch("TL", by=(120, 0), keep="right")
+    after = _comp(d, "TL")
+    assert out == {"stretch": [120.0, 0.0], "kept": "right"}
+    assert after["ports"]["right"]["at"] == before["ports"]["right"]["at"]
+    assert after["ports"]["left"]["at"] != before["ports"]["left"]["at"]
+    for w in (i for i in d.scene.items() if type(i).__name__ == "ConnectionItem"):
+        ends = [w._expanded[0], w._expanded[-1]]
+        ports = [w.source_port.scene_center(), w.target_port.scene_center()]
+        for e, p in zip(ends, ports):
+            assert (e.x(), e.y()) == pytest.approx((p.x(), p.y()))
+    assert d.undo_stack.count() == n + 1
+
+    d.undo()
+    assert _comp(d, "TL")["ports"] == before["ports"]
+    assert _comp(d, "TL")["stretch"] == [0.0, 0.0]
+
+
+def test_stretch_default_keeps_a_port_that_did_not_move(d):
+    d.add(COAX, (0, 0), anchor="left", flip_h=True, id="TL")
+    at = _ports(d, "TL")
+    out = d.stretch("TL", to=80)
+    kept = out["kept"]
+    assert _ports(d, "TL")[kept]["at"] == at[kept]["at"]
+
+
+def test_repeat_stretch_snaps_and_reports_what_was_applied(d):
+    tile = d.describe(JJ)["stretch_tile"]
+    (axis, size), = tile.items()
+    want = 2.4 * size
+    d.add(JJ, (0, 0), id="J", stretch=want)
+    applied = _comp(d, "J")["stretch"]
+    i = 0 if axis == "horizontal" else 1
+    assert applied[i] != pytest.approx(want)
+    assert applied[i] / size == pytest.approx(round(applied[i] / size))
+    assert d.stretch("J", by=size)["stretch"] == _comp(d, "J")["stretch"]
+
+
+def test_stretch_on_unstretchable_part_is_a_clear_error(d):
+    with pytest.raises(DiagramError, match="not stretchable"):
+        d.add(CAP, (0, 0), stretch=40)
+    assert d.undo_stack.count() == 0
+    with pytest.raises(DiagramError, match="cannot stretch along dy"):
+        d.add(COAX, (0, 0), stretch=(0, 40))
+
+
+def test_decorative_part_places_by_centre_and_resizes(d):
+    key = _key(d, "borders/shaded_region")
+    with pytest.raises(DiagramError, match="omit anchor"):
+        d.add(key, (0, 0), anchor="left")
+    with pytest.raises(DiagramError, match="both axes"):
+        d.add(key, (0, 0), stretch=40)
+    d.add(key, (0, 0), id="S")
+    x0, y0, x1, y1 = _comp(d, "S")["bbox"]
+    d.stretch("S", by=(100, 60))
+    X0, Y0, X1, Y1 = _comp(d, "S")["bbox"]
+    assert (X1 - X0, Y1 - Y0) == pytest.approx((x1 - x0 + 100, y1 - y0 + 60))
+    # The lower-case spelling git tracks works on any checkout.
+    d.add("flair/borders/shaded_region", (0, 0), id="S2")
+
+
 # -- undo / move / remove -----------------------------------------------------
 
 def test_one_add_is_one_undo_step(d):
@@ -167,6 +315,17 @@ def test_dgm_round_trip(d, lib, tmp_path):
     assert [t["text"] for t in s["texts"]] == ["$E_J$"]
 
 
+def test_dgm_round_trip_keeps_stretch(d, lib, tmp_path):
+    d.add(COAX, (0, 0), anchor="left", stretch=160, flip_h=True, id="TL")
+    ports = _ports(d, "TL")
+    e = Diagram(lib)
+    e.load(d.save(tmp_path / "s"))
+    (c,) = e.summary()["components"]
+    assert c["stretch"] == [160.0, 0.0]
+    assert {k: v["at"] for k, v in c["ports"].items()} == \
+        {k: v["at"] for k, v in ports.items()}
+
+
 def test_export_formats(d, tmp_path):
     d.add(CAP, (0, 0))
     for suffix in (".svg", ".pdf", ".png"):
@@ -187,11 +346,17 @@ def server(lib, monkeypatch):
 
 
 TOOL_NAMES = [
-    "search_components", "describe_component", "new_diagram",
-    "add_component", "attach_component", "add_node", "connect", "add_text",
-    "move", "remove", "undo", "get_diagram", "render", "save_diagram",
-    "export_diagram", "open_diagram",
+    "search_components", "list_categories", "describe_component",
+    "new_diagram", "add_component", "attach_component", "add_node",
+    "connect", "add_text", "move", "stretch_component", "remove", "undo",
+    "get_diagram", "render", "save_diagram", "export_diagram", "open_diagram",
 ]
+
+
+def test_tool_list_is_complete(server):
+    """TOOL_NAMES drives the async check; a tool missing from it is unchecked."""
+    registered = {t.name for t in asyncio.run(server.mcp.list_tools())}
+    assert registered == set(TOOL_NAMES)
 
 
 def test_every_tool_is_async(server):
@@ -205,6 +370,23 @@ def test_tool_errors_carry_the_message(server):
     asyncio.run(server.add_component(CAP, 0, 0, id="C"))
     with pytest.raises(server.ToolError, match=r"ports are \['left', 'right'\]"):
         asyncio.run(server.connect("C", "nope", "C", "left"))
+    with pytest.raises(server.ToolError, match="not stretchable"):
+        asyncio.run(server.add_component(CAP, 0, 0, stretch=40))
+    with pytest.raises(server.ToolError, match="not stretchable"):
+        asyncio.run(server.stretch_component("C", by=40))
+
+
+def test_stretch_and_catalogue_tools(server):
+    r = asyncio.run(server.add_component(COAX, 240, 0, anchor="right",
+                                         flip_h=True, stretch=320, id="TL"))
+    assert r["stretch"] == [320.0, 0.0] and r["stretch_axes"] == ["horizontal"]
+    assert r["ports"]["left"]["at"] == [600.0, 0.0]
+    r = asyncio.run(server.stretch_component("TL", by=[40, 0], keep="right"))
+    assert r["stretch"] == [360.0, 0.0] and r["kept"] == "right"
+    assert r["ports"]["right"]["at"] == [240.0, 0.0]
+    s = asyncio.run(server.search_components(""))
+    assert s["truncated"] and "list_categories" in s["hint"]
+    assert asyncio.run(server.list_categories())["total"] == TOTAL_PARTS
 
 
 def test_tools_never_write_stdout(server, capsys):

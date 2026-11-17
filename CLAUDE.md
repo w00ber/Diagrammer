@@ -12,8 +12,8 @@ See [README.md](README.md) for what it does and how to install it.
 | Component validation / repair (checks, fixes, profiles) | **[src/diagrammer/svglint/](src/diagrammer/svglint/)** — one engine shared by the app, the skill script and the git hook; see its `__init__.py` |
 | The user's component overlay (forks, tombstones, drift) | **[src/diagrammer/models/overrides.py](src/diagrammer/models/overrides.py)** |
 | LaTeX / math annotations | [docs/math-annotations.md](docs/math-annotations.md) |
-| User-facing behaviour | [docs/tutorial.md](docs/tutorial.md), [src/diagrammer/docs/help.md](src/diagrammer/docs/help.md) |
-| Headless API / MCP server (Claude building diagrams) | [docs/mcp.md](docs/mcp.md), then the docstring of `src/diagrammer/mcp_server.py` — tools must be `async` and wrapped in `_quiet` |
+| User-facing behaviour | [src/diagrammer/docs/tutorial.md](src/diagrammer/docs/tutorial.md), [src/diagrammer/docs/help.md](src/diagrammer/docs/help.md) |
+| Headless API / MCP server (Claude building diagrams) — *experimental* | [docs/mcp.md](docs/mcp.md), then the docstring of `src/diagrammer/mcp_server.py` — tools must be `async` and wrapped in `_quiet`. Known gaps are tracked in issue #42 |
 | Wire / selection / drag / undo interaction | **[docs/wiring-interaction-redesign.md](docs/wiring-interaction-redesign.md)** — the target model and the staged refactor; do not add another per-operation junction policy |
 
 The component spec lives under `src/diagrammer/docs/` because it ships as in-app
@@ -22,6 +22,15 @@ layer contract (`artwork` / `leads` / `ports` / `labels` / `stretch`), and its
 "House Conventions" section covers the per-library line weights and port grids
 that the shipped libraries follow. Do not infer these by reading example SVGs;
 they are not self-consistent.
+
+## Open work lives in GitHub issues
+
+There is no TODO file in the repo. Future work is tracked as issues on
+`w00ber/Diagrammer`: #3 is the general TODO list, and larger topics get their
+own issue (e.g. #17 junction placement, #18 component requests, #42 the
+experimental MCP server's known gaps). Check the open issues before starting
+work in an area, and record gaps you find but don't fix as a new issue or an
+item on the relevant one — not as a note in this file.
 
 ## Layout
 

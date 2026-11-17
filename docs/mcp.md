@@ -6,7 +6,10 @@ then finish by hand in the app. It runs locally over stdio, with no window, and
 edits the scene through the same undo commands as the mouse — so the file it
 writes is an ordinary diagram.
 
-Status: **experimental.** The tool set is small and will change.
+Status: **experimental.** The tool set is small and will change. Treat what it
+draws as a starting point: it gets the parts, the wiring and the labels in
+place, and you tidy spacing and details in the app. See
+[Drawing from a picture](#drawing-from-a-picture) for worked examples.
 
 ## Install
 
@@ -48,8 +51,10 @@ The plain claude.ai web chat cannot reach a local server.
 
 | Tool | Does |
 | ---- | ---- |
-| `search_components`, `describe_component` | Find parts; list ports with the direction each lead points |
-| `add_component` | Place a part so a chosen port (or its centre) lands on a point |
+| `list_categories` | Every folder of the catalogue with counts, and which library roots are loaded — the first call from a sketch |
+| `search_components`, `describe_component` | Find parts by key or description (reports `total` and `truncated`); list ports with the direction each lead points |
+| `add_component` | Place a part so a chosen port (or its centre) lands on a point; `stretch=` lengthens it first |
+| `stretch_component` | Lengthen or shorten a placed part, keeping one port in place; wires follow |
 | `attach_component` | Place a part next to an existing port, turned to face it, and wire them — chains are repeated calls |
 | `add_node`, `connect` | T-junctions; wires between existing ports |
 | `add_text` | Labels; `$...$` is LaTeX |
@@ -69,6 +74,83 @@ d.attach("PAPER_2pt/circuits/gnds/GND1", "left", to=("C", "right"))
 d.save("~/Desktop/rc.dgm")
 ```
 
+## Drawing from a picture
+
+The most useful thing to do with the server is to hand Claude a picture, such as
+a whiteboard photo, a pencil sketch, or a figure from a paper, and get back a
+`.dgm` with the circuit already laid out. **The result is not perfect.** It is
+good for setting up the baseline geometry, meaning which parts, how they are
+wired, and roughly where they sit, and you then tweak it by hand. That is
+usually the slow part of drawing a schematic from scratch.
+
+In Claude Desktop, attach the image to the chat. In Claude Code, paste it or
+give its path. The prompt can be very short: both examples below were drawn
+from a one-line request, and in both Claude picked the `PAPER_2pt` library on
+its own.
+
+### Example 1: a hand sketch
+
+A hand-drawn RCSJ junction chain:
+
+![Hand sketch of an RCSJ junction chain](mcp-examples/rcsj_chain_sketch.png)
+
+The prompt, with the sketch attached:
+
+> Do you have access to the Diagrammer MCP? Can you reproduce this figure as
+> Diagrammer file?
+
+Result, as exported from the saved `.dgm`
+([rcsj_chain.dgm](mcp-examples/rcsj_chain.dgm)):
+
+![Diagrammer rendering of the RCSJ chain](mcp-examples/rcsj_chain.png)
+
+The handwriting was read into proper labels ($R_0$, $C_{J0}$, $\delta_0$, …),
+and the "NODE" arrows became text labels on the rail.
+
+### Example 2: redrawing a published figure
+
+Fig. 14(b) of O. Naaman and J. Aumentado, "Synthesis of parametrically coupled
+networks", *PRX Quantum* **3**, 020201 (2022):
+
+![Original figure: a filter network with a central dc SQUID](mcp-examples/naaman2022_fig14b_original.png)
+
+The prompt:
+
+> Ok- now try to reproduce Fig14(b) of the Naaman and Aumentado PRXQ (2022)
+
+**Claude has to see the figure.** This prompt first sent Claude to a paper
+library connected through another MCP server, which returned the paper's text
+but not its figures. From the text alone, Claude listed the parts and their
+values, but it could only guess where the SQUID connects, and it said so and
+asked for the image. Pasting a screenshot of the figure fixed that. If a tool
+hands Claude a paper but not its images, paste the figure.
+
+Result ([naaman2022_fig14b.dgm](mcp-examples/naaman2022_fig14b.dgm)):
+
+![Diagrammer rendering of the filter network](mcp-examples/naaman2022_fig14b.png)
+
+The topology and labels came across. The shaded background regions were
+dropped, and the dashed flux lines are approximated by the SQUID part's own
+flux arrows. Those are the kind of details you finish in the app.
+
+### When the first try misses
+
+Start short, as above, and add detail only where the result is wrong:
+
+- **Point at specific problems**, for example "C2 should be to the right of
+  L1" or "one ground under the bottom rail", rather than saying "tidy it up".
+  Claude checks its work by rendering the diagram and looking at it.
+- **Name the library** (`PAPER_2pt`, `SLIDES_3pt`, `CRYO_WIRING_6pt`) if you
+  want a different one from the one Claude picked. It sets the line weight of
+  the whole diagram.
+- **List the labels** if a hand-written one was misread.
+- **Say what to leave out.** Shading, annotations and decorative arrows are
+  easier to add by hand than to get right through the tools.
+- **Save early, then finish in the app.** The `.dgm` is an ordinary diagram.
+  To keep working with Claude later, have it `open_diagram` the file in a new
+  chat. The ids then become the file's 12-hex instance ids, not the short names
+  used while drawing.
+
 ## Things that will trip you up
 
 - **Port names are not directions.** In the shipped library a capacitor's
@@ -76,6 +158,27 @@ d.save("~/Desktop/rc.dgm")
   geometry after rotation and flip; Claude is told to use it.
 - **Short ids are not saved.** `J1`, `Cc` live only in the server session; a
   reopened `.dgm` uses its 12-hex instance ids.
+- **Stretch is in the part's own frame; `stretch_axes` is on screen.**
+  `stretch=[dx, dy]` is measured in the unrotated part, as
+  `ComponentItem.set_stretch` and the `.dgm` store it, so a coax rotated 90°
+  still takes `dx`. A placed part's `stretch_axes` says which way that is on
+  screen (`["vertical"]` for that coax). A bare number works for a part with
+  one stretch axis. Repeat-mode parts (JJ1, TWP1, the photons) snap to whole
+  tiles — `describe_component` gives `stretch_tile`, and the tools return the
+  value actually applied. `describe_component`'s older `stretch: {h, v}` field
+  names the *break line*, so `"v": true` means it lengthens horizontally.
+- **`stretch_component` keeps a port fixed, not the part.** By default it keeps
+  a port the stretch leaves in place, so the part grows away from it. Flip
+  decides which end that is on screen; pass `keep="<port>"` to pin the end
+  that is wired.
+- **Only the libraries this machine has.** A local server loads the shipped
+  parts, your edited copies in `~/.diagrammer/components/`, and the custom
+  library folders enabled in the app's settings. A cloud session has only
+  what is in the repository. `list_categories` lists the roots it loaded and
+  says so when only the shipped library is there.
+- **Search results are capped.** `search_components` returns `total` and
+  `truncated`; an empty query does not list everything. Words match the key
+  and the part's `<title>`/`<desc>` text, so "wavy arrow" finds the photons.
 - **One diagram per server process.** `new_diagram` discards the current one.
   Desktop appears to run one server for all chats, so two chats drawing at
   once would share — and overwrite — the same diagram.
@@ -88,8 +191,9 @@ d.save("~/Desktop/rc.dgm")
 - **Memory:** about 100 MB idle (mostly the MCP SDK and Qt; the component
   library itself is ~3 MB), about 155 MB once a LaTeX label has loaded
   matplotlib. No CPU when idle.
-- **Context:** the tool definitions are ~2,000 tokens in every chat where the
-  server is enabled — switch it off per chat when you are not drawing. Each
+- **Context:** the tool definitions and instructions are ~3,000 tokens in
+  every chat where the server is enabled — switch it off per chat when you
+  are not drawing. `list_categories` is ~400 tokens for the shipped tree. Each
   `render` returns an image, roughly 1–1.5k tokens; render after a batch of
   edits rather than after each one.
 

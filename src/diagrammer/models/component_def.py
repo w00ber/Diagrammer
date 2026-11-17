@@ -73,6 +73,10 @@ class ComponentDef:
     decorative: bool = False  # freely resizable, no ports/leads
     snap_point: tuple[float, float] | None = None  # optional snap anchor (from <g id="snap">)
     category: str = ""
+    # What the part *is*, in words: the root ``<title>`` and ``<desc>``.
+    # Searched by the headless API so "wavy arrow" finds a photon. A title
+    # that is only the file name (Illustrator writes one) is dropped.
+    description: str = ""
     # If this def came from a user-saved compound, the path to its sibling
     # ``.dgmcomp`` manifest. When set, the canvas drop handler instantiates
     # the manifest as a group instead of placing the SVG as a single item,
@@ -231,6 +235,8 @@ class ComponentDef:
         if not decorative and not ports and snap_point is not None:
             decorative = True
 
+        description = _parse_description(root)
+
         manifest_path = path.with_suffix(".dgmcomp")
         if not manifest_path.is_file():
             manifest_path = None
@@ -253,8 +259,24 @@ class ComponentDef:
             decorative=decorative,
             snap_point=snap_point,
             category=category,
+            description=description,
             compound_manifest_path=manifest_path,
         )
+
+
+def _parse_description(root: ET.Element) -> str:
+    """Text of the root's direct ``<title>`` and ``<desc>`` children."""
+    parts = []
+    for child in root:
+        tag = _strip_ns(child.tag) if isinstance(child.tag, str) else ""
+        if tag not in ("title", "desc"):
+            continue
+        text = " ".join("".join(child.itertext()).split())
+        if tag == "title" and text.lower().endswith(".svg"):
+            continue
+        if text:
+            parts.append(text)
+    return " — ".join(parts)
 
 
 def _strip_ns(tag: str) -> str:

@@ -213,7 +213,8 @@ pip install -e ".[mcp]"
 ```
 
 This is experimental — the tool set will change. Setup for each client, and
-what to watch out for, is in [docs/mcp.md](docs/mcp.md).
+what to watch out for, is in [docs/mcp.md](docs/mcp.md), along with worked
+examples of turning a sketch or a published figure into a `.dgm`.
 
 ## Building an app bundle/executable
 
@@ -238,8 +239,8 @@ The app bundle or executable will be created in the `dist/` directory. For macOS
   component specification.
 - [src/diagrammer/docs/help.md](src/diagrammer/docs/help.md) — in-app help
   and complete shortcut reference.
-- [docs/tutorial.md](docs/tutorial.md) — a walk-through building a first
-  circuit (also Help ▸ Tutorial).
+- [src/diagrammer/docs/tutorial.md](src/diagrammer/docs/tutorial.md) — a
+  walk-through building a first circuit (also Help ▸ Tutorial).
 - [docs/mcp.md](docs/mcp.md) — the experimental MCP server.
 
 ## License

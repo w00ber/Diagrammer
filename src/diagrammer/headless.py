@@ -16,6 +16,9 @@ Claude through ``diagrammer.mcp_server``):
 * Port directions are reported from **geometry** (which way the lead points
   on screen after rotation and flip), never from the port's name. Port names
   in the shipped library are not reliable direction hints.
+* Stretch amounts are ``(dx, dy)`` in the part's **own, unrotated frame** —
+  what ``ComponentItem.set_stretch`` takes and the ``.dgm`` stores — while
+  ``stretch_axes`` reports which way that lengthens the part **on screen**.
 
 Coordinates are scene pixels, y pointing **down**; the default grid is 20 px.
 Rotation is in degrees **clockwise on screen**.
@@ -59,11 +62,16 @@ def builtin_components_root() -> Path:
 
 
 def load_library(include_overlay: bool = True,
-                 extra_roots: list[Path] | None = None) -> ComponentLibrary:
+                 extra_roots: list[Path] | None = None, *,
+                 include_custom: bool = True) -> ComponentLibrary:
     """Scan components in the app's precedence order.
 
     Overlay first (the user's forks shadow built-ins), then the shipped tree,
-    then any extra roots — mirroring ``MainWindow._rebuild_library``.
+    then the custom library folders enabled in the app's settings, then any
+    *extra_roots* — mirroring ``MainWindow._rebuild_library``. Without the
+    custom folders a local MCP session would not see the libraries the user
+    sees in the panel. Tests pass ``include_custom=False``: the settings
+    singleton reads the real ``~/.diagrammer/settings.json`` at import.
     """
     from diagrammer.models import overrides
     lib = ComponentLibrary()
@@ -71,9 +79,14 @@ def load_library(include_overlay: bool = True,
     if include_overlay and overlay.is_dir():
         lib.scan(overlay, source_kind="overlay", flat_category="My Components")
     lib.scan(builtin_components_root(), source_kind="builtin")
-    for root in extra_roots or ():
-        if Path(root).is_dir():
-            lib.scan(Path(root), source_kind="custom")
+    roots = [Path(r) for r in extra_roots or ()]
+    if include_custom:
+        from diagrammer.panels.settings_dialog import app_settings
+        roots = [Path(r) for r in app_settings.enabled_custom_library_paths()
+                 ] + roots
+    for root in roots:
+        if root.is_dir():
+            lib.scan(root, source_kind="custom")
     return lib
 
 
@@ -91,6 +104,39 @@ def _direction_name(dx: float, dy: float) -> str:
 
 def _r(v: float) -> float:
     return round(v, 2)
+
+
+def _stretchable(cdef: ComponentDef) -> tuple[bool, bool]:
+    """Whether the part takes a non-zero ``dx`` / ``dy`` (its own frame).
+
+    Read from the break lines, which is what ``set_stretch`` acts on, not the
+    ``stretch_h``/``stretch_v`` flags: a metadata flag with no break line moves
+    nothing. A decorative part resizes freely on both axes.
+    """
+    if cdef.decorative:
+        return True, True
+    return (cdef.stretch_v_pos is not None or cdef.stretch_v_repeat is not None,
+            cdef.stretch_h_pos is not None or cdef.stretch_h_repeat is not None)
+
+
+def _stretch_info(cdef: ComponentDef) -> dict:
+    """Catalogue view of how a part stretches, in its unrotated frame."""
+    can_dx, can_dy = _stretchable(cdef)
+    info: dict = {"stretch_axes": [a for a, ok in (("horizontal", can_dx),
+                                                    ("vertical", can_dy)) if ok]}
+    if cdef.decorative:
+        info["decorative"] = True
+        info["resize"] = "free: stretch=[dx, dy] grows the box from its " \
+                         "top-left; no ports, so place it by centre"
+        return info
+    tiles = {}
+    if cdef.stretch_v_repeat is not None:
+        tiles["horizontal"] = _r(cdef.stretch_v_repeat[1] - cdef.stretch_v_repeat[0])
+    if cdef.stretch_h_repeat is not None:
+        tiles["vertical"] = _r(cdef.stretch_h_repeat[1] - cdef.stretch_h_repeat[0])
+    if tiles:
+        info["stretch_tile"] = tiles   # stretch snaps to multiples of these
+    return info
 
 
 class DiagramError(ValueError):
@@ -114,39 +160,99 @@ class Diagram:
     # ------------------------------------------------------------------
 
     def search(self, query: str = "", library: str | None = None,
-               limit: int = 40) -> list[dict]:
-        """Components whose key contains every word of *query* (case-blind).
+               limit: int = 40) -> dict:
+        """Components matching every word of *query*, case-blind.
 
-        *library* restricts to a top-level tree such as ``"PAPER_2pt"``.
+        A word matches a substring of the key (``"PAPER_2pt/circuits/quantum/
+        JJ1"``) or of the part's ``<title>``/``<desc>`` text, which is where
+        what a part *is* gets written down ("wavy arrow", "propagating").
+        *library* is a key prefix: a top-level set such as ``"PAPER_2pt"`` or a
+        folder such as ``"FLAIR/photons"``.
+
+        Returns ``{"results", "total", "truncated"}`` so that a capped answer
+        never reads as the whole catalogue. Decorative parts (borders, shaded
+        regions, edges) are included and flagged ``"decorative": true``.
         """
         words = query.lower().split()
-        out = []
+        prefix = library.strip("/").lower() + "/" if library else None
+        hits = []
         for key in sorted(self.library._by_key):
-            if library and not key.startswith(library.rstrip("/") + "/"):
+            if prefix and not key.lower().startswith(prefix):
                 continue
-            if all(w in key.lower() for w in words):
-                d = self.library.get(key)
-                if d.decorative:
-                    continue
-                out.append({"key": key, "ports": [p.name for p in d.ports],
-                            "size": [_r(d.width), _r(d.height)]})
-                if len(out) >= limit:
-                    break
+            d = self.library.get(key)
+            hay = f"{key} {d.description}".lower()
+            if all(w in hay or (w.endswith("s") and w[:-1] in hay)
+                   for w in words):
+                hits.append(key)
+        results = []
+        for key in hits[:max(0, limit)]:
+            d = self.library.get(key)
+            entry = {"key": key, "ports": [p.name for p in d.ports],
+                     "size": [_r(d.width), _r(d.height)]}
+            info = _stretch_info(d)
+            if not info["stretch_axes"]:
+                del info["stretch_axes"]
+            entry.update(info)
+            if d.description:
+                entry["desc"] = d.description
+            results.append(entry)
+        return {"results": results, "total": len(hits),
+                "truncated": len(hits) > len(results)}
+
+    def list_categories(self) -> dict:
+        """Every folder of the catalogue with its part count, and the library
+        roots it was scanned from.
+
+        The cheap first look at what exists. *roots* makes a missing library
+        visible: a session that only loaded the shipped tree says so.
+        """
+        cats: dict[str, int] = {}
+        roots: dict[tuple[str, str], int] = {}
+        for key, d in self.library._by_key.items():
+            cats[d.category] = cats.get(d.category, 0) + 1
+            root = getattr(d, "source_root", None)
+            where = str(root) if root else "(unknown)"
+            home = str(Path.home())
+            if where.startswith(home):
+                where = "~" + where[len(home):]
+            k = (d.source_kind or "other", where)
+            roots[k] = roots.get(k, 0) + 1
+        out = {
+            "total": sum(cats.values()),
+            "categories": dict(sorted(cats.items())),
+            "roots": [{"kind": kind, "path": path, "components": n}
+                      for (kind, path), n in sorted(roots.items())],
+        }
+        if {k for k, _ in roots} <= {"builtin"}:
+            out["note"] = ("only the library shipped with Diagrammer is loaded; "
+                           "the user's own component folders are not "
+                           "available in this session")
         return out
 
     def describe(self, key: str) -> dict:
-        """Ports of an unrotated component, with geometric lead directions."""
+        """Ports of an unrotated component, with geometric lead directions.
+
+        ``stretch_axes`` says which way the part lengthens, in this unrotated
+        view: "horizontal" takes ``dx``, "vertical" takes ``dy``. The raw
+        ``stretch`` flags are kept for old callers and read backwards from
+        that: ``"v": true`` means a *vertical break line*, which lengthens the
+        part horizontally.
+        """
         d = self._def(key)
-        return {
+        out = {
             "key": key,
             "size": [_r(d.width), _r(d.height)],
             "stretch": {"h": d.stretch_h, "v": d.stretch_v},
+            **_stretch_info(d),
             "ports": [
                 {"name": p.name, "x": _r(p.x), "y": _r(p.y),
                  "points": _direction_name(p.approach_dx, p.approach_dy)}
                 for p in d.ports
             ],
         }
+        if d.description:
+            out["desc"] = d.description
+        return out
 
     # ------------------------------------------------------------------
     # Editing
@@ -155,10 +261,15 @@ class Diagram:
     def add(self, key: str, at: tuple[float, float] = (0.0, 0.0), *,
             anchor: str | None = None, rotation: float = 0.0,
             flip_h: bool = False, flip_v: bool = False,
+            stretch: float | tuple[float, float] | None = None,
             id: str | None = None) -> str:
         """Place component *key* so that *anchor* lands exactly on *at*.
 
         *anchor* is a port name, or ``None`` for the component's centre.
+        *stretch* lengthens a stretchable part: ``(dx, dy)`` in its own,
+        unrotated frame, or a bare number for a part with one stretch axis.
+        It is applied before placement, so *anchor* lands on *at* in the
+        stretched geometry. Repeat-mode parts snap to whole tiles.
         Returns the component's id (``id`` if given, else ``"c<N>"``).
         """
         from diagrammer.commands.add_command import (
@@ -166,12 +277,18 @@ class Diagram:
         from diagrammer.commands.transform_command import (
             FlipItemCommand, RotateItemCommand)
 
+        from diagrammer.commands.stretch_command import StretchComponentCommand
+
         cdef = self._def(key)
         cid = self._new_id(id)
         if anchor is not None and anchor not in [p.name for p in cdef.ports]:
             raise DiagramError(
                 f"{key} has no port {anchor!r}; ports are "
-                f"{[p.name for p in cdef.ports]}")
+                f"{[p.name for p in cdef.ports]}"
+                + (" (a decorative part has none: omit anchor)"
+                   if cdef.decorative else ""))
+        sdx, sdy = (self._resolve_stretch(key, cdef, stretch)
+                    if stretch is not None else (0.0, 0.0))
 
         self.undo_stack.beginMacro(f"Add {cid}")
         try:
@@ -184,6 +301,9 @@ class Diagram:
                 self.undo_stack.push(FlipItemCommand(item, horizontal=False))
             if rotation % 360:
                 self.undo_stack.push(RotateItemCommand(item, rotation % 360))
+            if sdx or sdy:
+                self.undo_stack.push(
+                    StretchComponentCommand(item, 0.0, 0.0, sdx, sdy))
             here = self._anchor_point(item, anchor)
             target = QPointF(*at)
             self.undo_stack.push(MoveComponentCommand(
@@ -305,6 +425,62 @@ class Diagram:
         self.undo_stack.push(
             MoveComponentCommand(item, item.pos(), item.pos() + delta))
 
+    def stretch(self, id: str, *,
+                to: float | tuple[float, float] | None = None,
+                by: float | tuple[float, float] | None = None,
+                keep: str | None = None) -> dict:
+        """Lengthen (or shorten) a placed part, keeping one port where it is.
+
+        *to* sets the stretch, *by* adds to the current one; both are
+        ``(dx, dy)`` in the part's own frame, or a number for a one-axis part.
+        *keep* names the port whose scene position must not move. By default
+        it is a port the stretch leaves in place — measured, not assumed,
+        since flip and rotation decide which end that is on screen — so the
+        part grows away from it. Wires follow. One undo step.
+
+        Returns ``{"stretch": [dx, dy], "kept": port}`` with the values
+        actually applied (snapped to tiles, clamped to the minimum size).
+        """
+        from diagrammer.commands.add_command import MoveComponentCommand
+        from diagrammer.commands.stretch_command import StretchComponentCommand
+        from diagrammer.items.component_item import ComponentItem
+        item = self._item(id)
+        if not isinstance(item, ComponentItem):
+            raise DiagramError(f"{id} is not a component; only parts stretch")
+        if (to is None) == (by is None):
+            raise DiagramError("give exactly one of to= or by=")
+        cdef = item.component_def
+        key = item.library_key
+        if keep is not None and item.port_by_name(keep) is None:
+            raise DiagramError(f"{id} has no port {keep!r}; ports are "
+                               f"{[p.port_name for p in item.ports]}")
+        old = (item.stretch_dx, item.stretch_dy)
+        if by is not None:
+            ddx, ddy = self._resolve_stretch(key, cdef, by)
+            new = (old[0] + ddx, old[1] + ddy)
+        else:
+            new = self._resolve_stretch(key, cdef, to)
+
+        before = {p.port_name: p.scene_center() for p in item.ports}
+        self.undo_stack.beginMacro(f"Stretch {id}")
+        try:
+            self.undo_stack.push(StretchComponentCommand(item, *old, *new))
+            after = {p.port_name: p.scene_center() for p in item.ports}
+            if keep is None:
+                still = [n for n in before
+                         if (after[n] - before[n]).manhattanLength() < 1e-6]
+                keep = still[0] if still else next(iter(before), None)
+            if keep is not None:
+                delta = before[keep] - after[keep]
+                if delta.manhattanLength() > 1e-6:
+                    self.undo_stack.push(MoveComponentCommand(
+                        item, item.pos(), item.pos() + delta))
+                    self.scene.update_connections()
+        finally:
+            self.undo_stack.endMacro()
+        return {"stretch": [_r(item.stretch_dx), _r(item.stretch_dy)],
+                "kept": keep}
+
     def remove(self, id: str) -> None:
         """Delete an item (and, for a component, the wires on it)."""
         from diagrammer.commands.delete_command import DeleteCommand
@@ -347,6 +523,8 @@ class Diagram:
                     "id": iid, "key": item.library_key,
                     "rotation": _r(item.rotation_angle),
                     "flip_h": item.flip_h, "flip_v": item.flip_v,
+                    "stretch": [_r(item.stretch_dx), _r(item.stretch_dy)],
+                    "stretch_axes": self._screen_axes(item),
                     "bbox": [_r(br.left()), _r(br.top()),
                              _r(br.right()), _r(br.bottom())],
                     "ports": {
@@ -432,6 +610,12 @@ class Diagram:
     def _def(self, key: str) -> ComponentDef:
         d = self.library.get(key)
         if d is None:
+            # Folder case differs between checkouts (git tracks "flair/", a
+            # case-insensitive disk may hold "FLAIR/"); accept a unique match.
+            same = [k for k in self.library._by_key if k.lower() == key.lower()]
+            if len(same) == 1:
+                return self.library.get(same[0])
+        if d is None:
             import difflib
             names = {k: k.rsplit("/", 1)[-1].lower() for k in self.library._by_key}
             want = key.rsplit("/", 1)[-1].lower()
@@ -491,6 +675,52 @@ class Diagram:
             if m:
                 return float(m.group(1))
         return None
+
+    @staticmethod
+    def _resolve_stretch(key: str, cdef: ComponentDef,
+                         value) -> tuple[float, float]:
+        """``(dx, dy)`` from a caller's number or pair, or a DiagramError."""
+        can = _stretchable(cdef)
+        names = ("dx (horizontal, unrotated)", "dy (vertical, unrotated)")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            axes = [i for i in (0, 1) if can[i]]
+            if len(axes) != 1:
+                raise DiagramError(
+                    f"{key} is not stretchable" if not axes else
+                    f"{key} stretches on both axes; give stretch=[dx, dy]")
+            out = [0.0, 0.0]
+            out[axes[0]] = float(value)
+            return out[0], out[1]
+        try:
+            dx, dy = (float(v) for v in value)
+        except (TypeError, ValueError):
+            raise DiagramError(
+                f"stretch must be a number or [dx, dy], not {value!r}") from None
+        for i, v in enumerate((dx, dy)):
+            if v and not can[i]:
+                ok = [names[j] for j in (0, 1) if can[j]]
+                raise DiagramError(
+                    f"{key} cannot stretch along {names[i]}; "
+                    + (f"it takes {' and '.join(ok)}" if ok
+                       else "it is not stretchable"))
+        return dx, dy
+
+    @staticmethod
+    def _screen_axes(item) -> list[str]:
+        """Screen directions the placed part lengthens in, after rotate/flip."""
+        out = []
+        o = item.mapToScene(QPointF(0, 0))
+        for ok, unit in zip(_stretchable(item.component_def),
+                            (QPointF(1, 0), QPointF(0, 1))):
+            if not ok:
+                continue
+            v = item.mapToScene(unit) - o
+            if abs(abs(v.x()) - abs(v.y())) < 1e-6:
+                out.append(f"{math.degrees(math.atan2(-v.y(), v.x())):.0f}deg")
+            else:
+                out.append("horizontal" if abs(v.x()) > abs(v.y())
+                           else "vertical")
+        return out
 
     @staticmethod
     def _xy(p: QPointF) -> tuple[float, float]:

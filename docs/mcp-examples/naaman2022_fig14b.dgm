@@ -1,0 +1,1673 @@
+{
+  "version": "2.5",
+  "layers": [
+    {
+      "name": "Default",
+      "visible": true,
+      "locked": false,
+      "color": "#000000"
+    }
+  ],
+  "components": [
+    {
+      "id": "6c8724e49163",
+      "def_key": "PAPER_2pt/circuits/LCR/RES1",
+      "pos": [
+        1200.0,
+        250.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 42.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA0MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KCiAgICAgIC5zdDEgewogICAgICAgIGZpbGw6ICNmZmY7CiAgICAgIH0KCiAgICAgIC5zdDEsIC5zdDIgewogICAgICAgIHN0cm9rZTogIzAwMDsKICAgICAgICBzdHJva2UtbGluZWNhcDogcm91bmQ7CiAgICAgICAgc3Ryb2tlLWxpbmVqb2luOiByb3VuZDsKICAgICAgICBzdHJva2Utd2lkdGg6IDJweDsKICAgICAgfQoKICAgICAgLnN0MiwgLnN0MyB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgfQoKICAgICAgLnN0NCB7CiAgICAgICAgZGlzcGxheTogbm9uZTsKICAgICAgfQoKICAgICAgLnN0MyB7CiAgICAgICAgc3Ryb2tlOiAjOTk5OwogICAgICAgIHN0cm9rZS1taXRlcmxpbWl0OiAxMDsKICAgICAgICBzdHJva2Utd2lkdGg6IC41cHg7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJndWlkZXMiIGNsYXNzPSJzdDQiPgogICAgPHJlY3QgY2xhc3M9InN0MyIgeD0iLTMwIiB5PSI1MCIgd2lkdGg9IjUwIiBoZWlnaHQ9IjIwIi8+CiAgPC9nPgogIDxnIGlkPSJwb3J0cyI+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OmxlZnQiIGNsYXNzPSJzdDAiIGN4PSIyMC4xIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnJpZ2h0IiBjbGFzcz0ic3QwIiBjeD0iMjAuMSIgY3k9IjEwMC4xIiByPSIzIi8+CiAgPC9nPgogIDxnIGlkPSJhcnR3b3JrIj4KICAgIDxwYXRoIGNsYXNzPSJzdDIiIGQ9Ik0yMC4xLDc4LjFsMTAuOS00LjctMjEuOS05LjQsMjEuOS05LjQtMjEuOS05LjQsMjEuOS05LjQtMjEuOS05LjQsMTAuOS00LjciLz4KICA8L2c+CiAgPGcgaWQ9ImxlYWRzIj4KICAgIDxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik0yMC4xLDB2MjEuNyIvPgogICAgPHBhdGggY2xhc3M9InN0MSIgZD0iTTIwLjEsMTAwLjF2LTIxLjkiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "RES1",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    },
+    {
+      "id": "ff294d7ad461",
+      "def_key": "PAPER_2pt/circuits/LCR/CAP1_SHORT",
+      "pos": [
+        1120.0,
+        180.0
+      ],
+      "rotation": 90.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 39.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA2MCA0MCI+CiAgPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDMwLjIuMSwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDIuMS4xIEJ1aWxkIDEpICAtLT4KICA8ZGVmcz4KICAgIDxzdHlsZT4KICAgICAgLnN0MCB7CiAgICAgICAgZmlsbDogI2M2NjsKICAgICAgfQoKICAgICAgLnN0MSB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgICAgc3Ryb2tlLWxpbmVjYXA6IHJvdW5kOwogICAgICAgIHN0cm9rZS1saW5lam9pbjogYmV2ZWw7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAycHg7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJhcnR3b3JrIj4KICAgIDxnPgogICAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNNTQuNiwyNC42SDUuNCIvPgogICAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNNTQuNiwxNS40SDUuNCIvPgogICAgPC9nPgogIDwvZz4KICA8ZyBpZD0icG9ydHMiPgogICAgPGcgaWQ9InBvcnRzMSI+CiAgICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MCIgY3g9IjMwIiByPSIzIi8+CiAgICAgIDxjaXJjbGUgaWQ9InBvcnQ6cmlnaHQiIGNsYXNzPSJzdDAiIGN4PSIzMCIgY3k9IjQwIiByPSIzIi8+CiAgICA8L2c+CiAgPC9nPgogIDxnIGlkPSJsZWFkcyI+CiAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMzAsMHYxNS40Ii8+CiAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMzAsNDB2LTE1LjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "CAP1_SHORT",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    },
+    {
+      "id": "7f206571def0",
+      "def_key": "PAPER_2pt/circuits/LCR/CAP1",
+      "pos": [
+        1050.0,
+        250.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 36.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA2MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KCiAgICAgIC5zdDEgewogICAgICAgIGZpbGw6IG5vbmU7CiAgICAgICAgc3Ryb2tlOiAjMDAwOwogICAgICAgIHN0cm9rZS1saW5lY2FwOiByb3VuZDsKICAgICAgICBzdHJva2UtbGluZWpvaW46IGJldmVsOwogICAgICAgIHN0cm9rZS13aWR0aDogMnB4OwogICAgICB9CgogICAgICAuc3QxbGVhZCB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgICAgc3Ryb2tlLWxpbmVjYXA6IGJ1dHQ7CiAgICAgICAgc3Ryb2tlLWxpbmVqb2luOiBiZXZlbDsKICAgICAgICBzdHJva2Utd2lkdGg6IDJweDsKICAgICAgfQogICAgPC9zdHlsZT4KICA8L2RlZnM+CiAgPGcgaWQ9ImFydHdvcmsiPgogICAgPGc+CiAgICAgIDxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik01NC42LDU0LjZINS40Ii8+CiAgICAgIDxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik01NC42LDQ1LjRINS40Ii8+CiAgICA8L2c+CiAgPC9nPgogIDxnIGlkPSJsZWFkcyI+CiAgICA8cGF0aCBjbGFzcz0ic3QxbGVhZCIgZD0iTTMwLDB2NDUuNCIvPgogICAgPHBhdGggY2xhc3M9InN0MWxlYWQiIGQ9Ik0zMCwxMDB2LTQ0LjkiLz4KICA8L2c+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MCIgY3g9IjMwIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnJpZ2h0IiBjbGFzcz0ic3QwIiBjeD0iMzAiIGN5PSIxMDAiIHI9IjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "CAP1",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    },
+    {
+      "id": "ef5f778bb0db",
+      "def_key": "PAPER_2pt/circuits/LCR/IND1",
+      "pos": [
+        990.0,
+        250.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 33.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA0MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KCiAgICAgIC5zdDEgewogICAgICAgIGZpbGw6IG5vbmU7CiAgICAgICAgc3Ryb2tlOiAjMDAwOwogICAgICAgIHN0cm9rZS1saW5lY2FwOiByb3VuZDsKICAgICAgICBzdHJva2UtbGluZWpvaW46IHJvdW5kOwogICAgICAgIHN0cm9rZS13aWR0aDogMnB4OwogICAgICB9CgogICAgICAuc3QyIHsKICAgICAgICBmaWxsOiAjZmZmOwogICAgICAgIHN0cm9rZTogIzk5OTsKICAgICAgICBzdHJva2UtbWl0ZXJsaW1pdDogMTA7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAuNXB4OwogICAgICB9CgogICAgICAuc3QzIHsKICAgICAgICBkaXNwbGF5OiBub25lOwogICAgICB9CiAgICA8L3N0eWxlPgogIDwvZGVmcz4KICA8ZyBpZD0iZ3VpZGVzIiBjbGFzcz0ic3QzIj4KICAgIDxyZWN0IGNsYXNzPSJzdDIiIHg9Ii0zMCIgeT0iNTAiIHdpZHRoPSI1MCIgaGVpZ2h0PSIyMCIvPgogIDwvZz4KICA8ZyBpZD0iYXJ0d29yayI+CiAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMjAsMjNjMTMuMSwyLjYsMTMuMSwxMi45LDAsMTUuNC0xMy4xLDIuNS0xMy4xLTUuMSwwLTIuNSwxMy4xLDIuNiwxMy4xLDEyLjksMCwxNS40LTEzLjEsMi41LTEzLjEtNS4yLDAtMi42LDEzLjEsMi42LDEzLjEsMTIuOSwwLDE1LjQtMTMuMSwyLjUtMTMuMS01LjEsMC0yLjUsMTMuMSwyLjYsMTMuMSwxMi45LDAsMTUuNE0yMCw3N2gwTTIwLDIzaDAiLz4KICA8L2c+CiAgPGcgaWQ9ImxlYWRzIj4KICAgIDxsaW5lIGNsYXNzPSJzdDEiIHgxPSIyMCIgeTE9IjIzIiB4Mj0iMjAiLz4KICAgIDxsaW5lIGNsYXNzPSJzdDEiIHgxPSIyMCIgeTE9IjEwMCIgeDI9IjIwIiB5Mj0iNzciLz4KICA8L2c+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MCIgY3g9IjIwIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnJpZ2h0IiBjbGFzcz0ic3QwIiBjeD0iMjAiIGN5PSIxMDAiIHI9IjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "IND1",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    },
+    {
+      "id": "e1718ed86a04",
+      "def_key": "PAPER_2pt/circuits/LCR/CAP1_SHORT",
+      "pos": [
+        910.0,
+        180.0
+      ],
+      "rotation": 90.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 30.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA2MCA0MCI+CiAgPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDMwLjIuMSwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDIuMS4xIEJ1aWxkIDEpICAtLT4KICA8ZGVmcz4KICAgIDxzdHlsZT4KICAgICAgLnN0MCB7CiAgICAgICAgZmlsbDogI2M2NjsKICAgICAgfQoKICAgICAgLnN0MSB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgICAgc3Ryb2tlLWxpbmVjYXA6IHJvdW5kOwogICAgICAgIHN0cm9rZS1saW5lam9pbjogYmV2ZWw7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAycHg7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJhcnR3b3JrIj4KICAgIDxnPgogICAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNNTQuNiwyNC42SDUuNCIvPgogICAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNNTQuNiwxNS40SDUuNCIvPgogICAgPC9nPgogIDwvZz4KICA8ZyBpZD0icG9ydHMiPgogICAgPGcgaWQ9InBvcnRzMSI+CiAgICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MCIgY3g9IjMwIiByPSIzIi8+CiAgICAgIDxjaXJjbGUgaWQ9InBvcnQ6cmlnaHQiIGNsYXNzPSJzdDAiIGN4PSIzMCIgY3k9IjQwIiByPSIzIi8+CiAgICA8L2c+CiAgPC9nPgogIDxnIGlkPSJsZWFkcyI+CiAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMzAsMHYxNS40Ii8+CiAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMzAsNDB2LTE1LjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "CAP1_SHORT",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    },
+    {
+      "id": "55114c85d33e",
+      "def_key": "PAPER_2pt/circuits/LCR/CAP1",
+      "pos": [
+        840.0,
+        250.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 27.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA2MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KCiAgICAgIC5zdDEgewogICAgICAgIGZpbGw6IG5vbmU7CiAgICAgICAgc3Ryb2tlOiAjMDAwOwogICAgICAgIHN0cm9rZS1saW5lY2FwOiByb3VuZDsKICAgICAgICBzdHJva2UtbGluZWpvaW46IGJldmVsOwogICAgICAgIHN0cm9rZS13aWR0aDogMnB4OwogICAgICB9CgogICAgICAuc3QxbGVhZCB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgICAgc3Ryb2tlLWxpbmVjYXA6IGJ1dHQ7CiAgICAgICAgc3Ryb2tlLWxpbmVqb2luOiBiZXZlbDsKICAgICAgICBzdHJva2Utd2lkdGg6IDJweDsKICAgICAgfQogICAgPC9zdHlsZT4KICA8L2RlZnM+CiAgPGcgaWQ9ImFydHdvcmsiPgogICAgPGc+CiAgICAgIDxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik01NC42LDU0LjZINS40Ii8+CiAgICAgIDxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik01NC42LDQ1LjRINS40Ii8+CiAgICA8L2c+CiAgPC9nPgogIDxnIGlkPSJsZWFkcyI+CiAgICA8cGF0aCBjbGFzcz0ic3QxbGVhZCIgZD0iTTMwLDB2NDUuNCIvPgogICAgPHBhdGggY2xhc3M9InN0MWxlYWQiIGQ9Ik0zMCwxMDB2LTQ0LjkiLz4KICA8L2c+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MCIgY3g9IjMwIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnJpZ2h0IiBjbGFzcz0ic3QwIiBjeD0iMzAiIGN5PSIxMDAiIHI9IjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "CAP1",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    },
+    {
+      "id": "dfb7b16feb38",
+      "def_key": "PAPER_2pt/circuits/LCR/IND1",
+      "pos": [
+        750.0,
+        150.0
+      ],
+      "rotation": 90.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 24.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA0MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KCiAgICAgIC5zdDEgewogICAgICAgIGZpbGw6IG5vbmU7CiAgICAgICAgc3Ryb2tlOiAjMDAwOwogICAgICAgIHN0cm9rZS1saW5lY2FwOiByb3VuZDsKICAgICAgICBzdHJva2UtbGluZWpvaW46IHJvdW5kOwogICAgICAgIHN0cm9rZS13aWR0aDogMnB4OwogICAgICB9CgogICAgICAuc3QyIHsKICAgICAgICBmaWxsOiAjZmZmOwogICAgICAgIHN0cm9rZTogIzk5OTsKICAgICAgICBzdHJva2UtbWl0ZXJsaW1pdDogMTA7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAuNXB4OwogICAgICB9CgogICAgICAuc3QzIHsKICAgICAgICBkaXNwbGF5OiBub25lOwogICAgICB9CiAgICA8L3N0eWxlPgogIDwvZGVmcz4KICA8ZyBpZD0iZ3VpZGVzIiBjbGFzcz0ic3QzIj4KICAgIDxyZWN0IGNsYXNzPSJzdDIiIHg9Ii0zMCIgeT0iNTAiIHdpZHRoPSI1MCIgaGVpZ2h0PSIyMCIvPgogIDwvZz4KICA8ZyBpZD0iYXJ0d29yayI+CiAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMjAsMjNjMTMuMSwyLjYsMTMuMSwxMi45LDAsMTUuNC0xMy4xLDIuNS0xMy4xLTUuMSwwLTIuNSwxMy4xLDIuNiwxMy4xLDEyLjksMCwxNS40LTEzLjEsMi41LTEzLjEtNS4yLDAtMi42LDEzLjEsMi42LDEzLjEsMTIuOSwwLDE1LjQtMTMuMSwyLjUtMTMuMS01LjEsMC0yLjUsMTMuMSwyLjYsMTMuMSwxMi45LDAsMTUuNE0yMCw3N2gwTTIwLDIzaDAiLz4KICA8L2c+CiAgPGcgaWQ9ImxlYWRzIj4KICAgIDxsaW5lIGNsYXNzPSJzdDEiIHgxPSIyMCIgeTE9IjIzIiB4Mj0iMjAiLz4KICAgIDxsaW5lIGNsYXNzPSJzdDEiIHgxPSIyMCIgeTE9IjEwMCIgeDI9IjIwIiB5Mj0iNzciLz4KICA8L2c+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MCIgY3g9IjIwIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnJpZ2h0IiBjbGFzcz0ic3QwIiBjeD0iMjAiIGN5PSIxMDAiIHI9IjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "IND1",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    },
+    {
+      "id": "fa750337a908",
+      "def_key": "PAPER_2pt/circuits/quantum/SQUIDs/dcSQUID1_flux",
+      "pos": [
+        620.0,
+        250.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 21.0,
+      "group": [],
+      "embedded_svg": "PHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgdmVyc2lvbj0iMS4xIiB2aWV3Qm94PSIwIDAgODAgMTAwIj4KICA8IS0tIEdlbmVyYXRvcjogQWRvYmUgSWxsdXN0cmF0b3IgMzAuMi4xLCBTVkcgRXhwb3J0IFBsdWctSW4gLiBTVkcgVmVyc2lvbjogMi4xLjEgQnVpbGQgMSkgIC0tPgogIDxkZWZzPgogICAgPHN0eWxlPgogICAgICAuc3QwLCAuc3QxLCAuc3QyLCAuc3QzLCAuc3Q0LCAuc3Q1LCAuc3Q2IHsKICAgICAgICBmaWxsOiBub25lOwogICAgICB9CgogICAgICAuc3QxIHsKICAgICAgICBzdHJva2UtZGFzaGFycmF5OiAyLjkgMi45OwogICAgICB9CgogICAgICAuc3QxLCAuc3QyLCAuc3QzLCAuc3Q0LCAuc3Q3LCAuc3Q1LCAuc3Q2IHsKICAgICAgICBzdHJva2UtbGluZWNhcDogcm91bmQ7CiAgICAgIH0KCiAgICAgIC5zdDEsIC5zdDUsIC5zdDYgewogICAgICAgIHN0cm9rZTogIzkzMzsKICAgICAgICBzdHJva2UtbWl0ZXJsaW1pdDogMTA7CiAgICAgIH0KCiAgICAgIC5zdDIgewogICAgICAgIHN0cm9rZS13aWR0aDogM3B4OwogICAgICB9CgogICAgICAuc3QyLCAuc3QzIHsKICAgICAgICBzdHJva2UtbGluZWpvaW46IGJldmVsOwogICAgICB9CgogICAgICAuc3QyLCAuc3QzLCAuc3Q0LCAuc3Q3IHsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgIH0KCiAgICAgIC5zdDggewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KCiAgICAgIC5zdDMsIC5zdDQsIC5zdDcgewogICAgICAgIHN0cm9rZS13aWR0aDogMnB4OwogICAgICB9CgogICAgICAuc3Q0LCAuc3Q3IHsKICAgICAgICBzdHJva2UtbGluZWpvaW46IHJvdW5kOwogICAgICB9CgogICAgICAuc3Q1IHsKICAgICAgICBzdHJva2Utd2lkdGg6IDEuNXB4OwogICAgICB9CgogICAgICAuc3Q5IHsKICAgICAgICBmaWxsOiAjOTMzOwogICAgICB9CgogICAgICAuc3QxMCB7CiAgICAgICAgY2xpcC1wYXRoOiB1cmwoI2NsaXBwYXRoKTsKICAgICAgfQoKICAgICAgLnN0NiB7CiAgICAgICAgc3Ryb2tlLWRhc2hhcnJheTogMy4xIDMuMTsKICAgICAgfQoKICAgICAgLnN0NyB7CiAgICAgICAgc3Ryb2tlLWxpbmVjYXA6IGJ1dHQ7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgICA8Y2xpcFBhdGggaWQ9ImNsaXBwYXRoIj4KICAgICAgPHJlY3QgY2xhc3M9InN0MCIgeD0iMzEuOSIgeT0iNDAuMyIgd2lkdGg9IjE3LjgiIGhlaWdodD0iMjEiLz4KICAgIDwvY2xpcFBhdGg+CiAgPC9kZWZzPgogIDxnIGlkPSJhcnR3b3JrIj48Zz4KICAgIDxnPgogICAgICA8cGF0aCBjbGFzcz0ic3QzIiBkPSJNMTIuNyw1MC41YzAtMTUuMSwxMi4zLTI3LjQsMjcuNC0yNy40czI3LjQsMTIuMywyNy40LDI3LjQiLz4KICAgICAgPGxpbmUgY2xhc3M9InN0NCIgeDE9IjMuNiIgeTE9IjQ1LjQiIHgyPSIyMS45IiB5Mj0iNTYuMSIvPgogICAgICA8bGluZSBjbGFzcz0ic3Q0IiB4MT0iMjEuOSIgeTE9IjQ1LjQiIHgyPSIzLjYiIHkyPSI1Ni4xIi8+CiAgICAgIDxsaW5lIGNsYXNzPSJzdDQiIHgxPSI1OC4zIiB5MT0iNDUuNCIgeDI9Ijc2LjYiIHkyPSI1Ni4xIi8+CiAgICAgIDxsaW5lIGNsYXNzPSJzdDQiIHgxPSI3Ni42IiB5MT0iNDUuNCIgeDI9IjU4LjMiIHkyPSI1Ni4xIi8+CiAgICA8L2c+CiAgICA8Zz4KICAgICAgPGc+CiAgICAgICAgPHBhdGggY2xhc3M9InN0NSIgZD0iTTEwLjgsMTkuNWMuNC4zLjcuNywxLDEuMSIvPgogICAgICAgIDxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0xMy44LDIyLjljNi4xLDgsOS45LDIwLjEsOS45LDMzLjdzLTEsMTcuOS0yLjgsMjQuOSIvPgogICAgICAgIDxwYXRoIGNsYXNzPSJzdDUiIGQ9Ik0yMC42LDgzYy0uMi41LS4zLDEtLjUsMS40Ii8+CiAgICAgICAgPHBvbHlnb24gY2xhc3M9InN0OSIgcG9pbnRzPSIxMC4yIDIyLjkgMy4xIDE0LjcgMTMuMyAxOC4yIDEwLjIgMjIuOSIvPgogICAgICA8L2c+CiAgICAgIDxnPgogICAgICAgIDxwYXRoIGNsYXNzPSJzdDUiIGQ9Ik0yNS40LDEwLjVjLjIuNC41LjkuNywxLjMiLz4KICAgICAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMjcuMiwxNC41YzQuMywxMC4xLDcsMjUuMyw3LDQyLjJzLS44LDIyLjEtMi4xLDMwLjYiLz4KICAgICAgICA8cGF0aCBjbGFzcz0ic3Q1IiBkPSJNMzEuOSw4OC43YzAsLjUtLjIsMS0uMywxLjUiLz4KICAgICAgICA8cG9seWdvbiBjbGFzcz0ic3Q5IiBwb2ludHM9IjI0IDEzLjUgMTkuNSAzLjcgMjguMyAxMCAyNCAxMy41Ii8+CiAgICAgIDwvZz4KICAgIDwvZz4KICAgIDxnPgogICAgICA8Zz4KICAgICAgICA8cGF0aCBjbGFzcz0ic3Q1IiBkPSJNNjkuNCwxOS41Yy0uNC4zLS43LjctMSwxLjEiLz4KICAgICAgICA8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNNjYuNCwyMi45Yy02LjEsOC05LjksMjAuMS05LjksMzMuN3MxLDE3LjksMi44LDI0LjkiLz4KICAgICAgICA8cGF0aCBjbGFzcz0ic3Q1IiBkPSJNNTkuNiw4M2MuMi41LjMsMSwuNSwxLjQiLz4KICAgICAgICA8cG9seWdvbiBjbGFzcz0ic3Q5IiBwb2ludHM9IjY2LjkgMTguMiA3Ny4xIDE0LjcgNzAgMjIuOSA2Ni45IDE4LjIiLz4KICAgICAgPC9nPgogICAgICA8Zz4KICAgICAgICA8cGF0aCBjbGFzcz0ic3Q1IiBkPSJNNTQuOCwxMC41Yy0uMi40LS41LjktLjcsMS4zIi8+CiAgICAgICAgPHBhdGggY2xhc3M9InN0MSIgZD0iTTUzLDE0LjVjLTQuMywxMC4xLTcsMjUuMy03LDQyLjJzLjgsMjIuMSwyLjEsMzAuNiIvPgogICAgICAgIDxwYXRoIGNsYXNzPSJzdDUiIGQ9Ik00OC4zLDg4LjdjMCwuNS4yLDEsLjMsMS41Ii8+CiAgICAgICAgPHBvbHlnb24gY2xhc3M9InN0OSIgcG9pbnRzPSI1MS45IDEwIDYwLjcgMy43IDU2LjIgMTMuNSA1MS45IDEwIi8+CiAgICAgIDwvZz4KICAgIDwvZz4KICAgIDxwYXRoIGNsYXNzPSJzdDMiIGQ9Ik00MC4xLDc3LjljLTE1LjEsMC0yNy40LTEyLjMtMjcuNC0yNy40Ii8+CiAgICA8cGF0aCBjbGFzcz0ic3QzIiBkPSJNNjcuNSw1MC41YzAsMTUuMS0xMi4zLDI3LjQtMjcuNCwyNy40Ii8+CiAgICA8ZyBjbGFzcz0ic3QxMCI+CiAgICAgIDxwYXRoIGQ9Ik00MS4xLDQ2YzMuNC40LDQsMi42LDQsNC40cy0uNCw0LTQsNC40di04LjhNMzkuMiw1NC44Yy0zLjQtLjUtMy44LTIuOS0zLjgtNC40cy4yLTMuOSwzLjgtNC40djguOFpNNDEuMSw1NS40YzMuOC0uMyw2LjQtMi42LDYuNC01cy0yLjctNC42LTYuNC00Ljl2LTEuNGMwLS44LDAtMS4xLDIuMy0xLjFoLjh2LS44aC04LjJ2LjhoLjhjMi4zLDAsMi4zLjIsMi4zLDEuMXYxLjRjLTMuNy4zLTYuMiwyLjUtNi4yLDQuOXMyLjYsNC42LDYuMiw1djEuNGMwLC44LDAsMS4xLTIuMywxLjFoLS44di43aDguMnYtLjdoLS44Yy0yLjMsMC0yLjMtLjMtMi4zLTEuMXYtMS40WiIvPgogICAgPC9nPgogIDwvZz48L2c+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6Ym90IiBjbGFzcz0ic3Q4IiBjeD0iNDAuMSIgcj0iMyIvPgogICAgPGNpcmNsZSBpZD0icG9ydDp0b3AiIGNsYXNzPSJzdDgiIGN4PSI0MC4xIiBjeT0iMTAwIiByPSIzIi8+CiAgPC9nPgogIDxnIGlkPSJsZWFkcyI+CiAgICA8cGF0aCBjbGFzcz0ic3Q3IiBkPSJNNDAuMSwyMy4xVjAiLz4KICAgIDxwYXRoIGNsYXNzPSJzdDciIGQ9Ik00MCwxMDB2LTIyLjEiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "dcSQUID1_flux",
+        "category": "PAPER_2pt/circuits/quantum/SQUIDs"
+      }
+    },
+    {
+      "id": "8c9bc4d20c6d",
+      "def_key": "PAPER_2pt/circuits/LCR/IND1",
+      "pos": [
+        530.0,
+        150.0
+      ],
+      "rotation": 90.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 18.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA0MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KCiAgICAgIC5zdDEgewogICAgICAgIGZpbGw6IG5vbmU7CiAgICAgICAgc3Ryb2tlOiAjMDAwOwogICAgICAgIHN0cm9rZS1saW5lY2FwOiByb3VuZDsKICAgICAgICBzdHJva2UtbGluZWpvaW46IHJvdW5kOwogICAgICAgIHN0cm9rZS13aWR0aDogMnB4OwogICAgICB9CgogICAgICAuc3QyIHsKICAgICAgICBmaWxsOiAjZmZmOwogICAgICAgIHN0cm9rZTogIzk5OTsKICAgICAgICBzdHJva2UtbWl0ZXJsaW1pdDogMTA7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAuNXB4OwogICAgICB9CgogICAgICAuc3QzIHsKICAgICAgICBkaXNwbGF5OiBub25lOwogICAgICB9CiAgICA8L3N0eWxlPgogIDwvZGVmcz4KICA8ZyBpZD0iZ3VpZGVzIiBjbGFzcz0ic3QzIj4KICAgIDxyZWN0IGNsYXNzPSJzdDIiIHg9Ii0zMCIgeT0iNTAiIHdpZHRoPSI1MCIgaGVpZ2h0PSIyMCIvPgogIDwvZz4KICA8ZyBpZD0iYXJ0d29yayI+CiAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMjAsMjNjMTMuMSwyLjYsMTMuMSwxMi45LDAsMTUuNC0xMy4xLDIuNS0xMy4xLTUuMSwwLTIuNSwxMy4xLDIuNiwxMy4xLDEyLjksMCwxNS40LTEzLjEsMi41LTEzLjEtNS4yLDAtMi42LDEzLjEsMi42LDEzLjEsMTIuOSwwLDE1LjQtMTMuMSwyLjUtMTMuMS01LjEsMC0yLjUsMTMuMSwyLjYsMTMuMSwxMi45LDAsMTUuNE0yMCw3N2gwTTIwLDIzaDAiLz4KICA8L2c+CiAgPGcgaWQ9ImxlYWRzIj4KICAgIDxsaW5lIGNsYXNzPSJzdDEiIHgxPSIyMCIgeTE9IjIzIiB4Mj0iMjAiLz4KICAgIDxsaW5lIGNsYXNzPSJzdDEiIHgxPSIyMCIgeTE9IjEwMCIgeDI9IjIwIiB5Mj0iNzciLz4KICA8L2c+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MCIgY3g9IjIwIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnJpZ2h0IiBjbGFzcz0ic3QwIiBjeD0iMjAiIGN5PSIxMDAiIHI9IjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "IND1",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    },
+    {
+      "id": "8e0e57345c85",
+      "def_key": "PAPER_2pt/circuits/LCR/CAP1",
+      "pos": [
+        430.0,
+        250.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 15.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA2MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KCiAgICAgIC5zdDEgewogICAgICAgIGZpbGw6IG5vbmU7CiAgICAgICAgc3Ryb2tlOiAjMDAwOwogICAgICAgIHN0cm9rZS1saW5lY2FwOiByb3VuZDsKICAgICAgICBzdHJva2UtbGluZWpvaW46IGJldmVsOwogICAgICAgIHN0cm9rZS13aWR0aDogMnB4OwogICAgICB9CgogICAgICAuc3QxbGVhZCB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgICAgc3Ryb2tlLWxpbmVjYXA6IGJ1dHQ7CiAgICAgICAgc3Ryb2tlLWxpbmVqb2luOiBiZXZlbDsKICAgICAgICBzdHJva2Utd2lkdGg6IDJweDsKICAgICAgfQogICAgPC9zdHlsZT4KICA8L2RlZnM+CiAgPGcgaWQ9ImFydHdvcmsiPgogICAgPGc+CiAgICAgIDxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik01NC42LDU0LjZINS40Ii8+CiAgICAgIDxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik01NC42LDQ1LjRINS40Ii8+CiAgICA8L2c+CiAgPC9nPgogIDxnIGlkPSJsZWFkcyI+CiAgICA8cGF0aCBjbGFzcz0ic3QxbGVhZCIgZD0iTTMwLDB2NDUuNCIvPgogICAgPHBhdGggY2xhc3M9InN0MWxlYWQiIGQ9Ik0zMCwxMDB2LTQ0LjkiLz4KICA8L2c+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MCIgY3g9IjMwIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnJpZ2h0IiBjbGFzcz0ic3QwIiBjeD0iMzAiIGN5PSIxMDAiIHI9IjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "CAP1",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    },
+    {
+      "id": "6018b09956eb",
+      "def_key": "PAPER_2pt/circuits/LCR/CAP1_SHORT",
+      "pos": [
+        360.0,
+        180.0
+      ],
+      "rotation": 90.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 12.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA2MCA0MCI+CiAgPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDMwLjIuMSwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDIuMS4xIEJ1aWxkIDEpICAtLT4KICA8ZGVmcz4KICAgIDxzdHlsZT4KICAgICAgLnN0MCB7CiAgICAgICAgZmlsbDogI2M2NjsKICAgICAgfQoKICAgICAgLnN0MSB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgICAgc3Ryb2tlLWxpbmVjYXA6IHJvdW5kOwogICAgICAgIHN0cm9rZS1saW5lam9pbjogYmV2ZWw7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAycHg7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJhcnR3b3JrIj4KICAgIDxnPgogICAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNNTQuNiwyNC42SDUuNCIvPgogICAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNNTQuNiwxNS40SDUuNCIvPgogICAgPC9nPgogIDwvZz4KICA8ZyBpZD0icG9ydHMiPgogICAgPGcgaWQ9InBvcnRzMSI+CiAgICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MCIgY3g9IjMwIiByPSIzIi8+CiAgICAgIDxjaXJjbGUgaWQ9InBvcnQ6cmlnaHQiIGNsYXNzPSJzdDAiIGN4PSIzMCIgY3k9IjQwIiByPSIzIi8+CiAgICA8L2c+CiAgPC9nPgogIDxnIGlkPSJsZWFkcyI+CiAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMzAsMHYxNS40Ii8+CiAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMzAsNDB2LTE1LjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "CAP1_SHORT",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    },
+    {
+      "id": "c44e854ae242",
+      "def_key": "PAPER_2pt/circuits/LCR/IND1",
+      "pos": [
+        300.0,
+        250.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 9.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA0MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KCiAgICAgIC5zdDEgewogICAgICAgIGZpbGw6IG5vbmU7CiAgICAgICAgc3Ryb2tlOiAjMDAwOwogICAgICAgIHN0cm9rZS1saW5lY2FwOiByb3VuZDsKICAgICAgICBzdHJva2UtbGluZWpvaW46IHJvdW5kOwogICAgICAgIHN0cm9rZS13aWR0aDogMnB4OwogICAgICB9CgogICAgICAuc3QyIHsKICAgICAgICBmaWxsOiAjZmZmOwogICAgICAgIHN0cm9rZTogIzk5OTsKICAgICAgICBzdHJva2UtbWl0ZXJsaW1pdDogMTA7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAuNXB4OwogICAgICB9CgogICAgICAuc3QzIHsKICAgICAgICBkaXNwbGF5OiBub25lOwogICAgICB9CiAgICA8L3N0eWxlPgogIDwvZGVmcz4KICA8ZyBpZD0iZ3VpZGVzIiBjbGFzcz0ic3QzIj4KICAgIDxyZWN0IGNsYXNzPSJzdDIiIHg9Ii0zMCIgeT0iNTAiIHdpZHRoPSI1MCIgaGVpZ2h0PSIyMCIvPgogIDwvZz4KICA8ZyBpZD0iYXJ0d29yayI+CiAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMjAsMjNjMTMuMSwyLjYsMTMuMSwxMi45LDAsMTUuNC0xMy4xLDIuNS0xMy4xLTUuMSwwLTIuNSwxMy4xLDIuNiwxMy4xLDEyLjksMCwxNS40LTEzLjEsMi41LTEzLjEtNS4yLDAtMi42LDEzLjEsMi42LDEzLjEsMTIuOSwwLDE1LjQtMTMuMSwyLjUtMTMuMS01LjEsMC0yLjUsMTMuMSwyLjYsMTMuMSwxMi45LDAsMTUuNE0yMCw3N2gwTTIwLDIzaDAiLz4KICA8L2c+CiAgPGcgaWQ9ImxlYWRzIj4KICAgIDxsaW5lIGNsYXNzPSJzdDEiIHgxPSIyMCIgeTE9IjIzIiB4Mj0iMjAiLz4KICAgIDxsaW5lIGNsYXNzPSJzdDEiIHgxPSIyMCIgeTE9IjEwMCIgeDI9IjIwIiB5Mj0iNzciLz4KICA8L2c+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MCIgY3g9IjIwIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnJpZ2h0IiBjbGFzcz0ic3QwIiBjeD0iMjAiIGN5PSIxMDAiIHI9IjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "IND1",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    },
+    {
+      "id": "a557e2dcdfb3",
+      "def_key": "PAPER_2pt/circuits/LCR/CAP1",
+      "pos": [
+        220.0,
+        250.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 6.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA2MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KCiAgICAgIC5zdDEgewogICAgICAgIGZpbGw6IG5vbmU7CiAgICAgICAgc3Ryb2tlOiAjMDAwOwogICAgICAgIHN0cm9rZS1saW5lY2FwOiByb3VuZDsKICAgICAgICBzdHJva2UtbGluZWpvaW46IGJldmVsOwogICAgICAgIHN0cm9rZS13aWR0aDogMnB4OwogICAgICB9CgogICAgICAuc3QxbGVhZCB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgICAgc3Ryb2tlLWxpbmVjYXA6IGJ1dHQ7CiAgICAgICAgc3Ryb2tlLWxpbmVqb2luOiBiZXZlbDsKICAgICAgICBzdHJva2Utd2lkdGg6IDJweDsKICAgICAgfQogICAgPC9zdHlsZT4KICA8L2RlZnM+CiAgPGcgaWQ9ImFydHdvcmsiPgogICAgPGc+CiAgICAgIDxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik01NC42LDU0LjZINS40Ii8+CiAgICAgIDxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik01NC42LDQ1LjRINS40Ii8+CiAgICA8L2c+CiAgPC9nPgogIDxnIGlkPSJsZWFkcyI+CiAgICA8cGF0aCBjbGFzcz0ic3QxbGVhZCIgZD0iTTMwLDB2NDUuNCIvPgogICAgPHBhdGggY2xhc3M9InN0MWxlYWQiIGQ9Ik0zMCwxMDB2LTQ0LjkiLz4KICA8L2c+CiAgPGcgaWQ9InBvcnRzIj4KICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MCIgY3g9IjMwIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnJpZ2h0IiBjbGFzcz0ic3QwIiBjeD0iMzAiIGN5PSIxMDAiIHI9IjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "CAP1",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    },
+    {
+      "id": "e8c19ebc2fe3",
+      "def_key": "PAPER_2pt/circuits/LCR/CAP1_SHORT",
+      "pos": [
+        140.0,
+        180.0
+      ],
+      "rotation": 90.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 3.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA2MCA0MCI+CiAgPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDMwLjIuMSwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDIuMS4xIEJ1aWxkIDEpICAtLT4KICA8ZGVmcz4KICAgIDxzdHlsZT4KICAgICAgLnN0MCB7CiAgICAgICAgZmlsbDogI2M2NjsKICAgICAgfQoKICAgICAgLnN0MSB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgICBzdHJva2U6ICMwMDA7CiAgICAgICAgc3Ryb2tlLWxpbmVjYXA6IHJvdW5kOwogICAgICAgIHN0cm9rZS1saW5lam9pbjogYmV2ZWw7CiAgICAgICAgc3Ryb2tlLXdpZHRoOiAycHg7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJhcnR3b3JrIj4KICAgIDxnPgogICAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNNTQuNiwyNC42SDUuNCIvPgogICAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNNTQuNiwxNS40SDUuNCIvPgogICAgPC9nPgogIDwvZz4KICA8ZyBpZD0icG9ydHMiPgogICAgPGcgaWQ9InBvcnRzMSI+CiAgICAgIDxjaXJjbGUgaWQ9InBvcnQ6bGVmdCIgY2xhc3M9InN0MCIgY3g9IjMwIiByPSIzIi8+CiAgICAgIDxjaXJjbGUgaWQ9InBvcnQ6cmlnaHQiIGNsYXNzPSJzdDAiIGN4PSIzMCIgY3k9IjQwIiByPSIzIi8+CiAgICA8L2c+CiAgPC9nPgogIDxnIGlkPSJsZWFkcyI+CiAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMzAsMHYxNS40Ii8+CiAgICA8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMzAsNDB2LTE1LjMiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "CAP1_SHORT",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    },
+    {
+      "id": "913fad845532",
+      "def_key": "PAPER_2pt/circuits/LCR/RES1",
+      "pos": [
+        80.0,
+        250.0
+      ],
+      "rotation": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "stretch_dx": 0.0,
+      "stretch_dy": 0.0,
+      "layer": 0,
+      "z": 0.0,
+      "group": [],
+      "embedded_svg": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCA0MCAxMDAiPgogIDwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAzMC4yLjEsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiAyLjEuMSBCdWlsZCAxKSAgLS0+CiAgPGRlZnM+CiAgICA8c3R5bGU+CiAgICAgIC5zdDAgewogICAgICAgIGZpbGw6ICNjNjY7CiAgICAgIH0KCiAgICAgIC5zdDEgewogICAgICAgIGZpbGw6ICNmZmY7CiAgICAgIH0KCiAgICAgIC5zdDEsIC5zdDIgewogICAgICAgIHN0cm9rZTogIzAwMDsKICAgICAgICBzdHJva2UtbGluZWNhcDogcm91bmQ7CiAgICAgICAgc3Ryb2tlLWxpbmVqb2luOiByb3VuZDsKICAgICAgICBzdHJva2Utd2lkdGg6IDJweDsKICAgICAgfQoKICAgICAgLnN0MiwgLnN0MyB7CiAgICAgICAgZmlsbDogbm9uZTsKICAgICAgfQoKICAgICAgLnN0NCB7CiAgICAgICAgZGlzcGxheTogbm9uZTsKICAgICAgfQoKICAgICAgLnN0MyB7CiAgICAgICAgc3Ryb2tlOiAjOTk5OwogICAgICAgIHN0cm9rZS1taXRlcmxpbWl0OiAxMDsKICAgICAgICBzdHJva2Utd2lkdGg6IC41cHg7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJndWlkZXMiIGNsYXNzPSJzdDQiPgogICAgPHJlY3QgY2xhc3M9InN0MyIgeD0iLTMwIiB5PSI1MCIgd2lkdGg9IjUwIiBoZWlnaHQ9IjIwIi8+CiAgPC9nPgogIDxnIGlkPSJwb3J0cyI+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OmxlZnQiIGNsYXNzPSJzdDAiIGN4PSIyMC4xIiByPSIzIi8+CiAgICA8Y2lyY2xlIGlkPSJwb3J0OnJpZ2h0IiBjbGFzcz0ic3QwIiBjeD0iMjAuMSIgY3k9IjEwMC4xIiByPSIzIi8+CiAgPC9nPgogIDxnIGlkPSJhcnR3b3JrIj4KICAgIDxwYXRoIGNsYXNzPSJzdDIiIGQ9Ik0yMC4xLDc4LjFsMTAuOS00LjctMjEuOS05LjQsMjEuOS05LjQtMjEuOS05LjQsMjEuOS05LjQtMjEuOS05LjQsMTAuOS00LjciLz4KICA8L2c+CiAgPGcgaWQ9ImxlYWRzIj4KICAgIDxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik0yMC4xLDB2MjEuNyIvPgogICAgPHBhdGggY2xhc3M9InN0MSIgZD0iTTIwLjEsMTAwLjF2LTIxLjkiLz4KICA8L2c+Cjwvc3ZnPg==",
+      "embedded_meta": {
+        "name": "RES1",
+        "category": "PAPER_2pt/circuits/LCR"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "1d5dc646e4f9",
+      "source": {
+        "component_id": "505bb982da15",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "3b93076c5dbd",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 84.0,
+      "group": []
+    },
+    {
+      "id": "33d859549aca",
+      "source": {
+        "component_id": "048b36a7e3d9",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "505bb982da15",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 83.0,
+      "group": []
+    },
+    {
+      "id": "8d834cd09081",
+      "source": {
+        "component_id": "128a38ec0f50",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "048b36a7e3d9",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 82.0,
+      "group": []
+    },
+    {
+      "id": "04d93e1ddaf9",
+      "source": {
+        "component_id": "d14b7453690b",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "128a38ec0f50",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 81.0,
+      "group": []
+    },
+    {
+      "id": "faf4ef32f9ca",
+      "source": {
+        "component_id": "06a05e61d77c",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "d14b7453690b",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 80.0,
+      "group": []
+    },
+    {
+      "id": "9439400a4f93",
+      "source": {
+        "component_id": "8e710d4a3e4a",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "06a05e61d77c",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 79.0,
+      "group": []
+    },
+    {
+      "id": "5c4532e3f181",
+      "source": {
+        "component_id": "79e677816d74",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "8e710d4a3e4a",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 78.0,
+      "group": []
+    },
+    {
+      "id": "398316536eb7",
+      "source": {
+        "component_id": "f5b835904932",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "79e677816d74",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 77.0,
+      "group": []
+    },
+    {
+      "id": "5618f2c5d19f",
+      "source": {
+        "component_id": "6c8724e49163",
+        "port_name": "right"
+      },
+      "target": {
+        "component_id": "3b93076c5dbd",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 76.0,
+      "group": []
+    },
+    {
+      "id": "d11d2269e5ec",
+      "source": {
+        "component_id": "7f206571def0",
+        "port_name": "right"
+      },
+      "target": {
+        "component_id": "505bb982da15",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 75.0,
+      "group": []
+    },
+    {
+      "id": "383b1d531fc0",
+      "source": {
+        "component_id": "ef5f778bb0db",
+        "port_name": "right"
+      },
+      "target": {
+        "component_id": "048b36a7e3d9",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 74.0,
+      "group": []
+    },
+    {
+      "id": "5495e5a4c49f",
+      "source": {
+        "component_id": "55114c85d33e",
+        "port_name": "right"
+      },
+      "target": {
+        "component_id": "128a38ec0f50",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 73.0,
+      "group": []
+    },
+    {
+      "id": "24bc03eeafb5",
+      "source": {
+        "component_id": "fa750337a908",
+        "port_name": "top"
+      },
+      "target": {
+        "component_id": "d14b7453690b",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 72.0,
+      "group": []
+    },
+    {
+      "id": "e921997f3974",
+      "source": {
+        "component_id": "8e0e57345c85",
+        "port_name": "right"
+      },
+      "target": {
+        "component_id": "06a05e61d77c",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 71.0,
+      "group": []
+    },
+    {
+      "id": "357ca1287eea",
+      "source": {
+        "component_id": "c44e854ae242",
+        "port_name": "right"
+      },
+      "target": {
+        "component_id": "8e710d4a3e4a",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 70.0,
+      "group": []
+    },
+    {
+      "id": "388e56f1339b",
+      "source": {
+        "component_id": "a557e2dcdfb3",
+        "port_name": "right"
+      },
+      "target": {
+        "component_id": "79e677816d74",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 69.0,
+      "group": []
+    },
+    {
+      "id": "2d2ed517da46",
+      "source": {
+        "component_id": "913fad845532",
+        "port_name": "right"
+      },
+      "target": {
+        "component_id": "f5b835904932",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 68.0,
+      "group": []
+    },
+    {
+      "id": "ad10d850255c",
+      "source": {
+        "component_id": "97f039db617d",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "6c8724e49163",
+        "port_name": "left"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 67.0,
+      "group": []
+    },
+    {
+      "id": "f03c4b382271",
+      "source": {
+        "component_id": "829e52b6f55d",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "7f206571def0",
+        "port_name": "left"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 66.0,
+      "group": []
+    },
+    {
+      "id": "8906dfd6b90e",
+      "source": {
+        "component_id": "733717a20316",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "ef5f778bb0db",
+        "port_name": "left"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 65.0,
+      "group": []
+    },
+    {
+      "id": "aa176db4594c",
+      "source": {
+        "component_id": "fefc169f83f2",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "55114c85d33e",
+        "port_name": "left"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 64.0,
+      "group": []
+    },
+    {
+      "id": "9a19c6864094",
+      "source": {
+        "component_id": "1031aa01590c",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "fa750337a908",
+        "port_name": "bot"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 63.0,
+      "group": []
+    },
+    {
+      "id": "c836d79ce208",
+      "source": {
+        "component_id": "47d50f824579",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "8e0e57345c85",
+        "port_name": "left"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 62.0,
+      "group": []
+    },
+    {
+      "id": "25343034c9fa",
+      "source": {
+        "component_id": "34b5fe443aab",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "c44e854ae242",
+        "port_name": "left"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 61.0,
+      "group": []
+    },
+    {
+      "id": "e0be860fadb6",
+      "source": {
+        "component_id": "728c9befaf19",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "a557e2dcdfb3",
+        "port_name": "left"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 60.0,
+      "group": []
+    },
+    {
+      "id": "5452c2003df0",
+      "source": {
+        "component_id": "db2d9276b5e2",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "913fad845532",
+        "port_name": "left"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 59.0,
+      "group": []
+    },
+    {
+      "id": "e5c24f3816c4",
+      "source": {
+        "component_id": "ff294d7ad461",
+        "port_name": "left"
+      },
+      "target": {
+        "component_id": "97f039db617d",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 58.0,
+      "group": []
+    },
+    {
+      "id": "e38d1fe03488",
+      "source": {
+        "component_id": "829e52b6f55d",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "ff294d7ad461",
+        "port_name": "right"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 57.0,
+      "group": []
+    },
+    {
+      "id": "19ef161a0cc4",
+      "source": {
+        "component_id": "733717a20316",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "829e52b6f55d",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 56.0,
+      "group": []
+    },
+    {
+      "id": "b0a6990629cf",
+      "source": {
+        "component_id": "e1718ed86a04",
+        "port_name": "left"
+      },
+      "target": {
+        "component_id": "733717a20316",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 55.0,
+      "group": []
+    },
+    {
+      "id": "6033dbe815ed",
+      "source": {
+        "component_id": "fefc169f83f2",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "e1718ed86a04",
+        "port_name": "right"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 54.0,
+      "group": []
+    },
+    {
+      "id": "744004a7ec82",
+      "source": {
+        "component_id": "dfb7b16feb38",
+        "port_name": "left"
+      },
+      "target": {
+        "component_id": "fefc169f83f2",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 53.0,
+      "group": []
+    },
+    {
+      "id": "7603b1fcfaa4",
+      "source": {
+        "component_id": "1031aa01590c",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "dfb7b16feb38",
+        "port_name": "right"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 52.0,
+      "group": []
+    },
+    {
+      "id": "77018f06cb1a",
+      "source": {
+        "component_id": "8c9bc4d20c6d",
+        "port_name": "left"
+      },
+      "target": {
+        "component_id": "1031aa01590c",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 51.0,
+      "group": []
+    },
+    {
+      "id": "16cfe806dbaf",
+      "source": {
+        "component_id": "47d50f824579",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "8c9bc4d20c6d",
+        "port_name": "right"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 50.0,
+      "group": []
+    },
+    {
+      "id": "38ea90c286b9",
+      "source": {
+        "component_id": "6018b09956eb",
+        "port_name": "left"
+      },
+      "target": {
+        "component_id": "47d50f824579",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 49.0,
+      "group": []
+    },
+    {
+      "id": "a465c605c8d3",
+      "source": {
+        "component_id": "34b5fe443aab",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "6018b09956eb",
+        "port_name": "right"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 48.0,
+      "group": []
+    },
+    {
+      "id": "b4d5199e4bb3",
+      "source": {
+        "component_id": "728c9befaf19",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "34b5fe443aab",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 47.0,
+      "group": []
+    },
+    {
+      "id": "9a64eae26c95",
+      "source": {
+        "component_id": "e8c19ebc2fe3",
+        "port_name": "left"
+      },
+      "target": {
+        "component_id": "728c9befaf19",
+        "port_name": "center"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 46.0,
+      "group": []
+    },
+    {
+      "id": "4efb74c854b0",
+      "source": {
+        "component_id": "db2d9276b5e2",
+        "port_name": "center"
+      },
+      "target": {
+        "component_id": "e8c19ebc2fe3",
+        "port_name": "right"
+      },
+      "waypoints": [],
+      "line_width": 2.0,
+      "line_color": "#000000",
+      "corner_radius": 2.0,
+      "routing_mode": "ortho",
+      "closed": false,
+      "layer": 0,
+      "z": 45.0,
+      "group": []
+    }
+  ],
+  "junctions": [
+    {
+      "id": "3b93076c5dbd",
+      "pos": [
+        1220.0,
+        400.0
+      ],
+      "layer": 0,
+      "z": 119.0,
+      "group": []
+    },
+    {
+      "id": "505bb982da15",
+      "pos": [
+        1080.0,
+        400.0
+      ],
+      "layer": 0,
+      "z": 117.0,
+      "group": []
+    },
+    {
+      "id": "048b36a7e3d9",
+      "pos": [
+        1010.0,
+        400.0
+      ],
+      "layer": 0,
+      "z": 115.0,
+      "group": []
+    },
+    {
+      "id": "128a38ec0f50",
+      "pos": [
+        870.0,
+        400.0
+      ],
+      "layer": 0,
+      "z": 113.0,
+      "group": []
+    },
+    {
+      "id": "d14b7453690b",
+      "pos": [
+        660.0,
+        400.0
+      ],
+      "layer": 0,
+      "z": 111.0,
+      "group": []
+    },
+    {
+      "id": "06a05e61d77c",
+      "pos": [
+        460.0,
+        400.0
+      ],
+      "layer": 0,
+      "z": 109.0,
+      "group": []
+    },
+    {
+      "id": "8e710d4a3e4a",
+      "pos": [
+        320.0,
+        400.0
+      ],
+      "layer": 0,
+      "z": 107.0,
+      "group": []
+    },
+    {
+      "id": "79e677816d74",
+      "pos": [
+        250.0,
+        400.0
+      ],
+      "layer": 0,
+      "z": 105.0,
+      "group": []
+    },
+    {
+      "id": "f5b835904932",
+      "pos": [
+        100.0,
+        400.0
+      ],
+      "layer": 0,
+      "z": 103.0,
+      "group": []
+    },
+    {
+      "id": "97f039db617d",
+      "pos": [
+        1220.0,
+        200.0
+      ],
+      "layer": 0,
+      "z": 101.0,
+      "group": []
+    },
+    {
+      "id": "829e52b6f55d",
+      "pos": [
+        1080.0,
+        200.0
+      ],
+      "layer": 0,
+      "z": 99.0,
+      "group": []
+    },
+    {
+      "id": "733717a20316",
+      "pos": [
+        1010.0,
+        200.0
+      ],
+      "layer": 0,
+      "z": 97.0,
+      "group": []
+    },
+    {
+      "id": "fefc169f83f2",
+      "pos": [
+        870.0,
+        200.0
+      ],
+      "layer": 0,
+      "z": 95.0,
+      "group": []
+    },
+    {
+      "id": "1031aa01590c",
+      "pos": [
+        660.0,
+        200.0
+      ],
+      "layer": 0,
+      "z": 93.0,
+      "group": []
+    },
+    {
+      "id": "47d50f824579",
+      "pos": [
+        460.0,
+        200.0
+      ],
+      "layer": 0,
+      "z": 91.0,
+      "group": []
+    },
+    {
+      "id": "34b5fe443aab",
+      "pos": [
+        320.0,
+        200.0
+      ],
+      "layer": 0,
+      "z": 89.0,
+      "group": []
+    },
+    {
+      "id": "728c9befaf19",
+      "pos": [
+        250.0,
+        200.0
+      ],
+      "layer": 0,
+      "z": 87.0,
+      "group": []
+    },
+    {
+      "id": "db2d9276b5e2",
+      "pos": [
+        100.0,
+        200.0
+      ],
+      "layer": 0,
+      "z": 85.0,
+      "group": []
+    }
+  ],
+  "shapes": [],
+  "annotations": [
+    {
+      "id": "d24e9bc36a32",
+      "pos": [
+        640.0,
+        412.0
+      ],
+      "source_text": "$\\Phi(t)$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 137.0,
+      "group": []
+    },
+    {
+      "id": "f5585fe49d0d",
+      "pos": [
+        712.0,
+        300.0
+      ],
+      "source_text": "$I_0$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 136.0,
+      "group": []
+    },
+    {
+      "id": "807178f00d25",
+      "pos": [
+        582.0,
+        300.0
+      ],
+      "source_text": "$I_0$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 135.0,
+      "group": []
+    },
+    {
+      "id": "7b2d0fe8a1d7",
+      "pos": [
+        1098.0,
+        325.0
+      ],
+      "source_text": "$C_4$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 134.0,
+      "group": []
+    },
+    {
+      "id": "243d94e221ee",
+      "pos": [
+        965.0,
+        325.0
+      ],
+      "source_text": "$L_4$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 133.0,
+      "group": []
+    },
+    {
+      "id": "1954374eede9",
+      "pos": [
+        803.0,
+        325.0
+      ],
+      "source_text": "$C_3$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 132.0,
+      "group": []
+    },
+    {
+      "id": "8676e6b4870c",
+      "pos": [
+        480.0,
+        325.0
+      ],
+      "source_text": "$C_2$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 131.0,
+      "group": []
+    },
+    {
+      "id": "ba4bb0e33717",
+      "pos": [
+        338.0,
+        325.0
+      ],
+      "source_text": "$L_1$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 130.0,
+      "group": []
+    },
+    {
+      "id": "e0e8a13bd86c",
+      "pos": [
+        205.0,
+        325.0
+      ],
+      "source_text": "$C_1$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 129.0,
+      "group": []
+    },
+    {
+      "id": "e86fe6c9f52e",
+      "pos": [
+        1240.0,
+        288.0
+      ],
+      "source_text": "$Z_0$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 128.0,
+      "group": []
+    },
+    {
+      "id": "f17d1b4c1de3",
+      "pos": [
+        44.0,
+        288.0
+      ],
+      "source_text": "$Z_0$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 127.0,
+      "group": []
+    },
+    {
+      "id": "291ab590c27d",
+      "pos": [
+        1132.0,
+        140.0
+      ],
+      "source_text": "$C_{45}$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 126.0,
+      "group": []
+    },
+    {
+      "id": "71a68d2ca739",
+      "pos": [
+        922.0,
+        140.0
+      ],
+      "source_text": "$C_{34}$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 125.0,
+      "group": []
+    },
+    {
+      "id": "30277e9e5f79",
+      "pos": [
+        758.0,
+        148.0
+      ],
+      "source_text": "$L_3$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 124.0,
+      "group": []
+    },
+    {
+      "id": "7e53b7fe797e",
+      "pos": [
+        538.0,
+        148.0
+      ],
+      "source_text": "$L_2$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 123.0,
+      "group": []
+    },
+    {
+      "id": "8a6af2d2238a",
+      "pos": [
+        372.0,
+        140.0
+      ],
+      "source_text": "$C_{12}$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 122.0,
+      "group": []
+    },
+    {
+      "id": "72889ff1592c",
+      "pos": [
+        152.0,
+        140.0
+      ],
+      "source_text": "$C_{01}$",
+      "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'CMU Serif'; font-size:28pt; font-weight:400; font-style:normal;\">\n<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>",
+      "font_family": "CMU Serif",
+      "font_size": 28.0,
+      "font_bold": false,
+      "font_italic": false,
+      "text_color": "#000000",
+      "rotation": 0.0,
+      "rotation_angle": 0.0,
+      "flip_h": false,
+      "flip_v": false,
+      "layer": 0,
+      "z": 121.0,
+      "group": []
+    }
+  ],
+  "svg_images": []
+}

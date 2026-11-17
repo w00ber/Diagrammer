@@ -454,6 +454,24 @@ Optional metadata for component behavior.
 | `min-width` | number | Minimum width when stretched (pt) |
 | `min-height` | number | Minimum height when stretched (pt) |
 
+### `<title>` / `<desc>` — What the Part Is, in Words
+
+Optional direct children of the root `<svg>`. Their text is the part's
+description: the headless API and the MCP server search it alongside the key,
+so a caller asking for what a part *is* ("wavy arrow", "shaded region") finds
+it without guessing the file name. Nothing on the canvas reads it.
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 40">
+  <desc>Photon: wavy (sinusoidal) arrow, blue. A propagating signal or wave packet.</desc>
+  ...
+```
+
+Write the words someone would search for, not a restatement of the name. A
+`<title>` that is only the file name (Illustrator writes `COAX1_FAT.svg`) is
+ignored. Put the text in `<desc>`, not `<metadata>`: the
+`strip-editor-metadata` fix removes whole `<metadata>` blocks.
+
 ## Style Guidelines
 
 ### Stroke widths

@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80">
+  <desc>Dashed rectangle outline: a boundary around a group of parts, such as a chip, a package, a fridge stage or an enclosure. Resize freely.</desc>
   <defs>
     <style>
       .border { fill: none; stroke: #666; stroke-width: 1.5; stroke-dasharray: 6 3; }

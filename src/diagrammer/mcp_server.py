@@ -42,9 +42,14 @@ cryogenic wiring, flowcharts) from a library of SVG components with named
 ports. You place parts and wire ports together; the app routes the wires.
 
 Workflow:
-1. search_components to find parts; describe_component for their ports.
+1. list_categories FIRST: every folder of the catalogue with counts (cheap).
+   Then search_components (words match the key and the part's description)
+   and describe_component for ports. A search answer is capped: if it says
+   truncated, narrow by library/folder rather than assuming it is all there is.
    Libraries are line-weight sets. Pick ONE per diagram: PAPER_2pt (papers),
-   SLIDES_3pt (talks), CRYO_WIRING_6pt (fridge wiring); flowchart/ for flowcharts.
+   SLIDES_3pt (talks), CRYO_WIRING_6pt (fridge wiring); flowchart/ for
+   flowcharts. flair/ holds photon arrows, borders, shaded regions and masks
+   for any library — use those parts rather than drawing them with text.
 2. Place the first part with add_component, then grow the circuit outward
    with attach_component, which positions a part relative to a port you
    already have, turns it to face that port, and draws the wire.
@@ -64,6 +69,13 @@ Conventions:
 - Ids are yours to choose (J1, Cc, GND1); short ids are auto-assigned
   otherwise. They are not stored in the .dgm file.
 - Text supports LaTeX math between $...$.
+- Stretchable parts (describe_component -> stretch_axes) are lengthened with
+  stretch= on add_component or with stretch_component. Values are [dx, dy]
+  in the part's OWN unrotated frame (or one number for a one-axis part) and
+  may snap to whole tiles; placed parts report stretch_axes on screen. A
+  coax or transmission-line run is ONE stretched part, not chained segments.
+  Decorative parts (borders, shaded regions) have no ports: place them by
+  centre and size them with stretch=[dx, dy].
 """
 
 mcp = _Server("diagrammer", instructions=INSTRUCTIONS)
@@ -102,11 +114,15 @@ def _quiet(fn):
 
 
 def _brief(cid: str) -> dict:
-    """A placed component's id, rotation and port geometry."""
+    """A placed component's id, rotation, stretch and port geometry."""
     for c in _d().summary()["components"]:
         if c["id"] == cid:
-            return {"id": cid, "rotation": c["rotation"], "bbox": c["bbox"],
-                    "ports": c["ports"]}
+            out = {"id": cid, "rotation": c["rotation"], "bbox": c["bbox"],
+                   "ports": c["ports"]}
+            if c["stretch_axes"]:
+                out["stretch"] = c["stretch"]
+                out["stretch_axes"] = c["stretch_axes"]
+            return out
     return {"id": cid}
 
 
@@ -118,13 +134,27 @@ def _brief(cid: str) -> dict:
 @_quiet
 async def search_components(query: str = "", library: str | None = None,
                             limit: int = 40) -> dict:
-    """Find components whose library key contains every word of query.
+    """Find components matching every word of query, in the library key or
+    the part's description ("photon", "wavy arrow", "shaded region").
 
-    library restricts to one top-level set, e.g. "PAPER_2pt". An empty query
-    lists everything (up to limit). Keys look like
-    "PAPER_2pt/circuits/quantum/JJ1".
+    library is a key prefix: a set such as "PAPER_2pt" or a folder such as
+    "flair/photons". Keys look like "PAPER_2pt/circuits/quantum/JJ1".
+    The answer carries total and truncated; decorative parts are flagged.
     """
-    return {"results": _d().search(query, library, limit)}
+    out = _d().search(query, library, limit)
+    if out["truncated"]:
+        out["hint"] = (f"showing {len(out['results'])} of {out['total']}: "
+                       "use list_categories, a library/folder filter, or "
+                       "more words to narrow the search")
+    return out
+
+
+@mcp.tool()
+@_quiet
+async def list_categories() -> dict:
+    """Every folder of the component catalogue with its part count, and which
+    library roots are loaded. Call this first when working from a sketch."""
+    return _d().list_categories()
 
 
 @mcp.tool()
@@ -152,11 +182,16 @@ async def new_diagram() -> str:
 async def add_component(key: str, x: float, y: float,
                         anchor: str | None = None, rotation: float = 0,
                         flip_h: bool = False, flip_v: bool = False,
+                        stretch: float | list[float] | None = None,
                         id: str | None = None) -> dict:
     """Place a component so its anchor port (or its centre, if anchor is
-    omitted) lands exactly on (x, y). Returns its id and port positions."""
+    omitted) lands exactly on (x, y). Returns its id and port positions.
+
+    stretch lengthens a stretchable part before it is placed: [dx, dy] in
+    its own unrotated frame, or one number for a part with one stretch axis.
+    The anchor lands on (x, y) in the stretched geometry."""
     cid = _d().add(key, (x, y), anchor=anchor, rotation=rotation,
-                   flip_h=flip_h, flip_v=flip_v, id=id)
+                   flip_h=flip_h, flip_v=flip_v, stretch=stretch, id=id)
     return _brief(cid)
 
 
@@ -229,6 +264,21 @@ async def move(id: str, x: float | None = None, y: float | None = None,
 
 @mcp.tool()
 @_quiet
+async def stretch_component(id: str, to: float | list[float] | None = None,
+                            by: float | list[float] | None = None,
+                            keep: str | None = None) -> dict:
+    """Lengthen or shorten a placed part; its wires follow.
+
+    to sets the stretch, by adds to it: [dx, dy] in the part's own unrotated
+    frame, or one number for a one-axis part. keep is the port that must not
+    move (default: one the stretch leaves in place). Returns the applied
+    stretch, which may be snapped to whole tiles."""
+    applied = _d().stretch(id, to=to, by=by, keep=keep)
+    return {**_brief(id), **applied}
+
+
+@mcp.tool()
+@_quiet
 async def remove(id: str) -> str:
     """Delete an item; deleting a component also deletes its wires."""
     _d().remove(id)
@@ -238,7 +288,8 @@ async def remove(id: str) -> str:
 @mcp.tool()
 @_quiet
 async def undo() -> str:
-    """Undo the last edit (an add_component or attach_component is one step)."""
+    """Undo the last edit (an add_component, attach_component or
+    stretch_component is one step)."""
     _d().undo()
     return "undone"
 
