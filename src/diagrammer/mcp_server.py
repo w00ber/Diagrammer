@@ -210,7 +210,9 @@ async def attach_component(key: str, port: str, to_id: str, to_port: str,
     turned so `port` faces back toward `to_port` — so chaining parts in a
     line is just repeated attach calls. `direction` (right/left/up/down)
     overrides the step direction and is required when attaching to a node or
-    to a port that has no lead direction. wire=false places without wiring.
+    to a port that has no lead direction. wire=false places without wiring;
+    with gap=0 the wire is zero-length (touching ports are not connected
+    unless wired).
     """
     cid = _d().attach(key, port, (to_id, to_port), gap=gap, rotation=rotation,
                       flip_h=flip_h, flip_v=flip_v, wire=wire,

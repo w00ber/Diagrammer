@@ -281,6 +281,98 @@ def test_move_carries_wires_and_remove_takes_them(d):
     assert s["wires"] == []
 
 
+def _stale_wires(d):
+    """Wires whose drawn route does not end on their ports' current spots."""
+    from diagrammer.items.connection_item import ConnectionItem
+    ids = {v: k for k, v in d._items.items()}
+    bad = []
+    for item in d.scene.items():
+        if not isinstance(item, ConnectionItem):
+            continue
+        pts = item.all_points()
+        ends = (item.source_port.scene_center(), item.target_port.scene_center())
+        if (pts[0] - ends[0]).manhattanLength() > 1e-6 or \
+                (pts[-1] - ends[1]).manhattanLength() > 1e-6:
+            bad.append(ids.get(item, "?"))
+    return bad
+
+
+def _rail(d):
+    """The JPA-session repro: a node feeding a cap, down to a node rail
+    that ends on a ground."""
+    d.node((240, 0), id="A")
+    d.add(CAP, (240, 200), anchor="left", id="C")
+    d.node((240, 580), id="D")
+    d.node((320, 580), id="G")
+    d.add(GND, (320, 620), anchor="left", id="GND")
+    d.connect("A", "center", "C", "left")
+    d.connect("C", "right", "D", "center")
+    d.connect("D", "center", "G", "center")
+    d.connect("G", "center", "GND", "left")
+    assert _stale_wires(d) == []
+
+
+def test_move_by_reroutes_wires_on_nodes_and_parts(d, lib, tmp_path):
+    # Regression: the Diagram kept a private undo stack, so the scene's
+    # re-route-on-push hook never fired and moved items left their wires
+    # drawn where they had been.
+    _rail(d)
+    for i in ("D", "G", "GND"):
+        d.move(i, by=(0, 900))
+    assert _stale_wires(d) == []
+    d.move("C", by=(0, 500))
+    assert _stale_wires(d) == []
+    assert _ports(d, "C")["left"]["at"] == [240.0, 700.0]
+    # Undo puts the parts back, and the wires with them.
+    d.undo()
+    assert _ports(d, "C")["left"]["at"] == [240.0, 200.0]
+    assert _stale_wires(d) == []
+    # The .dgm stores port references, not routes: reopened, it agrees.
+    e = Diagram(lib)
+    e.load(d.save(tmp_path / "moved"))
+    assert len(e.summary()["wires"]) == 4
+    assert _stale_wires(e) == []
+
+
+def test_move_to_reroutes_wires_on_nodes_and_parts(d):
+    _rail(d)
+    d.move("D", to=(240, 1480))
+    d.move("GND", to=(320, 1520), anchor="left")
+    d.move("C", to=(240, 700), anchor="left")
+    assert _stale_wires(d) == []
+    assert _ports(d, "GND")["left"]["at"] == [320.0, 1520.0]
+
+
+def test_stretch_reroutes_wires(d):
+    d.add(COAX, (0, 0), anchor="left", id="TL")
+    d.attach(GND, "left", to=("TL", "right"), direction="down", id="G")
+    d.node((-40, 0), id="N")
+    d.connect("N", "center", "TL", "left")
+    d.stretch("TL", by=80, keep="right")      # moves the *left* end
+    assert _stale_wires(d) == []
+    d.undo()
+    assert _stale_wires(d) == []
+
+
+def test_attach_with_zero_gap_still_connects(d):
+    d.add(CAP, (0, 0), anchor="left", id="C")
+    d.attach(JJ, "top", to=("C", "right"), gap=0, id="J")
+    assert _ports(d, "J")["top"]["at"] == _ports(d, "C")["right"]["at"]
+    assert len(d.summary()["wires"]) == 1
+    d.move("J", by=(0, 40))          # the zero-length wire becomes a real one
+    assert _stale_wires(d) == []
+    d.attach(JJ, "top", to=("J", "bot"), gap=0, wire=False, id="J2")
+    assert len(d.summary()["wires"]) == 1
+
+
+@pytest.mark.parametrize("lib_name", ["PAPER_2pt", "SLIDES_3pt"])
+@pytest.mark.parametrize("name", ["rfSQUID1", "rfSQUID1_GRAD"])
+def test_rf_squid_ports_share_one_axis(d, lib_name, name):
+    # A 0.1 px offset between the ports made a stacked column drift.
+    ports = d.describe(f"{lib_name}/circuits/quantum/SQUIDs/{name}")["ports"]
+    assert len({p["x"] for p in ports}) == 1, ports
+
+
 def test_duplicate_id_rejected(d):
     d.add(CAP, (0, 0), id="C")
     with pytest.raises(DiagramError, match="already used"):
