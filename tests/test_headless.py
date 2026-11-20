@@ -56,6 +56,40 @@ def _key(d, tail):
 
 # -- catalogue ----------------------------------------------------------------
 
+def test_default_library_loads_enabled_custom_folders(tmp_path):
+    # Diagram() uses load_library()'s defaults, which must see what the
+    # library panel sees: the enabled custom folders, not the disabled ones.
+    import shutil
+    from diagrammer.headless import builtin_components_root
+    from diagrammer.panels.settings_dialog import app_settings
+    src = builtin_components_root() / (CAP + ".svg")
+    on, off = tmp_path / "on", tmp_path / "off"
+    for root, name in ((on, "MINE_ON"), (off, "MINE_OFF")):
+        (root / "parts").mkdir(parents=True)
+        shutil.copy(src, root / "parts" / f"{name}.svg")
+    app_settings.custom_library_paths = [
+        {"path": str(on), "enabled": True},
+        {"path": str(off), "enabled": False},
+    ]
+    lib = load_library()
+    assert lib.get("parts/MINE_ON").source_kind == "custom"
+    assert lib.get("parts/MINE_OFF") is None
+
+
+def test_overlay_fork_shadows_the_shipped_part():
+    # The user's ~/.diagrammer/components/ copy wins over the built-in one
+    # with the same key (redirected to a tmp dir by the conftest fixture).
+    import shutil
+    from diagrammer.headless import builtin_components_root
+    from diagrammer.models import overrides
+    fork = overrides.default_overlay_root() / (CAP + ".svg")
+    fork.parent.mkdir(parents=True)
+    shutil.copy(builtin_components_root() / (CAP + ".svg"), fork)
+    assert load_library(include_custom=False).get(CAP).source_kind == "overlay"
+    assert load_library(include_overlay=False, include_custom=False
+                        ).get(CAP).source_kind == "builtin"
+
+
 def test_search_matches_every_word_and_filters_library(d):
     keys = [r["key"] for r in d.search("cap var", library="PAPER_2pt")["results"]]
     assert keys and all(k.startswith("PAPER_2pt/") for k in keys)
