@@ -63,15 +63,15 @@
     <path class="st3" d="M120,40.3h-12.6c-4.7,0-9.3,1.9-12.6,5.2l-49.5,49.5c-3.3,3.3-7.9,5.2-12.6,5.2h-12.6"/>
   </g>
   <g id="leads">
-    <path class="st2" d="M10,39.9H0"/>
+    <path class="st2" d="M10,40H0"/>
     <path class="st2" d="M10,100H0"/>
-    <path class="st2" d="M129.9,40h10"/>
-    <path class="st2" d="M129.9,100h10"/>
+    <path class="st2" d="M129.9,40H140"/>
+    <path class="st2" d="M129.9,100H140"/>
   </g>
   <g id="ports">
-    <circle id="port:2" class="st0" cx="139.9" cy="40" r="3"/>
-    <circle id="port:21" class="st0" cx="139.9" cy="100" r="3"/>
-    <circle id="port:1" class="st0" cy="39.9" r="3"/>
+    <circle id="port:2" class="st0" cx="140" cy="40" r="3"/>
+    <circle id="port:21" class="st0" cx="140" cy="100" r="3"/>
+    <circle id="port:1" class="st0" cy="40" r="3"/>
     <circle id="port:11" class="st0" cy="100" r="3"/>
   </g>
 </svg>

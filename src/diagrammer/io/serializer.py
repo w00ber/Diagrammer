@@ -138,6 +138,105 @@ def _migrate(data: dict, from_major: int) -> dict:
     return data
 
 
+# Tolerance for matching a saved port to a library port by position. Wider
+# than the 0.3 pt grid-drift repairs, far narrower than any port spacing.
+_PORT_MATCH_TOL = 1.0
+
+# (def_key, embedded_svg, library ports) -> match. The library's ports are
+# part of the key: a part renamed in the Inspector mid-session must not be
+# answered from the cache built before the rename.
+_PORT_MATCH_CACHE: dict[tuple, tuple[dict[str, str], tuple[float, float] | None]] = {}
+
+
+def _match_saved_ports(def_key: str, comp_def, embedded_b64: str | None
+                       ) -> tuple[dict[str, str], tuple[float, float] | None]:
+    """Relate the ports a diagram was saved with to *comp_def*'s ports.
+
+    Returns ``(aliases, shift)``.
+
+    ``aliases`` maps a saved port name to the library port at the same
+    position, where the two disagree. Wires reconnect by port name, but a
+    library part's ports can be renamed after a diagram was saved --
+    ``bot``/``top`` renamed to match where they sit, say -- and the old name
+    may then still exist, meaning the other end. Matching by name alone would
+    silently flip the wire. Every saved component embeds the SVG it was drawn
+    with (format 1.1+), so a saved name is rebound by position instead. A
+    port that genuinely moved, with nothing in its old place, keeps its name.
+
+    ``shift`` is set when *every* saved port reappears offset by one and the
+    same small vector: the whole symbol was translated (a grid-drift repair
+    moving 59.7 to 60). The part snapped onto the grid by those ports when
+    the diagram was drawn, so the loader moves the part back by the shift
+    and the diagram's wires stay exactly where they were.
+    """
+    if not embedded_b64 or getattr(comp_def, "is_embedded", False):
+        return {}, None
+    key = (def_key, embedded_b64,
+           tuple((p.name, p.x, p.y) for p in comp_def.ports))
+    cached = _PORT_MATCH_CACHE.get(key)
+    if cached is not None:
+        return cached
+    aliases: dict[str, str] = {}
+    offsets: list[tuple[float, float]] = []
+    try:
+        from diagrammer.models.component_def import ComponentDef
+        saved = ComponentDef.from_svg_text(
+            base64.b64decode(embedded_b64).decode("utf-8"),
+            path=Path(f"{Path(def_key).name}.svg"), infer_stretch=False)
+    except Exception as exc:  # malformed embed: fall back to names
+        logger.debug("Cannot read embedded ports of %s: %s", def_key, exc)
+        saved = None
+    if saved is not None:
+        lib = {p.name: p for p in comp_def.ports}
+
+        def near(a, b) -> bool:
+            return (abs(a.x - b.x) <= _PORT_MATCH_TOL
+                    and abs(a.y - b.y) <= _PORT_MATCH_TOL)
+
+        for sp in saved.ports:
+            same = lib.get(sp.name)
+            if same is not None and near(same, sp):
+                offsets.append((same.x - sp.x, same.y - sp.y))
+                continue
+            here = [p for p in comp_def.ports if near(p, sp)]
+            if here:
+                best = min(here, key=lambda p: abs(p.x - sp.x) + abs(p.y - sp.y))
+                aliases[sp.name] = best.name
+                offsets.append((best.x - sp.x, best.y - sp.y))
+    shift = None
+    if (saved is not None and offsets and len(offsets) == len(saved.ports)
+            and len(saved.ports) == len(comp_def.ports)):
+        dx, dy = offsets[0]
+        if (abs(dx) > 1e-9 or abs(dy) > 1e-9) and all(
+                abs(ox - dx) < 1e-6 and abs(oy - dy) < 1e-6 for ox, oy in offsets):
+            shift = (dx, dy)
+    result = (aliases, shift)
+    _PORT_MATCH_CACHE[key] = result
+    return result
+
+
+def _port_aliases(def_key: str, comp_def, embedded_b64: str | None) -> dict[str, str]:
+    """The name half of :func:`_match_saved_ports`."""
+    return _match_saved_ports(def_key, comp_def, embedded_b64)[0]
+
+
+def _bind_saved_ports(item, cd: dict) -> dict[str, str]:
+    """Reconcile a just-placed component with the ports it was saved with.
+
+    Call once *item* has its saved position, rotation, flip and stretch.
+    Moves the item back by any whole-symbol repair (see
+    :func:`_match_saved_ports`) and returns the port-name aliases its wires
+    must be looked up through. Shared by ``.dgm`` and ``.dgmcomp`` loading.
+    """
+    aliases, shift = _match_saved_ports(
+        cd["def_key"], item.component_def, cd.get("embedded_svg"))
+    if shift is not None:
+        # In the item's own frame, so rotation, flip and stretch all apply.
+        d = item.mapToScene(QPointF(*shift)) - item.mapToScene(QPointF(0, 0))
+        item.setPos(item.pos() - d)
+    return aliases
+
+
 class _IncompatibleFormatError(Exception):
     """Raised when a .dgm file was saved by a newer MAJOR version."""
 
@@ -280,6 +379,8 @@ class DiagramSerializer:
 
         # Load components
         embedded_fallback_keys: list[str] = []
+        # instance id -> {saved port name: current port name}
+        port_aliases: dict[str, dict[str, str]] = {}
         for cd in data.get("components", []):
             comp_def = library.get(cd["def_key"]) if library else None
             if comp_def is None and "embedded_svg" in cd:
@@ -314,6 +415,9 @@ class DiagramSerializer:
             _restore_group(item, cd)
             _restore_stack_z(item, cd)
             id_map[item.instance_id] = item
+            aliases = _bind_saved_ports(item, cd)
+            if aliases:
+                port_aliases[item.instance_id] = aliases
 
         # Load junctions
         for jd in data.get("junctions", []):
@@ -338,11 +442,15 @@ class DiagramSerializer:
             src_port = None
             tgt_port = None
             if hasattr(src_comp, 'port_by_name'):
-                src_port = src_comp.port_by_name(cd["source"]["port_name"])
+                name = cd["source"]["port_name"]
+                name = port_aliases.get(src_comp.instance_id, {}).get(name, name)
+                src_port = src_comp.port_by_name(name)
             elif hasattr(src_comp, 'port'):
                 src_port = src_comp.port  # JunctionItem
             if hasattr(tgt_comp, 'port_by_name'):
-                tgt_port = tgt_comp.port_by_name(cd["target"]["port_name"])
+                name = cd["target"]["port_name"]
+                name = port_aliases.get(tgt_comp.instance_id, {}).get(name, name)
+                tgt_port = tgt_comp.port_by_name(name)
             elif hasattr(tgt_comp, 'port'):
                 tgt_port = tgt_comp.port
 

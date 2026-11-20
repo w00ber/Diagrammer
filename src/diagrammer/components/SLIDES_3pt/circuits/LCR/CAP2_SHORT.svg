@@ -23,8 +23,8 @@
     </g>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st1" cx="30" cy="0" r="3"/>
-    <circle id="port:right" class="st1" cx="30" cy="40" r="3"/>
+    <circle id="port:top" class="st1" cx="30" cy="0" r="3"/>
+    <circle id="port:bottom" class="st1" cx="30" cy="40" r="3"/>
   </g>
   <g id="leads">
     <path class="st0" d="M30,0v14.4"/>

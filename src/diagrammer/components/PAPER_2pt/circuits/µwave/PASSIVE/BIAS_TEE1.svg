@@ -51,10 +51,10 @@
     <rect class="st5" x="-6.8" y="28.2" width="50" height="20"/>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st0" cx="60" r="3"/>
-    <circle id="port:right" class="st0" cx="60" cy="80" r="3"/>
+    <circle id="port:top" class="st0" cx="60" r="3"/>
+    <circle id="port:bottom" class="st0" cx="60" cy="80" r="3"/>
     <g id="ports1">
-      <circle id="port:right1" class="st0" cy="50" r="3"/>
+      <circle id="port:left" class="st0" cy="50" r="3"/>
     </g>
   </g>
   <g id="leads">

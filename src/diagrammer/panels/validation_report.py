@@ -175,6 +175,11 @@ class ValidationReportView(QWidget):
         row = QHBoxLayout()
         row.addWidget(QLabel("Scope:"))
         self._scope = QComboBox()
+        # Picking a scope is the request to see it, so it sweeps at once; the
+        # Validate button stays for re-running the same one. ``activated``,
+        # not ``currentIndexChanged``: only a user's pick emits it, so
+        # ``set_roots`` repopulating the list does not launch throwaway sweeps.
+        self._scope.activated.connect(self._start)
         row.addWidget(self._scope, 1)
         self._errors_only = QCheckBox("Errors only")
         self._errors_only.setToolTip(

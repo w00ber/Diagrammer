@@ -63,8 +63,9 @@ Conventions:
 - Coordinates are pixels, x right, y DOWN. Grid is {GRID:g} px: keep ports on
   multiples of it so the user can keep editing on the snapping canvas.
 - rotation is degrees CLOCKWISE on screen, multiples of 90.
-- Port NAMES are not direction hints (a capacitor's "left" port may point
-  up). Always use the reported "points" field: the way the port's lead
+- Port names like top/bottom/left/right describe the UNROTATED part only;
+  once a part is rotated or flipped they no longer say which way the port
+  faces. Always use the reported "points" field: the way the port's lead
   sticks out of the part on screen, after rotation and flip.
 - Ids are yours to choose (J1, Cc, GND1); short ids are auto-assigned
   otherwise. They are not stored in the .dgm file.

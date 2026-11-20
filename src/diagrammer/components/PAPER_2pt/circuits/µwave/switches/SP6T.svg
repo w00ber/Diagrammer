@@ -46,20 +46,20 @@
   </g>
   <g id="ports">
     <circle id="port:com" class="st0" cx="0" cy="80" r="3"/>
-    <circle id="port:3" class="st0" cx="80" cy="70.3" r="3"/>
-    <circle id="port:2" class="st0" cx="80" cy="50.3" r="3"/>
-    <circle id="port:1" class="st0" cx="80" cy="30.3" r="3"/>
-    <circle id="port:4" class="st0" cx="80" cy="90.3" r="3"/>
-    <circle id="port:5" class="st0" cx="80" cy="110.3" r="3"/>
-    <circle id="port:6" class="st0" cx="80" cy="130.3" r="3"/>
+    <circle id="port:3" class="st0" cx="80" cy="70" r="3"/>
+    <circle id="port:2" class="st0" cx="80" cy="50" r="3"/>
+    <circle id="port:1" class="st0" cx="80" cy="30" r="3"/>
+    <circle id="port:4" class="st0" cx="80" cy="90" r="3"/>
+    <circle id="port:5" class="st0" cx="80" cy="110" r="3"/>
+    <circle id="port:6" class="st0" cx="80" cy="130" r="3"/>
   </g>
   <g id="leads">
-    <line id="_x32_" class="st3" x1="60.6" y1="70.3" x2="80" y2="70.3"/>
-    <line id="_x32_1" data-name="_x32_" class="st3" x1="57.1" y1="50.3" x2="80" y2="50.3"/>
-    <line id="_x32_2" data-name="_x32_" class="st3" x1="51.6" y1="30.3" x2="80" y2="30.3"/>
-    <line id="_x31_" class="st3" x1="60.6" y1="90.3" x2="80" y2="90.3"/>
-    <line id="_x31_1" data-name="_x31_" class="st3" x1="57.1" y1="110.3" x2="80" y2="110.3"/>
-    <line id="_x31_2" data-name="_x31_" class="st3" x1="51.2" y1="130.3" x2="80" y2="130.3"/>
+    <line id="_x32_" class="st3" x1="60.6" y1="70" x2="80" y2="70"/>
+    <line id="_x32_1" data-name="_x32_" class="st3" x1="57.1" y1="50" x2="80" y2="50"/>
+    <line id="_x32_2" data-name="_x32_" class="st3" x1="51.6" y1="30" x2="80" y2="30"/>
+    <line id="_x31_" class="st3" x1="60.6" y1="90" x2="80" y2="90"/>
+    <line id="_x31_1" data-name="_x31_" class="st3" x1="57.1" y1="110" x2="80" y2="110"/>
+    <line id="_x31_2" data-name="_x31_" class="st3" x1="51.2" y1="130" x2="80" y2="130"/>
     <line id="lead:com" class="st3" x1="19.7" y1="80" x2="0" y2="80"/>
   </g>
 </svg>

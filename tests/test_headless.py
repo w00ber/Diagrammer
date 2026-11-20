@@ -18,9 +18,9 @@ import pytest
 from diagrammer.headless import Diagram, DiagramError, load_library
 
 P = "PAPER_2pt/circuits/"
-CAP = P + "LCR/CAP1"          # ports "left" (points up), "right" (down)
-JJ = P + "quantum/JJ1"         # ports "bot" (points up), "top" (down)
-GND = P + "gnds/GND1"          # port "left" (points up)
+CAP = P + "LCR/CAP1"          # ports "top" (points up), "bottom" (down)
+JJ = P + "quantum/JJ1"         # ports "top" (points up), "bottom" (down)
+GND = P + "gnds/GND1"          # port "top" (points up)
 TERM = P + "terminals/terminal_open"  # port at its centre: no direction
 COAX = P + "µwave/coax and twp/COAX1_MED"  # 40 wide, gap stretch along dx
 TOTAL_PARTS = 238   # shipped tree, decorative parts included
@@ -128,10 +128,10 @@ def test_list_categories_covers_every_part_and_names_roots(d):
 
 def test_describe_reports_direction_from_geometry_not_name(d):
     ports = {p["name"]: p for p in d.describe(CAP)["ports"]}
-    # The shipped symbol calls its top port "left". A caller reasoning from
-    # the name would wire it wrongly; "points" is what it must use.
-    assert ports["left"]["points"] == "up"
-    assert ports["right"]["points"] == "down"
+    # "points" is computed from where the port sits; the shipped names now
+    # agree with it (the validator's port-name-wrong-side keeps them so).
+    assert ports["top"]["points"] == "up"
+    assert ports["bottom"]["points"] == "down"
 
 
 def test_describe_reports_stretch_axes_and_tiles(d):
@@ -151,35 +151,35 @@ def test_unknown_key_suggests_near_names(d):
 # -- placement ----------------------------------------------------------------
 
 def test_add_puts_anchor_port_exactly_on_point(d):
-    d.add(CAP, (100, 60), anchor="right", id="C")
-    assert _ports(d, "C")["right"]["at"] == [100.0, 60.0]
+    d.add(CAP, (100, 60), anchor="bottom", id="C")
+    assert _ports(d, "C")["bottom"]["at"] == [100.0, 60.0]
 
 
 def test_rotation_is_clockwise_on_screen(d):
     d.add(CAP, (0, 0), rotation=90, id="C")
     ports = _ports(d, "C")
-    # "left" points up unrotated; a clockwise quarter turn makes it point right.
-    assert ports["left"]["points"] == "right"
-    assert ports["right"]["points"] == "left"
+    # "top" points up unrotated; a clockwise quarter turn makes it point right.
+    assert ports["top"]["points"] == "right"
+    assert ports["bottom"]["points"] == "left"
 
 
 def test_attach_steps_out_turns_to_face_and_wires(d):
-    d.add(CAP, (0, 0), anchor="left", id="C")      # "right" at (0,100), down
-    d.attach(JJ, "top", to=("C", "right"), gap=40, id="J")
+    d.add(CAP, (0, 0), anchor="top", id="C")      # "bottom" at (0,100), down
+    d.attach(JJ, "bottom", to=("C", "bottom"), gap=40, id="J")
     j = _ports(d, "J")
-    assert j["top"]["at"] == [pytest.approx(0, abs=0.2), 140.0]
-    assert j["top"]["points"] == "up"               # faces back at C
+    assert j["bottom"]["at"] == [pytest.approx(0, abs=0.2), 140.0]
+    assert j["bottom"]["points"] == "up"               # faces back at C
     wires = d.summary()["wires"]
-    assert [w["from"] + w["to"] for w in wires] == [["C", "right", "J", "top"]]
+    assert [w["from"] + w["to"] for w in wires] == [["C", "bottom", "J", "bottom"]]
 
 
 def test_attach_to_directionless_port_needs_direction(d):
     d.add(TERM, (0, 0), anchor="left", id="IN")
     with pytest.raises(DiagramError, match="direction"):
-        d.attach(CAP, "left", to=("IN", "left"))
-    d.attach(CAP, "left", to=("IN", "left"), direction="right", id="C")
-    assert _ports(d, "C")["left"]["at"] == [40.0, 0.0]
-    assert _ports(d, "C")["left"]["points"] == "left"
+        d.attach(CAP, "top", to=("IN", "left"))
+    d.attach(CAP, "top", to=("IN", "left"), direction="right", id="C")
+    assert _ports(d, "C")["top"]["at"] == [40.0, 0.0]
+    assert _ports(d, "C")["top"]["points"] == "left"
 
 
 def test_wires_take_the_library_weight_even_from_leadless_ends(d):
@@ -188,7 +188,7 @@ def test_wires_take_the_library_weight_even_from_leadless_ends(d):
     d.add(TERM, (0, 0), anchor="left", id="IN")
     d.node((100, 0), id="N")
     d.connect("IN", "left", "N", "center")
-    d.attach(GND, "left", to=("N", "center"), direction="down", id="G")
+    d.attach(GND, "top", to=("N", "center"), direction="down", id="G")
     widths = {round(c.line_width, 2) for c in d.scene.items()
               if type(c).__name__ == "ConnectionItem"}
     assert widths == {2.0}
@@ -197,7 +197,7 @@ def test_wires_take_the_library_weight_even_from_leadless_ends(d):
 def test_node_joins_three_wires(d):
     d.node((0, 0), id="N")
     for i, direction in enumerate(("left", "right", "down")):
-        d.attach(CAP, "left", to=("N", "center"), direction=direction,
+        d.attach(CAP, "top", to=("N", "center"), direction=direction,
                  id=f"C{i}")
     assert len(d.summary()["wires"]) == 3
 
@@ -226,12 +226,12 @@ def test_add_stretch_after_flip_and_rotation(d):
 
 
 def test_stretch_keeps_port_and_wires_and_undoes(d):
-    d.add(CAP, (0, 0), anchor="left", rotation=-90, id="C")   # ports along x
-    right = _ports(d, "C")["right"]["at"]
+    d.add(CAP, (0, 0), anchor="top", rotation=-90, id="C")   # ports along x
+    right = _ports(d, "C")["bottom"]["at"]
     d.add(COAX, tuple(right), anchor="right", flip_h=True, id="TL")
-    d.connect("C", "right", "TL", "right")
+    d.connect("C", "bottom", "TL", "right")
     d.add(GND, (0, 0), id="G")
-    d.connect("TL", "left", "G", "left")
+    d.connect("TL", "left", "G", "top")
     before = _comp(d, "TL")
     n = d.undo_stack.count()
 
@@ -305,10 +305,10 @@ def test_one_add_is_one_undo_step(d):
 
 
 def test_move_carries_wires_and_remove_takes_them(d):
-    d.add(CAP, (0, 0), anchor="left", id="C")
-    d.attach(GND, "left", to=("C", "right"), id="G")
+    d.add(CAP, (0, 0), anchor="top", id="C")
+    d.attach(GND, "top", to=("C", "bottom"), id="G")
     d.move("C", by=(20, 0))
-    assert _ports(d, "C")["left"]["at"] == [20.0, 0.0]
+    assert _ports(d, "C")["top"]["at"] == [20.0, 0.0]
     d.remove("C")
     s = d.summary()
     assert [c["id"] for c in s["components"]] == ["G"]
@@ -335,14 +335,14 @@ def _rail(d):
     """The JPA-session repro: a node feeding a cap, down to a node rail
     that ends on a ground."""
     d.node((240, 0), id="A")
-    d.add(CAP, (240, 200), anchor="left", id="C")
+    d.add(CAP, (240, 200), anchor="top", id="C")
     d.node((240, 580), id="D")
     d.node((320, 580), id="G")
-    d.add(GND, (320, 620), anchor="left", id="GND")
-    d.connect("A", "center", "C", "left")
-    d.connect("C", "right", "D", "center")
+    d.add(GND, (320, 620), anchor="top", id="GND")
+    d.connect("A", "center", "C", "top")
+    d.connect("C", "bottom", "D", "center")
     d.connect("D", "center", "G", "center")
-    d.connect("G", "center", "GND", "left")
+    d.connect("G", "center", "GND", "top")
     assert _stale_wires(d) == []
 
 
@@ -356,10 +356,10 @@ def test_move_by_reroutes_wires_on_nodes_and_parts(d, lib, tmp_path):
     assert _stale_wires(d) == []
     d.move("C", by=(0, 500))
     assert _stale_wires(d) == []
-    assert _ports(d, "C")["left"]["at"] == [240.0, 700.0]
+    assert _ports(d, "C")["top"]["at"] == [240.0, 700.0]
     # Undo puts the parts back, and the wires with them.
     d.undo()
-    assert _ports(d, "C")["left"]["at"] == [240.0, 200.0]
+    assert _ports(d, "C")["top"]["at"] == [240.0, 200.0]
     assert _stale_wires(d) == []
     # The .dgm stores port references, not routes: reopened, it agrees.
     e = Diagram(lib)
@@ -371,15 +371,15 @@ def test_move_by_reroutes_wires_on_nodes_and_parts(d, lib, tmp_path):
 def test_move_to_reroutes_wires_on_nodes_and_parts(d):
     _rail(d)
     d.move("D", to=(240, 1480))
-    d.move("GND", to=(320, 1520), anchor="left")
-    d.move("C", to=(240, 700), anchor="left")
+    d.move("GND", to=(320, 1520), anchor="top")
+    d.move("C", to=(240, 700), anchor="top")
     assert _stale_wires(d) == []
-    assert _ports(d, "GND")["left"]["at"] == [320.0, 1520.0]
+    assert _ports(d, "GND")["top"]["at"] == [320.0, 1520.0]
 
 
 def test_stretch_reroutes_wires(d):
     d.add(COAX, (0, 0), anchor="left", id="TL")
-    d.attach(GND, "left", to=("TL", "right"), direction="down", id="G")
+    d.attach(GND, "top", to=("TL", "right"), direction="down", id="G")
     d.node((-40, 0), id="N")
     d.connect("N", "center", "TL", "left")
     d.stretch("TL", by=80, keep="right")      # moves the *left* end
@@ -389,13 +389,13 @@ def test_stretch_reroutes_wires(d):
 
 
 def test_attach_with_zero_gap_still_connects(d):
-    d.add(CAP, (0, 0), anchor="left", id="C")
-    d.attach(JJ, "top", to=("C", "right"), gap=0, id="J")
-    assert _ports(d, "J")["top"]["at"] == _ports(d, "C")["right"]["at"]
+    d.add(CAP, (0, 0), anchor="top", id="C")
+    d.attach(JJ, "bottom", to=("C", "bottom"), gap=0, id="J")
+    assert _ports(d, "J")["bottom"]["at"] == _ports(d, "C")["bottom"]["at"]
     assert len(d.summary()["wires"]) == 1
     d.move("J", by=(0, 40))          # the zero-length wire becomes a real one
     assert _stale_wires(d) == []
-    d.attach(JJ, "top", to=("J", "bot"), gap=0, wire=False, id="J2")
+    d.attach(JJ, "bottom", to=("J", "top"), gap=0, wire=False, id="J2")
     assert len(d.summary()["wires"]) == 1
 
 
@@ -426,8 +426,8 @@ def test_render_empty_is_an_error_not_a_blank_image(d):
 
 
 def test_dgm_round_trip(d, lib, tmp_path):
-    d.add(CAP, (0, 0), anchor="left", id="C")
-    d.attach(JJ, "top", to=("C", "right"), id="J")
+    d.add(CAP, (0, 0), anchor="top", id="C")
+    d.attach(JJ, "bottom", to=("C", "bottom"), id="J")
     d.text("$E_J$", (60, 120))
     path = d.save(tmp_path / "x")
     assert path.suffix == ".dgm"
@@ -494,8 +494,8 @@ def test_every_tool_is_async(server):
 
 def test_tool_errors_carry_the_message(server):
     asyncio.run(server.add_component(CAP, 0, 0, id="C"))
-    with pytest.raises(server.ToolError, match=r"ports are \['left', 'right'\]"):
-        asyncio.run(server.connect("C", "nope", "C", "left"))
+    with pytest.raises(server.ToolError, match=r"ports are \['top', 'bottom'\]"):
+        asyncio.run(server.connect("C", "nope", "C", "top"))
     with pytest.raises(server.ToolError, match="not stretchable"):
         asyncio.run(server.add_component(CAP, 0, 0, stretch=40))
     with pytest.raises(server.ToolError, match="not stretchable"):
@@ -530,8 +530,8 @@ def test_tools_never_write_stdout(server, capsys):
 
 def test_chain_through_tools_and_render(server):
     asyncio.run(server.add_component(TERM, 0, 0, anchor="left", id="IN"))
-    r = asyncio.run(server.attach_component(CAP, "left", "IN", "left",
+    r = asyncio.run(server.attach_component(CAP, "top", "IN", "left",
                                             direction="right", id="Cc"))
-    assert r["ports"]["right"]["points"] == "right"
+    assert r["ports"]["bottom"]["points"] == "right"
     img = asyncio.run(server.render())
     assert img.data.startswith(b"\x89PNG")

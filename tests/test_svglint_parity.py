@@ -119,14 +119,18 @@ def test_shipped_library_has_no_errors_except_the_known_temp_file() -> None:
 def test_warnings_stay_a_minority_of_the_library() -> None:
     """A report that flags most of the library gets ignored wholesale.
 
-    The linecap migration is the bulk of the warnings and collapses to one
-    bulk-fix row in the batch report, so it is allowed to be large; everything
-    else has to stay small.
+    Two kinds of warning are allowed to be large, because they are known
+    library-wide debts rather than a check crying wolf: the linecap migration,
+    which collapses to one bulk-fix row in the batch report, and grid drift —
+    ports and lead ends a fraction of a point off, left by the editor across
+    much of the tree and repaired file by file after review, since the fix
+    moves geometry. Everything else has to stay small.
     """
+    exempt = {"lead-linecap-not-butt", "port-off-grid",
+              "lead-endpoint-near-port"}
     reports = list(svglint.scan_paths([COMPONENTS]))
     other = [r for r in reports
-             if any(f.severity == "warning"
-                    and f.check_id != "lead-linecap-not-butt"
+             if any(f.severity == "warning" and f.check_id not in exempt
                     for f in r.findings)]
     assert len(other) < len(reports) * 0.15, (
         f"{len(other)} of {len(reports)} files warn for reasons other than "

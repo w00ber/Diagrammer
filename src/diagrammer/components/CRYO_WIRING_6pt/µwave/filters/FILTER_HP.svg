@@ -51,8 +51,8 @@
     <rect class="st4" x="-6.8" y="58.2" width="50" height="20"/>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st0" cx="30" r="3"/>
-    <circle id="port:right" class="st0" cx="30" cy="140" r="3"/>
+    <circle id="port:top" class="st0" cx="30" r="3"/>
+    <circle id="port:bottom" class="st0" cx="30" cy="140" r="3"/>
   </g>
   <g id="leads">
     <path class="st2" d="M30,118.3v21.7"/>

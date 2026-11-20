@@ -54,15 +54,15 @@
     <rect class="st5" x="33.2" y="38.2" width="50" height="20"/>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st0" cx="90.1" cy="0" r="3"/>
-    <circle id="port:bot" class="st0" cx="90" cy="100" r="3"/>
-    <circle id="port:dc" class="st0" cx="10" cy="59.7" r="3"/>
+    <circle id="port:top" class="st0" cx="90" cy="0" r="3"/>
+    <circle id="port:bottom" class="st0" cx="90" cy="100" r="3"/>
+    <circle id="port:dc" class="st0" cx="10" cy="60" r="3"/>
   </g>
   <g id="leads">
-    <path class="st4" d="M90,0v9.7"/>
+    <path class="st4" d="M90,0V9.7"/>
     <path class="st4" d="M90,90v10"/>
     <g id="leads2">
-      <path class="st4" d="M20,59.7h-10"/>
+      <path class="st4" d="M20,60H10"/>
     </g>
   </g>
   <g id="artwork">

@@ -30,12 +30,12 @@
       <line id="stretch:h1" class="st2" y1="43.9" x2="80" y2="43.9"/>
     </g>
     <g id="leads">
-      <path class="st1" d="M40.1,16.1V0"/>
-      <path class="st1" d="M40.1,60v-16.1"/>
+      <path class="st1" d="M40,16.1V0"/>
+      <path class="st1" d="M40,60V43.9"/>
     </g>
     <g id="ports">
-      <circle id="port:bot" class="st3" cx="40" r="3"/>
-      <circle id="port:top" class="st3" cx="40.1" cy="60" r="3"/>
+      <circle id="port:top" class="st3" cx="40" r="3"/>
+      <circle id="port:bottom" class="st3" cx="40" cy="60" r="3"/>
     </g>
     <g id="artwork">
       <g id="tile">

@@ -99,11 +99,11 @@
     </g>
   </g>
   <g id="leads">
-    <path class="st6" d="M40.1,23.1V0"/>
-    <path class="st6" d="M40,100v-22.1"/>
+    <path class="st6" d="M40,23.1V0"/>
+    <path class="st6" d="M40,100V77.9"/>
   </g>
   <g id="ports">
-    <circle id="port:bot" class="st7" cx="40.1" r="3"/>
-    <circle id="port:top" class="st7" cx="40.1" cy="100" r="3"/>
+    <circle id="port:top" class="st7" cx="40" r="3"/>
+    <circle id="port:bottom" class="st7" cx="40" cy="100" r="3"/>
   </g>
 </svg>

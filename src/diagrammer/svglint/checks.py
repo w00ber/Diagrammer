@@ -194,10 +194,41 @@ def check_lead_endpoints(text: str, path: Path,
                 d = ((ex - px) ** 2 + (ey - py) ** 2) ** 0.5
                 if best is None or d < best[0]:
                     best = (d, ex, ey, px, py)
-        if best is None or best[0] < T.ENDPOINT_TOL:
+        if best is None or best[0] <= T.GRID_TOL:
             continue
         gap, ex, ey, px, py = best
         snappable = _is_pure_extension(x1, y1, x2, y2, ex, ey, px, py)
+        lead = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+        aligned = (abs(x1 - x2) < 1e-9) != (abs(y1 - y2) < 1e-9)
+        if gap < T.ENDPOINT_TOL:
+            out.append(Finding(
+                check_id="lead-endpoint-near-port",
+                severity="warning",
+                message=(f"lead ({x1:g},{y1:g})-({x2:g},{y2:g}) ends {gap:g} pt "
+                         f"from its port at ({px:g},{py:g})"),
+                detail=("Close enough for _shorten_leads_in_svg to match it, so "
+                        "the lead is shortened — but from where it actually "
+                        "ends. The wire runs to the port, so the joint shows a "
+                        f"{gap:g} pt gap, overlap or jog where it meets the lead."
+                        + ("  The lead runs along the axis the port sits on, "
+                           "so extending it to the port is a safe repair."
+                           if snappable else
+                           "  The offset is across the lead. If the port "
+                           "drifted, snap the port to the grid; if the lead "
+                           "did, slide the lead onto the port."
+                           if aligned else
+                           "  The lead is diagonal, so moving its end to the "
+                           "port turns it by a fraction of a degree; at this "
+                           "distance that is the repair.")),
+                markers=(Marker(kind="segment", coords=(x1, y1, x2, y2)),
+                         Marker(kind="point", coords=(px, py),
+                                label=f"{gap:g} pt off")),
+                fix_ids=(("align-lead-with-port",) if aligned and not snappable
+                         else ("snap-lead-end-to-port",)),
+                data={"gap": gap, "end_x": ex, "end_y": ey,
+                      "port_x": px, "port_y": py, **lead},
+            ))
+            continue
         out.append(Finding(
             check_id="lead-endpoint-off-port",
             severity="error",
@@ -217,7 +248,86 @@ def check_lead_endpoints(text: str, path: Path,
                      Marker(kind="point", coords=(ex, ey), label=f"{gap:g} pt off")),
             fix_ids=("snap-lead-end-to-port",) if snappable else (),
             data={"gap": gap, "end_x": ex, "end_y": ey,
-                  "port_x": px, "port_y": py},
+                  "port_x": px, "port_y": py, **lead},
+        ))
+    return out
+
+
+def check_port_grid(text: str, path: Path,
+                    profile: LibraryProfile) -> list[Finding]:
+    """A port that *nearly* sits on a grid line has drifted off it.
+
+    Whole-grid conformance is deliberately not checked (see the module notes
+    in the spec). This is narrower: a port at 59.7 is not a design choice,
+    it is an editor export of 60. Components snap by port, so every other
+    port on the part, and every wire attached to it, inherits the offset —
+    wires between neighbouring parts come out a fraction of a point off
+    straight, which is invisible on screen and obvious in an exported figure.
+    """
+    if profile.grid is None or profile.grid <= 0:
+        return []
+    out: list[Finding] = []
+    for pid, x, y in T.ports_from_text(text):
+        tx = T.near_grid_target(x, profile.grid)
+        ty = T.near_grid_target(y, profile.grid)
+        if tx is None and ty is None:
+            continue
+        nx = x if tx is None else tx
+        ny = y if ty is None else ty
+        out.append(Finding(
+            check_id="port-off-grid",
+            severity="warning",
+            message=(f"{pid} at ({x:g},{y:g}) is just off the grid — "
+                     f"({nx:g},{ny:g}) intended?"),
+            detail=(f"{max(abs(nx - x), abs(ny - y)):g} pt off a "
+                    f"{T.snap_lattice(profile.grid):g} pt line, which reads "
+                    "as editor drift rather than design. Parts snap to the "
+                    "grid by a port, so the offset carries into every wire "
+                    "attached here: wires to neighbouring parts come out "
+                    "slightly off straight. The fix moves the port and the "
+                    "leads that end on it; when every port has drifted the "
+                    "same way, it moves the whole symbol instead so the "
+                    "leads stay centred on the body."),
+            markers=(Marker(kind="point", coords=(x, y), label=pid),
+                     Marker(kind="point", coords=(nx, ny), label="grid")),
+            element_id=pid,
+            fix_ids=("snap-ports-to-grid",),
+            data={"port": pid, "x": x, "y": y, "to_x": nx, "to_y": ny},
+        ))
+    return out
+
+
+def check_port_names(text: str, path: Path,
+                     profile: LibraryProfile) -> list[Finding]:
+    """A port named for one side sits on another.
+
+    Routing never reads port names, so the part works on the canvas; the
+    name is wrong for everyone who wires by name. See ``port_names``.
+    """
+    from diagrammer.svglint.port_names import misnamed_ports
+
+    out: list[Finding] = []
+    for m in misnamed_ports(text, path):
+        where = " / ".join(m.sides)
+        out.append(Finding(
+            check_id="port-name-wrong-side",
+            severity="warning",
+            message=(f"{m.pid} sits on the {where} edge"
+                     + (f" — {m.new}?" if m.new else "")),
+            detail=("The app routes by position and ignores the name, so this "
+                    "looks fine on the canvas. It misleads anyone who wires "
+                    "by name — the Properties panel, and the headless API, "
+                    "which attaches wires by port name alone. Renaming is "
+                    "safe for saved diagrams: they reattach by the position "
+                    "the port had when saved. "
+                    + ("" if m.new else
+                       "No rename is offered: a rule would give two ports "
+                       "the same name here, or the port is on a corner, so "
+                       "the names have to be chosen by hand.")),
+            markers=(Marker(kind="point", coords=(m.x, m.y), label=m.pid),),
+            element_id=m.pid,
+            fix_ids=("name-ports-by-side",) if m.new else (),
+            data={"port": m.pid, "to": m.new},
         ))
     return out
 
@@ -512,6 +622,8 @@ ALL_CHECKS = (
     check_artwork_layer,
     check_ports_exist,
     check_port_on_edge,
+    check_port_grid,
+    check_port_names,
     check_lead_endpoints,
     check_lead_width,
     check_lead_linecap,

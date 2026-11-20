@@ -40,20 +40,20 @@
     </style>
   </defs>
   <g id="guides" class="st5">
-    <rect class="st3" x="-6.8" y="58.2" width="50" height="20"/>
+    <rect class="st3" x="-6.9" y="58.2" width="50" height="20"/>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st0" cx="30.1" r="3"/>
-    <circle id="port:right" class="st0" cx="30.1" cy="140.1" r="3"/>
+    <circle id="port:top" class="st0" cx="30" r="3"/>
+    <circle id="port:bottom" class="st0" cx="30" cy="140" r="3"/>
   </g>
   <g id="artwork">
-    <rect class="st2" x="9.8" y="21.8" width="40.5" height="96.5"/>
+    <rect class="st2" x="9.7" y="21.8" width="40.5" height="96.5"/>
   </g>
   <g id="leads">
-    <path class="st4" d="M30.1,0v21.7"/>
-    <path class="st4" d="M30.1,118.3v21.7"/>
+    <path class="st4" d="M30,0v21.7"/>
+    <path class="st4" d="M30,118.3V140"/>
   </g>
   <g id="stretch">
-    <line id="stretch:h" class="st1" x1="-52.9" y1="70.1" x2="113.1" y2="70.1"/>
+    <line id="stretch:h" class="st1" x1="-53" y1="70.1" x2="113" y2="70.1"/>
   </g>
 </svg>

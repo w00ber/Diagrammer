@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from diagrammer import svglint
-from diagrammer.svglint import profiles
+from diagrammer.svglint import profiles, text_svg
 from diagrammer.svglint.fixes import FIXES_BY_ID
 
 PAPER = profiles.BUILTIN_PROFILES["PAPER_2pt"]
@@ -516,9 +516,7 @@ def test_the_stray_layer_is_folded_into_the_real_one(tmp_path: Path) -> None:
     assert "leads1" not in T.top_level_layer_ids(out)
     assert T.top_level_layer_ids(out).count("leads") == 1, (
         "two groups with the same id would leave the parser reading only one")
-    # both leads now live where the lead reader looks. Counted as elements
-    # rather than via lead_endpoints, which deliberately declines relative
-    # path commands like the "v20" these use.
+    # both leads now live where the lead reader looks.
     import re
 
     body = re.search(r'<g id="leads">.*?</g>', out, re.S).group(0)
@@ -564,3 +562,201 @@ def test_folding_is_idempotent(tmp_path: Path) -> None:
     once, _ = run(STRAY_LEAD_LAYER, ["merge-lead-layer"], tmp_path / "f.svg")
     twice, _ = run(once, ["merge-lead-layer"], tmp_path / "f.svg")
     assert twice == once
+
+
+# ==========================================================================
+# grid drift: ports a fraction of a point off, and leads that miss them
+# ==========================================================================
+
+# rfSQUID1 in miniature: every port, lead and body coordinate at x=59.7, the
+# bottom lead written as a relative path that stops 1.5 pt short of its port,
+# and port:bot relying on the omitted-cy default.
+DRIFTED = svg(
+    '  <g id="leads">\n'
+    '    <path class="st1" d="M59.7,98.5v-21.1"/>\n'
+    '    <path class="st1" d="M59.7,22.1V0"/>\n'
+    "  </g>\n"
+    '  <g id="ports">\n'
+    '    <circle id="port:bot" class="st0" cx="59.7" r="3"/>\n'
+    '    <circle id="port:top" class="st0" cx="59.7" cy="100" r="3"/>\n'
+    "  </g>\n"
+    '  <g id="artwork">\n'
+    '    <path class="st1" d="M83.6,66.1v6.4c0,2.7-2.2,4.9-4.9,4.9h-39V27.5"/>\n'
+    '    <line class="st1" x1="25.7" y1="43.5" x2="44" y2="54.3"/>\n'
+    "  </g>\n",
+    viewbox="0 0 120 100")
+
+
+def _ids(text: str, path: Path) -> list[str]:
+    return [f.check_id for f in svglint.check_text(text, path=path,
+                                                   profile=PAPER)]
+
+
+def test_drifted_ports_and_a_short_lead_are_reported(tmp_path: Path) -> None:
+    found = svglint.check_text(DRIFTED, path=tmp_path / "f.svg", profile=PAPER)
+    grid = [f for f in found if f.check_id == "port-off-grid"]
+    assert {f.element_id for f in grid} == {"port:bot", "port:top"}
+    assert all(f.severity == "warning" for f in grid)
+    gap = [f for f in found if f.check_id == "lead-endpoint-near-port"]
+    assert len(gap) == 1 and gap[0].data["gap"] == pytest.approx(1.5)
+    assert gap[0].fix_ids == ("snap-lead-end-to-port",)
+
+
+@pytest.mark.parametrize("cx", ["60", "23", "2", "50"])
+def test_deliberate_offsets_are_not_drift(cx: str, tmp_path: Path) -> None:
+    """On a line, or 2 pt or more off one, is design (GND at 23, the
+    flowchart insets at 2), not an editor slip."""
+    text = SOUND.replace('cx="30"', f'cx="{cx}"').replace(
+        'x1="30"', f'x1="{cx}"').replace('x2="30"', f'x2="{cx}"')
+    assert "port-off-grid" not in _ids(text, tmp_path / "f.svg")
+
+
+def test_uniform_drift_moves_the_whole_symbol(tmp_path: Path) -> None:
+    path = tmp_path / "f.svg"
+    out, notes = run(DRIFTED, ["snap-lead-end-to-port", "snap-ports-to-grid"],
+                     path)
+    assert any("whole symbol" in n for n in notes)
+    assert ("port:bot", 60.0, 0.0) in text_svg.ports_from_text(out)
+    assert ("port:top", 60.0, 100.0) in text_svg.ports_from_text(out)
+    # the body moved with the ports, so the leads still meet it centred
+    assert 'x1="26"' in out and "M83.9,66.1v6.4c0,2.7-2.2,4.9-4.9,4.9h-39V27.5" in out
+    remaining = _ids(out, path)
+    assert "port-off-grid" not in remaining
+    assert "lead-endpoint-near-port" not in remaining
+
+
+def test_an_omitted_cy_is_spelled_out_when_y_moves(tmp_path: Path) -> None:
+    from diagrammer.svglint.fixes import _translate
+
+    out = _translate('<circle id="port:a" cx="5" r="3"/>', 0.0, 2.0)
+    assert 'cy="2"' in out and 'cx="5"' in out
+
+
+def test_one_drifted_port_moves_alone_with_its_lead(tmp_path: Path) -> None:
+    """RES1's shape: port:right at y=100.1 on an otherwise on-grid part."""
+    text = svg(
+        '  <g id="artwork"><path class="st1" d="M10,30H50"/></g>\n'
+        '  <g id="leads">\n'
+        '    <line class="st1" x1="30" y1="0" x2="30" y2="20"/>\n'
+        '    <path class="st1" d="M30,100.1v-21.9"/>\n'
+        "  </g>\n"
+        '  <g id="ports">\n'
+        '    <circle id="port:a" class="st0" cx="30" r="3"/>\n'
+        '    <circle id="port:b" class="st0" cx="30" cy="100.1" r="3"/>\n'
+        "  </g>\n")
+    out, notes = run(text, ["snap-ports-to-grid"], tmp_path / "f.svg")
+    assert not any("whole symbol" in n for n in notes)
+    assert ("port:b", 30.0, 100.0) in text_svg.ports_from_text(out)
+    assert 'd="M10,30H50"' in out, "the body must not move"
+    # along the lead: the port end moves, the far end stays put
+    assert (30.0, 100.0, 30.0, 78.2) in [
+        tuple(round(v, 6) for v in e) for e in text_svg.lead_endpoints(out)]
+
+
+def test_a_lead_beside_its_port_is_slid_onto_it(tmp_path: Path) -> None:
+    """JJ1's shape: the port is on the grid, the lead sits 0.1 pt beside it."""
+    text = svg(
+        '  <g id="artwork"><path class="st1" d="M10,30H50"/></g>\n'
+        '  <g id="leads"><path class="st1" d="M30.1,16.1V0"/></g>\n'
+        '  <g id="ports"><circle id="port:a" class="st0" cx="30" r="3"/></g>\n')
+    path = tmp_path / "f.svg"
+    gap = [f for f in svglint.check_text(text, path=path, profile=PAPER)
+           if f.check_id == "lead-endpoint-near-port"]
+    assert gap and gap[0].fix_ids == ("align-lead-with-port",)
+    out, _ = run(text, ["align-lead-with-port"], path)
+    assert 'd="M30,16.1V0"' in out
+    assert "lead-endpoint-near-port" not in _ids(out, path)
+
+
+def test_shift_path_data_keeps_the_formatting() -> None:
+    """A translated path should diff as the numbers that moved."""
+    d = "M83.6,66.1v6.4c0,2.7-2.2,4.9-4.9,4.9h-39V27.5"
+    assert text_svg.shift_path_data(d, 0.3, 0) == (
+        "M83.9,66.1v6.4c0,2.7-2.2,4.9-4.9,4.9h-39V27.5")
+    # a sign flip must not fuse two numbers: "-2-2" -> "-1.7 0.5"
+    assert text_svg.shift_path_data("M0,0L-2-2", 0.3, 2.5) == "M0.3,2.5L-1.7 0.5"
+    # a path's opening "m" is absolute; what follows it is relative
+    assert text_svg.shift_path_data("m1,1 2,2", 1, 1) == "m2,2 2,2"
+
+
+def test_the_whole_symbol_move_takes_polygons_along(tmp_path: Path) -> None:
+    """IND1_VAR's arrowhead is a <polygon>: left behind, it would sit 0.2 pt
+    off the body it points along."""
+    text = DRIFTED.replace(
+        "  </g>\n</svg>",
+        '    <polygon class="st1" points="10,10 20.5,10 15,18"/>\n  </g>\n</svg>')
+    out, _ = run(text, ["snap-ports-to-grid"], tmp_path / "f.svg")
+    assert 'points="10.3,10 20.8,10 15.3,18"' in out
+
+
+def test_a_gradient_blocks_the_whole_symbol_move(tmp_path: Path) -> None:
+    """Gradient coordinates are in their own units; shifting them as if they
+    were the symbol's would corrupt the fill. Ports move one by one instead."""
+    text = DRIFTED.replace(
+        "  <defs>\n",
+        '  <defs>\n    <linearGradient id="g" x1="0" y1="0" x2="1" y2="0"/>\n')
+    out, notes = run(text, ["snap-ports-to-grid"], tmp_path / "f.svg")
+    assert not any("whole symbol" in n for n in notes)
+    assert '<linearGradient id="g" x1="0" y1="0" x2="1" y2="0"/>' in out
+    assert ("port:top", 60.0, 100.0) in text_svg.ports_from_text(out)
+
+
+# --------------------------------------------------------------------------
+# port names versus the side they sit on
+# --------------------------------------------------------------------------
+
+def _named(ports: str, w: float = 80, h: float = 100) -> str:
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w:g} {h:g}">'
+            f'<g id="artwork"><rect x="20" y="20" width="40" height="60"/></g>'
+            f'<g id="ports">{ports}</g></svg>')
+
+
+def _misnamed(text: str):
+    from diagrammer.svglint.port_names import misnamed_ports
+    return {m.pid: m.new for m in misnamed_ports(text, Path("x.svg"))}
+
+
+def test_swapped_vertical_names_are_reported_and_renamed_together():
+    text = _named('<circle id="port:bot" cx="40" cy="0" r="3"/>'
+                  '<circle id="port:top" cx="40" cy="100" r="3"/>')
+    assert _misnamed(text) == {"port:bot": "port:top", "port:top": "port:bottom"}
+    from diagrammer.svglint.fixes import FIXES_BY_ID, apply_fixes
+    findings = svglint.check_text(text, path=Path("x.svg"))
+    assert {f.check_id for f in findings} >= {"port-name-wrong-side"}
+    fixed, _ = apply_fixes(text, [FIXES_BY_ID["name-ports-by-side"]], findings,
+                           profile=svglint.profile_for(Path("x.svg")), path=Path("x.svg"))
+    assert 'id="port:top" cx="40" cy="0"' in fixed       # a swap, not a chain
+    assert 'id="port:bottom" cx="40" cy="100"' in fixed
+    assert _misnamed(fixed) == {}
+
+
+def test_correct_names_interior_ports_and_other_names_are_not_judged():
+    text = _named('<circle id="port:left" cx="0" cy="50" r="3"/>'
+                  '<circle id="port:right" cx="80" cy="50" r="3"/>'
+                  '<circle id="port:top" cx="40" cy="40" r="3"/>'   # interior
+                  '<circle id="port:com" cx="40" cy="100" r="3"/>')
+    assert _misnamed(text) == {}
+
+
+def test_bot_is_spelled_out_even_where_it_is_right():
+    text = _named('<circle id="port:bot" cx="40" cy="100" r="3"/>')
+    assert _misnamed(text) == {"port:bot": "port:bottom"}
+
+
+def test_a_lone_suffixed_port_loses_its_suffix():
+    text = _named('<circle id="port:left" cx="40" cy="0" r="3"/>'
+                  '<circle id="port:right" cx="40" cy="100" r="3"/>'
+                  '<circle id="port:right1" cx="0" cy="50" r="3"/>')
+    assert _misnamed(text) == {"port:left": "port:top", "port:right": "port:bottom",
+                               "port:right1": "port:left"}
+
+
+def test_no_rename_when_two_ports_would_share_a_name():
+    """XFORMER1: two ports on each of the top and bottom edges."""
+    text = _named('<circle id="port:left" cx="80" cy="100" r="3"/>'
+                  '<circle id="port:right" cx="20" cy="100" r="3"/>'
+                  '<circle id="port:left1" cx="80" cy="0" r="3"/>'
+                  '<circle id="port:right1" cx="20" cy="0" r="3"/>', w=100)
+    found = _misnamed(text)
+    assert set(found) == {"port:left", "port:right", "port:left1", "port:right1"}
+    assert set(found.values()) == {None}

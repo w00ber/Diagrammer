@@ -93,8 +93,8 @@ and look before it is done. The same operations are a plain Python API in
 ```python
 from diagrammer.headless import Diagram
 d = Diagram()
-d.add("PAPER_2pt/circuits/LCR/CAP1", (0, 0), anchor="left", id="C")
-d.attach("PAPER_2pt/circuits/gnds/GND1", "left", to=("C", "right"))
+d.add("PAPER_2pt/circuits/LCR/CAP1", (0, 0), anchor="top", id="C")
+d.attach("PAPER_2pt/circuits/gnds/GND1", "top", to=("C", "bottom"))
 d.save("~/Desktop/rc.dgm")
 ```
 
@@ -177,9 +177,12 @@ Start short, as above, and add detail only where the result is wrong:
 
 ## Things that will trip you up
 
-- **Port names are not directions.** In the shipped library a capacitor's
-  `left` port points *up*. Tools report a `points` field computed from the
-  geometry after rotation and flip; Claude is told to use it.
+- **Port names describe the unrotated part.** A capacitor's `top` port
+  points right once the part is turned a quarter clockwise. Tools report a
+  `points` field computed from the geometry after rotation and flip; Claude
+  is told to use it. (Before 2026-11 the shipped names did not even match
+  the unrotated part: vertical LCR parts used `left`/`right`, and the
+  quantum parts had `bot` at the top.)
 - **Short ids are not saved.** `J1`, `Cc` live only in the server session; a
   reopened `.dgm` uses its 12-hex instance ids.
 - **Stretch is in the part's own frame; `stretch_axes` is on screen.**

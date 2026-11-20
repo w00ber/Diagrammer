@@ -843,8 +843,8 @@ class TestGroupTransformJunctionWires:
         res = _place_component(scene, res_def, QPointF(0, 80))
         wires = [
             # Parallel loop: auto-routed L-shapes.
-            _connect(scene, jj, "bot", res, "left"),
-            _connect(scene, jj, "top", res, "right"),
+            _connect(scene, jj, "top", res, "top"),
+            _connect(scene, jj, "bottom", res, "bottom"),
         ]
 
         def junction(pos):
@@ -860,18 +860,18 @@ class TestGroupTransformJunctionWires:
                 cmd.connection.vertices = waypoints
             return cmd.connection
 
-        bot = jj.port_by_name("bot").scene_center()
-        top = jj.port_by_name("top").scene_center()
+        upper = jj.port_by_name("top").scene_center()
+        lower = jj.port_by_name("bottom").scene_center()
         # In lead: straight, drawn from the free end toward the JJ.
-        j_in = junction(bot + QPointF(0, -60))
-        wires.append(wire(j_in.port, jj.port_by_name("bot")))
+        j_in = junction(upper + QPointF(0, -60))
+        wires.append(wire(j_in.port, jj.port_by_name("top")))
         # Out lead: free end -> T-junction -> JJ, with a user bend on the
         # junction-to-junction segment (neither end can rotate).
-        j_tee = junction(top + QPointF(0, 40))
-        j_out = junction(top + QPointF(60, 80))
-        wires.append(wire(j_tee.port, jj.port_by_name("top")))
+        j_tee = junction(lower + QPointF(0, 40))
+        j_out = junction(lower + QPointF(60, 80))
+        wires.append(wire(j_tee.port, jj.port_by_name("bottom")))
         wires.append(wire(j_out.port, j_tee.port,
-                          waypoints=[top + QPointF(60, 40)]))
+                          waypoints=[lower + QPointF(60, 40)]))
         # Refresh every route, as the app does after an edit: the tee's
         # first wire only gains its junction-approach stub once the
         # second wire attaches.

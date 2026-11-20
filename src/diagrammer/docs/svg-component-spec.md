@@ -229,6 +229,8 @@ Defines where wires can connect to the component. Each port is a `<circle>` elem
 
 **Port naming:** `id="port:{name}"` where `{name}` is a descriptive identifier (e.g., `left`, `right`, `top`, `bottom`, `in`, `out`, `gate`, `drain`, `source`).
 
+A directional name (`left`, `right`, `top`, `bottom`, optionally followed by digits such as `left1`) must name the viewBox edge the port actually sits on, as the app infers it below. Spell out `bottom`, not `bot`. Several ports on one edge take a suffix (`left1`, `left2`) or a non-directional name (XFORMER1 uses `top_left` / `bottom_right`, which are not judged). The validator's `port-name-wrong-side` warning enforces this, and the Component Inspector offers a rename. Routing never reads names, but a person in the Properties panel and the headless API (which wires by name) do. Renaming a port does not break saved diagrams: on load, a wire binds to the library port at the position the saved copy had, not by name alone.
+
 **Port positioning:** The `cx`/`cy` attributes define the exact connection point in viewBox coordinates. Place ports at the ends of lead lines, typically on the viewBox edges.
 
 **Approach direction:** Diagrammer auto-detects the port's lead direction based on its position relative to the viewBox edges:
@@ -543,7 +545,17 @@ from the shipped artwork. Lead weight is checked because the attached wire takes
 its width from it. Grid conformance and body weight are deliberately **not**:
 97 of 208 shipped files miss the 20 pt grid and most do so by design, and body
 weight is inconsistent per family on purpose (see below), so any threshold
-would be wrong. Run the checks with:
+would be wrong.
+
+What *is* checked is grid **drift**, which is narrower: a port within 1 pt of
+a 5 pt line but not on it (59.7 for 60, 30.1 for 30) is an editor slip, not a
+design, and `port-off-grid` warns about it. `lead-endpoint-near-port` warns
+about a lead that ends near its port but not on it (inside the app's 2 pt
+match, so it is shortened, but the joint shows a gap or jog). Both offer
+geometry-moving fixes in the Component Inspector, never as a bulk fix: when
+every port drifted the same way the whole symbol is moved, otherwise each port
+moves with the leads that end on it. Review them in Overlay mode before
+saving. Run the checks with:
 
 ```bash
 python -m diagrammer.svglint src/diagrammer/components
