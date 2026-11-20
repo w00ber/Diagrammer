@@ -348,3 +348,33 @@ def test_findings_are_sorted_worst_first(tmp_path: Path) -> None:
     found = svglint.check_file(write(tmp_path, body), profile=PAPER)
     ranks = [f.rank for f in found]
     assert ranks == sorted(ranks), [(f.severity, f.check_id) for f in found]
+
+
+def test_relative_lead_paths_are_read() -> None:
+    """Illustrator writes straight leads as ``M59.7,98.5v-21.1``. Declining
+    relative commands left those leads unchecked (rfSQUID1's bottom lead)."""
+    from diagrammer.svglint.text_svg import simple_path_ends
+
+    assert simple_path_ends("M59.7,98.5v-21.1") == pytest.approx(
+        (59.7, 98.5, 59.7, 77.4))
+    assert simple_path_ends("M10,0h20") == (10, 0, 30, 0)
+    assert simple_path_ends("m10,5l5,5") == (10, 5, 15, 10)
+    assert simple_path_ends("m1,1 2,2 3,3") == (1, 1, 6, 6)
+    assert simple_path_ends("M0,0c1,1 2,2 3,3") is None  # curves: no guess
+
+
+def test_a_relative_lead_off_its_port_is_reported(tmp_path: Path) -> None:
+    from diagrammer import svglint
+
+    text = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 100">
+  <defs><style>.st1 { fill: none; stroke: #000; stroke-width: 2px; }</style></defs>
+  <g id="artwork"><path class="st1" d="M10,50H50"/></g>
+  <g id="leads"><path class="st1" d="M30,95v-45"/></g>
+  <g id="ports"><circle id="port:bot" cx="30" cy="100" r="3"/></g>
+</svg>
+"""
+    path = tmp_path / "PAPER_2pt" / "f.svg"
+    path.parent.mkdir()
+    found = [f.check_id for f in svglint.check_text(
+        text, path=path, profile=svglint.profile_for(path))]
+    assert "lead-endpoint-off-port" in found

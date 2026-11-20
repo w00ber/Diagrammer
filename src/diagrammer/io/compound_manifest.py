@@ -258,6 +258,8 @@ def instantiate_compound(
         item._group_id = groups[-1] if groups else None
 
     # -- Components --
+    from diagrammer.io.serializer import _bind_saved_ports
+    port_aliases: dict[str, dict[str, str]] = {}  # manifest id -> aliases
     for cd in manifest.get("components", []):
         comp_def = library.get(cd["def_key"]) if library else None
         if comp_def is None:
@@ -275,6 +277,9 @@ def instantiate_compound(
             item.set_style_overrides(
                 ComponentStyleOverrides.from_dict(cd["style_overrides"]))
         _apply_layer_and_pos(item, cd)
+        aliases = _bind_saved_ports(item, cd)
+        if aliases:
+            port_aliases[cd["id"]] = aliases
         scene.addItem(item)
         id_map[cd["id"]] = item
         created.append(item)
@@ -295,9 +300,13 @@ def instantiate_compound(
         tgt = id_map.get(cd["target"]["component_id"])
         if src is None or tgt is None:
             continue
-        src_port = (src.port_by_name(cd["source"]["port_name"])
+        src_name = cd["source"]["port_name"]
+        src_name = port_aliases.get(cd["source"]["component_id"], {}).get(src_name, src_name)
+        src_port = (src.port_by_name(src_name)
                     if hasattr(src, "port_by_name") else getattr(src, "port", None))
-        tgt_port = (tgt.port_by_name(cd["target"]["port_name"])
+        tgt_name = cd["target"]["port_name"]
+        tgt_name = port_aliases.get(cd["target"]["component_id"], {}).get(tgt_name, tgt_name)
+        tgt_port = (tgt.port_by_name(tgt_name)
                     if hasattr(tgt, "port_by_name") else getattr(tgt, "port", None))
         if src_port is None or tgt_port is None:
             continue

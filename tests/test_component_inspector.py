@@ -984,3 +984,38 @@ def test_the_dialog_never_opens_larger_than_the_screen(workspace) -> None:
         assert dlg.height() <= avail.height()
     finally:
         dlg.deleteLater()
+
+
+DRIFTED = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100">
+  <defs><style>.st1 { fill: none; stroke: #000; stroke-width: 2px; }</style></defs>
+  <g id="leads">
+    <path class="st1" d="M59.7,98.5v-21.1"/>
+    <path class="st1" d="M59.7,22.1V0"/>
+  </g>
+  <g id="ports">
+    <circle id="port:bot" cx="59.7" r="3"/>
+    <circle id="port:top" cx="59.7" cy="100" r="3"/>
+  </g>
+  <g id="artwork"><path class="st1" d="M40,22.6H80V77.4H40Z"/></g>
+</svg>
+'''
+
+
+def test_grid_drift_is_offered_for_review_and_never_preselected(
+        workspace) -> None:
+    """The drift fixes move geometry, so they appear unticked; ticking them
+    clears the drift findings in the candidate."""
+    dlg, _ = open_inspector(*workspace, DRIFTED)
+    try:
+        offered = {dlg._fixes_list.item(i).data(Qt.ItemDataRole.UserRole)
+                   for i in range(dlg._fixes_list.count())}
+        assert {"snap-ports-to-grid", "snap-lead-end-to-port"} <= offered
+        assert not dlg._selected_fix_ids & {"snap-ports-to-grid",
+                                            "snap-lead-end-to-port"}
+        dlg._selected_fix_ids |= {"snap-ports-to-grid", "snap-lead-end-to-port"}
+        dlg._recompute()
+        left = ids(dlg._candidate_findings)
+        assert "port-off-grid" not in left
+        assert "lead-endpoint-near-port" not in left
+    finally:
+        dlg.deleteLater()

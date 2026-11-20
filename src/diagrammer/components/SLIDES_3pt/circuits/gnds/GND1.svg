@@ -35,7 +35,7 @@
   </g>
   <g id="ports">
     <g id="ports1">
-      <circle id="port:left" class="st2" cx="23" r="3"/>
+      <circle id="port:top" class="st2" cx="23" r="3"/>
     </g>
   </g>
 </svg>

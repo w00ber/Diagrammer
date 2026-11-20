@@ -47,8 +47,8 @@
     <path class="st3" d="M-6.8,17h50v20H-6.8v-20Z"/>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st0" cx="30" cy="0" r="3"/>
-    <circle id="port:right" class="st0" cx="30" cy="80" r="3"/>
+    <circle id="port:top" class="st0" cx="30" cy="0" r="3"/>
+    <circle id="port:bottom" class="st0" cx="30" cy="80" r="3"/>
   </g>
   <g id="artwork">
     <path class="st1" d="M9.75,0h40.5v42.3l-20.25,16.7-20.25-16.7V0Z"/>

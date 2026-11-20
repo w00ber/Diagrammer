@@ -613,9 +613,13 @@ def _translate(text: str, dx: float, dy: float) -> str:
     viewBox is deliberately left alone, because this undoes an exporter that
     re-based the *content* inside the frame, not one that resized the frame.
     """
+    text = _spell_out_omitted(text, dx, dy)
     text = re.sub(r'\sd="([^"]*)"',
                   lambda m: f' d="{T.shift_path_data(m.group(1), dx, dy)}"',
                   text)
+    text = re.sub(r'(\spoints=")([^"]*)(")',
+                  lambda m: m.group(1) + _shift_points(m.group(2), dx, dy)
+                  + m.group(3), text)
     for attr, delta in (("cx", dx), ("cy", dy), ("x1", dx), ("x2", dx),
                         ("y1", dy), ("y2", dy), ("x", dx), ("y", dy)):
         text = re.sub(
@@ -627,6 +631,56 @@ def _translate(text: str, dx: float, dy: float) -> str:
         lambda m: (f' data-anchor="{T.fmt(float(m.group(1)) + dx)},'
                    f'{T.fmt(float(m.group(2)) + dy)}"'),
         text)
+
+
+def _shift_points(pts: str, dx: float, dy: float) -> str:
+    """Shift a ``<polygon>``/``<polyline>`` ``points`` list, keeping its
+    separators."""
+    nums = list(re.finditer(T.NUM, pts))
+    out, pos = [], 0
+    for i, m in enumerate(nums):
+        out.append(pts[pos:m.start()])
+        new = T.fmt(float(m.group(0)) + (dx if i % 2 == 0 else dy))
+        prev = out[-1][-1:] if out[-1] else (out[-2][-1:] if len(out) > 1 else "")
+        if not new.startswith("-") and (prev.isdigit() or prev == "."):
+            new = " " + new
+        out.append(new)
+        pos = m.end()
+    out.append(pts[pos:])
+    return "".join(out)
+
+
+#: What a coordinate-rewriting translate cannot carry along: a transform
+#: positions its content itself, and gradients, patterns, filters and masks
+#: have coordinates of their own in other units.
+_UNTRANSLATABLE = re.compile(
+    r"transform=|<(?:linearGradient|radialGradient|pattern|filter|mask"
+    r"|clipPath|use|image)\b", re.I)
+
+
+#: Positional attributes that default to 0 when omitted, per element. The
+#: library leans on that default — rfSQUID1's ``port:bot`` has no ``cy`` — so
+#: a translate that only rewrites attributes it can see leaves those behind.
+_OMITTABLE = {
+    "circle": (("cx", "x"), ("cy", "y")),
+    "ellipse": (("cx", "x"), ("cy", "y")),
+    "line": (("x1", "x"), ("y1", "y"), ("x2", "x"), ("y2", "y")),
+    "rect": (("x", "x"), ("y", "y")),
+}
+
+
+def _spell_out_omitted(text: str, dx: float, dy: float) -> str:
+    """Write ``attr="0"`` for each defaulted coordinate a shift will move."""
+    def sub(m: re.Match[str]) -> str:
+        tag, name = m.group(0), m.group(1)
+        missing = [a for a, axis in _OMITTABLE[name]
+                   if (dx if axis == "x" else dy) != 0
+                   and not re.search(rf'\s{a}="', tag)]
+        if not missing:
+            return tag
+        extra = "".join(f' {a}="0"' for a in missing)
+        return f"<{name}{extra}{tag[len(name) + 1:]}"
+    return re.sub(r"<(circle|ellipse|line|rect)\b[^>]*>", sub, text)
 
 
 def _fix_rebase_viewbox(text: str, ctx: FixContext) -> FixResult:
@@ -653,12 +707,13 @@ def _fix_rebase_viewbox(text: str, ctx: FixContext) -> FixResult:
 
 
 def _fix_snap_lead_end(text: str, ctx: FixContext) -> FixResult:
-    """Slide one lead endpoint along its own axis until it meets its port.
+    """Move one lead endpoint onto its port, leaving the far end put.
 
     Finding-scoped, so one checkbox repairs every lead in the file that
-    qualifies. The check only attaches this fix when the move is a pure
-    extension — see ``_is_pure_extension`` — which is why it cannot bend the
-    lead or detach its far end. It still moves geometry, so it is never
+    qualifies. For a lead a full 2 pt or more off its port the check attaches
+    this only when the move is a pure extension — see ``_is_pure_extension``
+    — so it cannot bend the lead. Inside 2 pt it is also offered for a
+    diagonal lead, which it turns by a fraction of a degree. It still moves geometry, so it is never
     default-on: a short lead with a deliberate gap is rare but real, and the
     user should see the change in Overlay mode before saving it.
     """
@@ -671,36 +726,243 @@ def _fix_snap_lead_end(text: str, ctx: FixContext) -> FixResult:
     except (KeyError, TypeError, ValueError):
         return _nop(text)
 
-    original = text
-    notes: list[str] = []
-    # Only rewrite inside the lead layers, and only the coordinate pair that
-    # matches the reported endpoint, so nothing else in the document moves.
-    def in_leads(m: re.Match[str]) -> str:
-        body = m.group(0)
-        for ax, ay, nx, ny in (("x1", "y1", px, py), ("x2", "y2", px, py)):
-            body = re.sub(
-                rf'(<line\b[^>]*?)\s{ax}="{re.escape(T.fmt(ex))}"'
-                rf'([^>]*?)\s{ay}="{re.escape(T.fmt(ey))}"',
-                lambda mm: (f'{mm.group(1)} {ax}="{T.fmt(nx)}"'
-                            f'{mm.group(2)} {ay}="{T.fmt(ny)}"'),
-                body)
-        return body
+    lead = _find_lead(text, f.data, ex, ey)
+    if lead is None:
+        return FixResult(text=text, changed=False, notes=(
+            f"could not locate the lead ending at ({T.fmt(ex)},{T.fmt(ey)}) "
+            "— fix it in the editor",))
+    tag = text[lead.start:lead.end]
+    x1, y1, x2, y2 = lead.ends
+    which = 0 if _close((x1, y1), (ex, ey)) else 1
+    new_tag = _move_lead_points(tag, lead.kind,
+                                lambda i, last, pt: (px, py) if
+                                (i == 0 and which == 0) or (last and which == 1)
+                                else pt)
+    if new_tag is None:
+        return FixResult(text=text, changed=False, notes=(
+            f"lead ending at ({T.fmt(ex)},{T.fmt(ey)}) is not a simple path "
+            "— fix it in the editor",))
+    text = text[:lead.start] + new_tag + text[lead.end:]
+    return FixResult(text=text, changed=True, notes=(
+        f"lead endpoint ({T.fmt(ex)},{T.fmt(ey)}) -> "
+        f"({T.fmt(px)},{T.fmt(py)})",))
 
-    text = re.sub(rf'<g id="{T.LEAD_LAYER_RE}"[^>]*>.*?</g>', in_leads,
-                  text, flags=re.S)
-    if text != original:
-        notes.append(f"lead endpoint ({T.fmt(ex)},{T.fmt(ey)}) -> "
-                     f"({T.fmt(px)},{T.fmt(py)})")
-    else:
-        notes.append(f"could not locate the lead endpoint "
-                     f"({T.fmt(ex)},{T.fmt(ey)}) as an explicit <line> "
-                     "coordinate pair — fix it in the editor")
-    return FixResult(text=text, changed=text != original, notes=tuple(notes))
+
+def _fix_align_lead(text: str, ctx: FixContext) -> FixResult:
+    """Slide a straight lead sideways onto its port, then meet the port.
+
+    For a lead that sits a fraction of a point to one side of its port (JJ1's
+    leads at x=40.1 over a port at 40). Sliding it whole keeps it straight;
+    its far end moves by the same sub-point amount, under the body's stroke.
+    """
+    f = ctx.finding
+    if f is None:
+        return _nop(text)
+    try:
+        ex, ey = float(f.data["end_x"]), float(f.data["end_y"])
+        px, py = float(f.data["port_x"]), float(f.data["port_y"])
+    except (KeyError, TypeError, ValueError):
+        return _nop(text)
+    lead = _find_lead(text, f.data, ex, ey)
+    if lead is None:
+        return FixResult(text=text, changed=False, notes=(
+            f"could not locate the lead ending at ({T.fmt(ex)},{T.fmt(ey)})",))
+    x1, y1, x2, y2 = lead.ends
+    vertical = abs(x1 - x2) < 1e-9
+    slide = (px - ex, 0.0) if vertical else (0.0, py - ey)
+    which = 0 if _close((x1, y1), (ex, ey)) else 1
+
+    def move(i, last, pt):
+        if (i == 0 and which == 0) or (last and which == 1):
+            return (px, py)
+        return (pt[0] + slide[0], pt[1] + slide[1])
+
+    tag = _move_lead_points(text[lead.start:lead.end], lead.kind, move)
+    if tag is None:
+        return FixResult(text=text, changed=False, notes=(
+            "lead is not a simple path — fix it in the editor",))
+    text = text[:lead.start] + tag + text[lead.end:]
+    return FixResult(text=text, changed=True, notes=(
+        f"lead slid by ({T.fmt(slide[0])},{T.fmt(slide[1])}) onto the port at "
+        f"({T.fmt(px)},{T.fmt(py)})",))
+
+
+def _close(a: tuple[float, float], b: tuple[float, float],
+           tol: float = 1e-6) -> bool:
+    return abs(a[0] - b[0]) <= tol and abs(a[1] - b[1]) <= tol
+
+
+def _find_lead(text: str, data, ex: float, ey: float):
+    """The lead a finding names: by its recorded ends when it has them,
+    else the first lead with an end at ``(ex, ey)``."""
+    want = None
+    try:
+        want = tuple(float(data[k]) for k in ("x1", "y1", "x2", "y2"))
+    except (KeyError, TypeError, ValueError):
+        pass
+    for lead in T.lead_elements(text):
+        x1, y1, x2, y2 = lead.ends
+        if want is not None:
+            if all(abs(a - b) <= 1e-6 for a, b in zip(lead.ends, want)):
+                return lead
+        elif _close((x1, y1), (ex, ey)) or _close((x2, y2), (ex, ey)):
+            return lead
+    return None
+
+
+def _move_lead_points(tag: str, kind: str, move) -> str | None:
+    """Rewrite one lead tag, passing each vertex through
+    ``move(index, is_last, (x, y))``. None if the geometry is not simple."""
+    if kind == "line":
+        pts = [(T.line_attr(tag, "x1"), T.line_attr(tag, "y1")),
+               (T.line_attr(tag, "x2"), T.line_attr(tag, "y2"))]
+        new = [move(i, i == 1, pt) for i, pt in enumerate(pts)]
+        for (ax, ay), (nx, ny) in zip((("x1", "y1"), ("x2", "y2")), new):
+            tag = _set_attr(tag, ax, nx)
+            tag = _set_attr(tag, ay, ny)
+        return tag
+    m = re.search(r'\sd="([^"]*)"', tag)
+    pts = T.simple_path_points(m.group(1)) if m else None
+    if pts is None:
+        return None
+    new = [move(i, i == len(pts) - 1, pt) for i, pt in enumerate(pts)]
+    return tag[:m.start(1)] + T.polyline_d(new) + tag[m.end(1):]
+
+
+def _set_attr(tag: str, name: str, value: float) -> str:
+    """Set a numeric attribute, adding it after the tag name if omitted."""
+    pat = rf'(\s{name}=")[^"]*(")'
+    if re.search(pat, tag):
+        return re.sub(pat, lambda m: f"{m.group(1)}{T.fmt(value)}{m.group(2)}",
+                      tag, count=1)
+    head = re.match(r"<\w+", tag)
+    return f'{head.group(0)} {name}="{T.fmt(value)}"{tag[head.end():]}'
+
+
+def _fix_snap_ports_to_grid(text: str, ctx: FixContext) -> FixResult:
+    """Move drifted ports onto the grid line they nearly sit on.
+
+    Per axis: when *every* port has drifted by the same amount, the whole
+    symbol is translated instead, which is what an editor slip usually is
+    (rfSQUID1's body, leads and ports all sit at x=59.7). Moving only the
+    ports there would leave the leads centred on the body and off the wires.
+
+    Otherwise each drifted port moves alone, taking the leads that end on it:
+    a lead running across the move slides sideways whole, so it stays
+    straight; a lead running along it is lengthened or shortened at the port
+    end. A file using a transform, gradient, pattern, filter, mask or ``<use>``
+    gets no whole-symbol move: the translate rewrites coordinates and cannot
+    carry those along.
+    """
+    grid = ctx.profile.grid
+    if not grid:
+        return _nop(text)
+    notes: list[str] = []
+
+    def targets(doc: str):
+        out = []
+        for pid, x, y in T.ports_from_text(doc):
+            tx, ty = T.near_grid_target(x, grid), T.near_grid_target(y, grid)
+            out.append((pid, x, y, 0.0 if tx is None else tx - x,
+                        0.0 if ty is None else ty - y))
+        return out
+
+    ports = targets(text)
+    if not any(dx or dy for _p, _x, _y, dx, dy in ports):
+        return _nop(text)
+
+    def uniform(axis: int) -> float:
+        ds = [p[3 + axis] for p in ports]
+        if ds and ds[0] and all(abs(d - ds[0]) < 1e-6 for d in ds):
+            return ds[0]
+        return 0.0
+
+    rdx, rdy = uniform(0), uniform(1)
+    if (rdx or rdy) and _UNTRANSLATABLE.search(text):
+        notes.append("the file uses a transform, gradient, pattern, filter, "
+                     "mask or <use>, which a whole-symbol shift cannot carry "
+                     "along — each port is moved on its own instead")
+        rdx = rdy = 0.0
+    if rdx or rdy:
+        text = _translate(text, rdx, rdy)
+        notes.append(f"whole symbol shifted by ({T.fmt(rdx)},{T.fmt(rdy)}) — "
+                     "every port had drifted the same way")
+        ports = targets(text)
+
+    for pid, x, y, dx, dy in ports:
+        if not (dx or dy):
+            continue
+        text = _move_port(text, pid, dx, dy)
+        moved = 0
+        for lead in reversed(T.lead_elements(text)):
+            x1, y1, x2, y2 = lead.ends
+            at_start = _close((x1, y1), (x, y), T.GRID_TOL)
+            at_end = _close((x2, y2), (x, y), T.GRID_TOL)
+            if not (at_start or at_end):
+                continue
+            vertical = abs(x1 - x2) < 1e-9 and abs(y1 - y2) > 1e-9
+            horizontal = abs(y1 - y2) < 1e-9 and abs(x1 - x2) > 1e-9
+            # Across the lead: slide the whole lead. Along it: move the end.
+            slide = (dx, 0.0) if vertical else (0.0, dy) if horizontal else (0.0, 0.0)
+            end_move = (dx - slide[0], dy - slide[1])
+
+            def move(i, last, pt, s=slide, e=end_move,
+                     a=at_start, b=at_end):
+                nx, ny = pt[0] + s[0], pt[1] + s[1]
+                if (i == 0 and a) or (last and b):
+                    nx, ny = nx + e[0], ny + e[1]
+                return (nx, ny)
+
+            tag = _move_lead_points(text[lead.start:lead.end], lead.kind, move)
+            if tag is None:
+                notes.append(f"a lead on {pid} is not a simple path and was "
+                             "left where it is — fix it in the editor")
+                continue
+            text = text[:lead.start] + tag + text[lead.end:]
+            moved += 1
+        notes.append(f"{pid} ({T.fmt(x)},{T.fmt(y)}) -> "
+                     f"({T.fmt(x + dx)},{T.fmt(y + dy)})"
+                     + (f", with {moved} lead(s)" if moved else ""))
+    return FixResult(text=text, changed=True, notes=tuple(notes))
+
+
+def _move_port(text: str, pid: str, dx: float, dy: float) -> str:
+    """Shift one port marker, spelling out a defaulted coordinate."""
+    span = T.group_body(text, "ports")
+    if span is None:
+        return text
+    body = text[span[0]:span[1]]
+
+    def sub(m: re.Match[str]) -> str:
+        tag = m.group(0)
+        if not re.search(rf'\sid="{re.escape(pid)}"', tag):
+            return tag
+        ax, ay = ("cx", "cy") if m.group(1) == "circle" else ("x", "y")
+        if dx:
+            tag = _set_attr(tag, ax, T.line_attr(tag, ax) + dx)
+        if dy:
+            tag = _set_attr(tag, ay, T.line_attr(tag, ay) + dy)
+        return tag
+
+    body = re.sub(r"<(circle|rect)\b[^>]*/>", sub, body)
+    return text[:span[0]] + body + text[span[1]:]
 
 
 # --------------------------------------------------------------------------
 # cosmetic
 # --------------------------------------------------------------------------
+
+def _fix_name_ports_by_side(text: str, ctx: FixContext) -> FixResult:
+    """Rename directional ports to the side they actually sit on."""
+    from diagrammer.svglint.port_names import misnamed_ports, rename_ports
+
+    mapping = {m.pid: m.new for m in misnamed_ports(text, ctx.path) if m.new}
+    if not mapping:
+        return _nop(text)
+    return FixResult(
+        text=rename_ports(text, mapping), changed=True,
+        notes=tuple(f"{a} -> {b}" for a, b in sorted(mapping.items())))
+
 
 def _fix_strip_stray_anchors(text: str, ctx: FixContext) -> FixResult:
     """Remove ``<path>`` elements whose ``d`` draws nothing.
@@ -814,7 +1076,7 @@ ALL_FIXES: tuple[Fix, ...] = (
         apply=_fix_rebase_viewbox, moves_geometry=True, default_on=False,
         bulk_safe=False),
     Fix(fix_id="snap-lead-end-to-port",
-        title="Extend the lead to reach its port",
+        title="Join the lead to its port",
         description=("Slides the endpoint along the axis the lead already runs "
                      "on until it meets the port, so the far end does not move "
                      "and the lead stays straight. Offered only when that is "
@@ -823,6 +1085,36 @@ ALL_FIXES: tuple[Fix, ...] = (
         order=ORDER_GEOMETRY, scope="finding",
         apply=_fix_snap_lead_end, moves_geometry=True, default_on=False,
         bulk_safe=False),
+
+    Fix(fix_id="align-lead-with-port",
+        title="Slide the lead onto its port",
+        description=("Moves a straight lead sideways by the fraction of a "
+                     "point it sits beside its port, then joins it to the "
+                     "port. The lead stays straight. Moves geometry: check it "
+                     "in Overlay mode."),
+        order=ORDER_GEOMETRY, scope="finding",
+        apply=_fix_align_lead, moves_geometry=True, default_on=False,
+        bulk_safe=False),
+
+    Fix(fix_id="snap-ports-to-grid",
+        title="Snap drifted ports onto the grid",
+        description=("Moves each port that is a fraction of a point off a grid "
+                     "line onto it, with the leads that end there. When every "
+                     "port drifted the same way the whole symbol moves "
+                     "instead. Moves geometry: check it in Overlay mode."),
+        order=ORDER_GEOMETRY, scope="file",
+        apply=_fix_snap_ports_to_grid, moves_geometry=True, default_on=False,
+        bulk_safe=False),
+
+    Fix(fix_id="name-ports-by-side",
+        title="Name ports for the side they sit on",
+        description=("Renames left/right/top/bottom ports to the edge the app "
+                     "routes them from, and spells bot as bottom. Nothing "
+                     "moves. Diagrams saved earlier keep their wires: they "
+                     "reattach by position. A build older than this one "
+                     "would drop those wires, so it is never preselected."),
+        order=ORDER_GEOMETRY + 5, scope="file",
+        apply=_fix_name_ports_by_side, default_on=False, bulk_safe=False),
 
     Fix(fix_id="strip-stray-anchors",
         title="Remove stray anchor points",

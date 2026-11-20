@@ -54,9 +54,9 @@
     <rect class="st4" x="71.8" y="46" width="50" height="50"/>
   </g>
   <g id="ports">
-    <circle id="port:2" class="st0" cx="180" cy="20.1" r="3"/>
-    <circle id="port:1" class="st0" cy="20.1" r="3"/>
-    <circle id="port:3" class="st0" cx="60" cy="119.9" r="3"/>
+    <circle id="port:2" class="st0" cx="180" cy="20" r="3"/>
+    <circle id="port:1" class="st0" cy="20" r="3"/>
+    <circle id="port:3" class="st0" cx="60" cy="120" r="3"/>
     <circle id="port:31" class="st0" cx="120" cy="120" r="3"/>
   </g>
   <g id="artwork">

@@ -33,7 +33,7 @@ import math
 from pathlib import Path
 
 from PySide6.QtCore import QBuffer, QIODevice, QPointF
-from PySide6.QtGui import QColor, QUndoStack
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
 from diagrammer.models.component_def import ComponentDef
@@ -151,7 +151,11 @@ class Diagram:
         from diagrammer.canvas.scene import DiagramScene
         self.library = library if library is not None else load_library()
         self.scene = DiagramScene(self.library)
-        self.undo_stack = QUndoStack()
+        # The scene's own stack, not a fresh one: the scene re-routes every
+        # wire when that stack's index changes (``_on_undo_redo``), which is
+        # how the GUI keeps wires on moved parts. A private stack skipped
+        # that hook, so ``move`` left attached wires on their old routes.
+        self.undo_stack = self.scene.undo_stack
         self._items: dict[str, object] = {}   # caller id -> item
         self._counter = 0
 
@@ -323,8 +327,9 @@ class Diagram:
         The new port lands *gap* px outward from the other port, along the
         direction that port's lead points. With *rotation* ``None`` the part is
         turned (0/90/180/270) so its *port* points back at the other one — the
-        natural "next element in the chain" placement. A wire is drawn between
-        the two ports when *wire* is true and *gap* > 0.
+        natural "next element in the chain" placement. A wire joins the two
+        ports when *wire* is true — at ``gap=0`` a zero-length one, since
+        coincident ports are not connected by being coincident.
 
         *direction* (right | left | up | down) overrides the way to step out
         from the other port. It is required when that port has no lead
@@ -350,7 +355,7 @@ class Diagram:
                                              flip_h, flip_v)
         cid = self.add(key, target, anchor=port, rotation=rotation,
                        flip_h=flip_h, flip_v=flip_v, id=id)
-        if wire and gap > 0:
+        if wire:
             self.connect(other_id, other_port, cid, port)
         return cid
 

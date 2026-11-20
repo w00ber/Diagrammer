@@ -88,6 +88,30 @@ def test_findings_are_grouped_by_check_not_by_file(library) -> None:
         dlg.deleteLater()
 
 
+def test_picking_a_scope_validates_it(library, tmp_path: Path) -> None:
+    """Choosing a library from the Scope menu sweeps it, without a second
+    press of Validate — the menu otherwise looked dead."""
+    other = tmp_path / "SLIDES_3pt"
+    other.mkdir()
+    (other / "only.svg").write_text(SOUND, encoding="utf-8")
+    dlg = ValidationReportView(roots=[(library.name, library),
+                                      (other.name, other)])
+    try:
+        assert QThreadPool.globalInstance().waitForDone(30000)
+        from PySide6.QtWidgets import QApplication
+        QApplication.processEvents()
+        assert len(dlg._reports) == 6
+        # A user's pick, as QComboBox reports it; setCurrentIndex alone
+        # does not emit ``activated``.
+        dlg._scope.setCurrentIndex(1)
+        dlg._scope.activated.emit(1)
+        assert QThreadPool.globalInstance().waitForDone(30000)
+        QApplication.processEvents()
+        assert [r.path.name for r in dlg._reports] == ["only.svg"]
+    finally:
+        dlg.deleteLater()
+
+
 def test_errors_are_listed_before_wider_warnings(library) -> None:
     """One broken file outranks four merely unfashionable ones."""
     dlg = run_report(library)

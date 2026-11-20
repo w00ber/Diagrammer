@@ -20,12 +20,12 @@
     </style>
   </defs>
   <g id="leads">
-    <path class="st3" d="M40.1,50V0"/>
-    <path class="st3" d="M40.1,100v-49.4"/>
+    <path class="st3" d="M40,50V0"/>
+    <path class="st3" d="M40,100V50.6"/>
   </g>
   <g id="ports">
-    <circle id="port:bot" class="st0" cx="40" r="3"/>
-    <circle id="port:top" class="st0" cx="40.1" cy="100" r="3"/>
+    <circle id="port:top" class="st0" cx="40" r="3"/>
+    <circle id="port:bottom" class="st0" cx="40" cy="100" r="3"/>
   </g>
   <g id="artwork">
     <line class="st2" x1="31" y1="44.6" x2="49.3" y2="55.4"/>

@@ -40,28 +40,28 @@
     </style>
   </defs>
   <g id="guides" class="st5">
-    <rect class="st4" x="0.1" y="50.1" width="50" height="50"/>
+    <rect class="st4" x="0" y="50.1" width="50" height="50"/>
   </g>
   <g id="artwork">
     <g>
-      <line class="st3" x1="42.7" y1="0.9" x2="42.7" y2="99.3"/>
-      <line class="st3" x1="50.2" y1="0.9" x2="50.2" y2="99.3"/>
-      <line class="st3" x1="58.1" y1="0.9" x2="58.1" y2="99.3"/>
+      <line class="st3" x1="42.6" y1="0.9" x2="42.6" y2="99.3"/>
+      <line class="st3" x1="50.1" y1="0.9" x2="50.1" y2="99.3"/>
+      <line class="st3" x1="58" y1="0.9" x2="58" y2="99.3"/>
     </g>
-    <path class="st2" d="M 20.1 17.8 c 15.4 3.1 15.4 15.4 0 18.5 -15.4 3.1 -15.4 -6.2 0 -3.1 15.4 3.1 15.4 15.4 0 18.5 -15.4 3.1 -15.4 -6.2 0 -3.1 15.4 3.1 15.4 15.4 0 18.5 -15.4 3.1 -15.4 -6.3 0 -3.2 15.4 3.1 15.4 15.4 0 18.5 h -0.1"/>
+    <path class="st2" d="M 20 17.8 c 15.4 3.1 15.4 15.4 0 18.5 -15.4 3.1 -15.4 -6.2 0 -3.1 15.4 3.1 15.4 15.4 0 18.5 -15.4 3.1 -15.4 -6.2 0 -3.1 15.4 3.1 15.4 15.4 0 18.5 -15.4 3.1 -15.4 -6.3 0 -3.2 15.4 3.1 15.4 15.4 0 18.5 h -0.1"/>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st0" cx="80.1" cy="100" r="3"/>
-    <circle id="port:right" class="st0" cx="20.1" cy="100" r="3"/>
-    <circle id="port:left1" class="st0" cx="80.1" cy="0" r="3"/>
-    <circle id="port:right1" class="st0" cx="20.1" cy="0" r="3"/>
+    <circle id="port:bottom_right" class="st0" cx="80" cy="100" r="3"/>
+    <circle id="port:bottom_left" class="st0" cx="20" cy="100" r="3"/>
+    <circle id="port:top_right" class="st0" cx="80" cy="0" r="3"/>
+    <circle id="port:top_left" class="st0" cx="20" cy="0" r="3"/>
   </g>
   <g id="leads">
-    <path class="st2" d="M 20 82.4 v 17.6"/>
-    <path class="st1" d="M 20 17.8 V 0"/>
-    <path class="st2" d="M 80.2 17.6 V 0"/>
-    <path class="st1" d="M 80.2 82.2 v 17.8"/>
+    <path class="st2" d="M20,82.4V100"/>
+    <path class="st1" d="M20,17.8V0"/>
+    <path class="st2" d="M80,17.6V0"/>
+    <path class="st1" d="M80,82.2V100"/>
   
   </g>
-  <path class="st2" d="M 80.1 82.2 c -15.4 -3.1 -15.4 -15.4 0 -18.5 15.4 -3.1 15.4 6.2 0 3.1 -15.4 -3.1 -15.4 -15.4 0 -18.5 15.4 -3.1 15.4 6.2 0 3.1 -15.4 -3.1 -15.4 -15.4 0 -18.5 15.4 -3.1 15.4 6.3 0 3.2 -15.4 -3.1 -15.4 -15.4 0 -18.5 h 0.1"/>
+  <path class="st2" d="M 80 82.2 c -15.4 -3.1 -15.4 -15.4 0 -18.5 15.4 -3.1 15.4 6.2 0 3.1 -15.4 -3.1 -15.4 -15.4 0 -18.5 15.4 -3.1 15.4 6.2 0 3.1 -15.4 -3.1 -15.4 -15.4 0 -18.5 15.4 -3.1 15.4 6.3 0 3.2 -15.4 -3.1 -15.4 -15.4 0 -18.5 h 0.1"/>
 </svg>

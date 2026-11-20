@@ -48,13 +48,13 @@
     <circle id="port:left2" class="st4" cx="0" cy="20" r="3"/>
     <circle id="port:left1" class="st4" cx="0" cy="120" r="3"/>
     <circle id="port:right1" class="st4" cx="100" cy="20" r="3"/>
-    <circle id="port:right2" class="st4" cx="100" cy="120.2" r="3"/>
+    <circle id="port:right2" class="st4" cx="100" cy="120" r="3"/>
   </g>
   <g id="leads">
-    <line class="st1" x1="5" y1="19.9" x2="0" y2="19.9"/>
-    <line class="st1" x1="5" y1="120.1" x2="0" y2="120.1"/>
-    <line class="st1" x1="100" y1="19.9" x2="95" y2="19.9"/>
-    <line class="st1" x1="100" y1="120.1" x2="95" y2="120.1"/>
+    <line class="st1" x1="5" y1="20" x2="0" y2="20"/>
+    <line class="st1" x1="5" y1="120" x2="0" y2="120"/>
+    <line class="st1" x1="100" y1="20" x2="95" y2="20"/>
+    <line class="st1" x1="100" y1="120" x2="95" y2="120"/>
   </g>
   <g id="guides" class="st5">
     <rect class="st2" x="0" y="20" width="20" height="20"/>

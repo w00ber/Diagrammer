@@ -40,8 +40,8 @@
     <path class="st1" d="M30,100v-44.9"/>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st3" cx="30" r="3"/>
-    <circle id="port:right" class="st3" cx="30" cy="100" r="3"/>
+    <circle id="port:top" class="st3" cx="30" r="3"/>
+    <circle id="port:bottom" class="st3" cx="30" cy="100" r="3"/>
   </g>
   <g>
     <line class="st2" x1="14.4" y1="92.9" x2="42.4" y2="17.4"/>

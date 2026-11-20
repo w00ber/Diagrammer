@@ -44,12 +44,12 @@
       <line id="stretch:h1" class="st1" y1="73.9" x2="80" y2="73.9"/>
     </g>
     <g id="leads">
-      <path class="st4" d="M40.1,26.1V0"/>
-      <path class="st4" d="M40.1,100v-26.1"/>
+      <path class="st4" d="M40,26.1V0"/>
+      <path class="st4" d="M40,100V73.9"/>
     </g>
     <g id="ports">
-      <circle id="port:bot" class="st0" cx="40" r="3"/>
-      <circle id="port:top" class="st0" cx="40.1" cy="100" r="3"/>
+      <circle id="port:top" class="st0" cx="40" r="3"/>
+      <circle id="port:bottom" class="st0" cx="40" cy="100" r="3"/>
     </g>
     <g id="artwork">
       <g id="tile">

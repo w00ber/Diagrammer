@@ -50,30 +50,30 @@
     </style>
   </defs>
   <g id="guides" class="st6">
-    <rect class="st4" x="-6.8" y="38.2" width="50" height="20"/>
+    <rect class="st4" x="-6.9" y="38.2" width="50" height="20"/>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st5" cx="30.1" r="3"/>
-    <circle id="port:right" class="st5" cx="30.1" cy="100.1" r="3"/>
+    <circle id="port:top" class="st5" cx="30" r="3"/>
+    <circle id="port:bottom" class="st5" cx="30" cy="100" r="3"/>
   </g>
   <g id="artwork">
-    <polyline class="st2" points="6.1 45.4 6.1 21.7 54 21.7 54 45.4"/>
-    <polyline class="st1" points="54 53.9 54 79.6 6.1 79.6 6.1 53.9"/>
+    <polyline class="st2" points="6 45.4 6 21.7 53.9 21.7 53.9 45.4"/>
+    <polyline class="st1" points="53.9 53.9 53.9 79.6 6 79.6 6 53.9"/>
     <g>
       <g id="artwork2">
         <g>
-          <path class="st0" d="M45.7,54.6H14.6"/>
-          <path class="st0" d="M45.7,45.4H14.6"/>
+          <path class="st0" d="M45.6,54.6H14.5"/>
+          <path class="st0" d="M45.6,45.4H14.5"/>
         </g>
       </g>
       <g id="leads1">
-        <path class="st0" d="M30.1,21.6v23.8"/>
-        <path class="st0" d="M30.1,79.3v-24.2"/>
+        <path class="st0" d="M30,21.6v23.8"/>
+        <path class="st0" d="M30,79.3v-24.2"/>
       </g>
     </g>
   </g>
   <g id="leads">
-    <path class="st3" d="M30.1,0v21.7"/>
-    <path class="st3" d="M30.1,78.3v21.7"/>
+    <path class="st3" d="M30,0v21.7"/>
+    <path class="st3" d="M30,78.3V100"/>
   </g>
 </svg>

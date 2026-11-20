@@ -63,8 +63,9 @@ Conventions:
 - Coordinates are pixels, x right, y DOWN. Grid is {GRID:g} px: keep ports on
   multiples of it so the user can keep editing on the snapping canvas.
 - rotation is degrees CLOCKWISE on screen, multiples of 90.
-- Port NAMES are not direction hints (a capacitor's "left" port may point
-  up). Always use the reported "points" field: the way the port's lead
+- Port names like top/bottom/left/right describe the UNROTATED part only;
+  once a part is rotated or flipped they no longer say which way the port
+  faces. Always use the reported "points" field: the way the port's lead
   sticks out of the part on screen, after rotation and flip.
 - Ids are yours to choose (J1, Cc, GND1); short ids are auto-assigned
   otherwise. They are not stored in the .dgm file.
@@ -210,7 +211,9 @@ async def attach_component(key: str, port: str, to_id: str, to_port: str,
     turned so `port` faces back toward `to_port` — so chaining parts in a
     line is just repeated attach calls. `direction` (right/left/up/down)
     overrides the step direction and is required when attaching to a node or
-    to a port that has no lead direction. wire=false places without wiring.
+    to a port that has no lead direction. wire=false places without wiring;
+    with gap=0 the wire is zero-length (touching ports are not connected
+    unless wired).
     """
     cid = _d().attach(key, port, (to_id, to_port), gap=gap, rotation=rotation,
                       flip_h=flip_h, flip_v=flip_v, wire=wire,
