@@ -80,7 +80,7 @@ def test_disagreeing_leads_are_reported_not_blocked(d):
     assert wire is not None                           # the wire exists
     [(findings, _at)] = got
     assert [f.check_id for f in findings] == ["leads-disagree"]
-    assert {fx.label for fx in findings[0].fixes} == {"Use 2 px", "Use 3 px"}
+    assert {fx.label for fx in findings[0].fixes} == {"Use 2 pt", "Use 3 pt"}
 
 
 def test_mode_off_reports_nothing(d, isolate_app_settings):
@@ -105,13 +105,13 @@ def test_the_notice_applies_a_choice_as_one_undo_step(d):
     notice = show_wiring_notice(view, *got[0])
     from PySide6.QtWidgets import QLabel
     text = " ".join(lbl.text() for lbl in notice.findChildren(QLabel))
-    assert "CAP1:bottom 2 px" in text and "IND1:top 3 px" in text
+    assert "CAP1:bottom 2 pt" in text and "IND1:top 3 pt" in text
     assert "swapping it would match" in text
     n = d.undo_stack.count()
 
     from PySide6.QtWidgets import QPushButton
     use2 = next(b for b in notice.findChildren(QPushButton)
-                if b.text() == "Use 2 px")
+                if b.text() == "Use 2 pt")
     use2.click()
     assert (wire.line_width, wire.style_deliberate) == (2.0, True)
     assert d.undo_stack.count() == n + 1

@@ -54,7 +54,7 @@ def nets(snap: Snapshot) -> list[list[Wire]]:
 
 
 def _fmt_w(w: float) -> str:
-    return f"{w:g} px"
+    return f"{w:g} pt"
 
 
 # Per attribute: how to read it off a lead and a wire, compare, and print.

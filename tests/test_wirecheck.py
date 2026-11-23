@@ -128,7 +128,7 @@ def test_leads_that_disagree_offer_a_decision_for_each_side() -> None:
     s = snap(Wire("w", part("CAP", L2), part("IND", L3), 2.0, "#000000"))
     [f] = wirecheck.check(s)
     assert f.check_id == "leads-disagree"
-    assert {fx.label for fx in f.fixes} == {"Use 2 px", "Use 3 px"}
+    assert {fx.label for fx in f.fixes} == {"Use 2 pt", "Use 3 pt"}
     for fx in f.fixes:
         assert wirecheck.verified(s, f, fx)
         after = s.apply(fx)
@@ -155,7 +155,7 @@ def test_disagreeing_leads_across_a_net_are_one_finding() -> None:
     [f] = wirecheck.check(s)
     assert f.check_id == "leads-disagree"
     assert set(f.wire_ids) == {"a", "b", "c"}
-    assert [fx.label for fx in f.fixes] == ["Use 3 px", "Use 2 px"]  # majority first
+    assert [fx.label for fx in f.fixes] == ["Use 3 pt", "Use 2 pt"]  # majority first
 
 
 def test_junction_only_runs_are_checked_against_each_other() -> None:
@@ -248,8 +248,8 @@ def test_snapshot_of_a_mixed_library_diagram(d) -> None:
              direction="down", id="L")
     findings = wirecheck.check(snapshot(d.scene))
     assert ids(findings) == ["leads-disagree"]
-    assert "CAP1:bottom 2 px" in findings[0].message
-    assert "IND1:top 3 px" in findings[0].message
+    assert "CAP1:bottom 2 pt" in findings[0].message
+    assert "IND1:top 3 pt" in findings[0].message
 
 
 def test_a_regular_diagram_is_clean(d) -> None:

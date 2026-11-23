@@ -2,7 +2,7 @@
 
 Regularize Wiring mode never blocks a connection: wiring a 2 px lead to a
 3 px lead still makes the wire, and this notice appears beside it with the
-choices — one button per verified fix (*Use 2 px*, *Use 3 px*) and *Ignore*
+choices — one button per verified fix (*Use 2 pt*, *Use 3 pt*) and *Ignore*
 — plus a line naming the part that has a twin in the other library, the real
 fix once Convert to Library exists.
 
@@ -36,12 +36,18 @@ class WiringNotice(QFrame):
         self._view = view
         self._scene = view.scene()
         self.setFrameShape(QFrame.Shape.StyledPanel)
+        # Opaque, and explicit: the palette's tooltip colour is translucent
+        # on macOS, which let the wiring show through the text. Light card
+        # on the normal canvas, dark one when polarity is inverted.
+        from diagrammer.utils.polarity import is_inverted
+        bg, fg, border = (("#202020", "#eeeeee", "#5a5a5a") if is_inverted()
+                          else ("#fffdf3", "#111111", "#c9b46a"))
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(True)
         self.setStyleSheet(
-            "#WiringNotice { background: palette(tooltip-base);"
-            " color: palette(tooltip-text);"
-            " border: 1px solid palette(mid); border-radius: 6px; }"
-            "#WiringNotice QLabel { background: transparent;"
-            " color: palette(tooltip-text); }")
+            f"#WiringNotice {{ background-color: {bg}; color: {fg};"
+            f" border: 1px solid {border}; border-radius: 6px; }}"
+            f"#WiringNotice QLabel {{ background: transparent; color: {fg}; }}")
 
         from diagrammer.wirecheck.scene import swap_hint
         lay = QVBoxLayout(self)
@@ -99,12 +105,44 @@ class WiringNotice(QFrame):
         return self._finding
 
     def _place(self, anchor) -> None:
-        """Just below-right of the wire's end, kept inside the viewport."""
+        """Beside the wire, where it covers the least of the drawing.
+
+        Tries spots around *anchor* (the middle of the new wire) — right,
+        left, above, below — keeps each inside the viewport, and picks the
+        one whose footprint touches the fewest parts and wires. Ties go to
+        the first, so with nothing nearby it sits to the right.
+        """
+        from PySide6.QtCore import QRect
+
+        from diagrammer.items.component_item import ComponentItem
+        from diagrammer.items.connection_item import ConnectionItem
         vp = self._view.viewport()
-        p = self._view.mapFromScene(anchor) + QPoint(16, 16)
-        x = max(4, min(p.x(), vp.width() - self.width() - 4))
-        y = max(4, min(p.y(), vp.height() - self.height() - 4))
-        self.move(x, y)
+        a = self._view.mapFromScene(anchor)
+        w, h, gap = self.width(), self.height(), 28
+        spots = [
+            QPoint(a.x() + gap, a.y() - h // 2),          # right
+            QPoint(a.x() - w - gap, a.y() - h // 2),      # left
+            QPoint(a.x() - w // 2, a.y() - h - gap),      # above
+            QPoint(a.x() - w // 2, a.y() + gap),          # below
+            QPoint(a.x() + gap, a.y() + gap),             # below-right
+            QPoint(a.x() + gap, a.y() - h - gap),         # above-right
+            QPoint(a.x() - w - gap, a.y() + gap),         # below-left
+            QPoint(a.x() - w - gap, a.y() - h - gap),     # above-left
+        ]
+
+        def clamp(p: QPoint) -> QPoint:
+            return QPoint(max(4, min(p.x(), vp.width() - w - 4)),
+                          max(4, min(p.y(), vp.height() - h - 4)))
+
+        def cost(p: QPoint) -> int:
+            rect = QRect(p, self.size())
+            area = self._view.mapToScene(rect).boundingRect()
+            hits = self._scene.items(area, Qt.ItemSelectionMode.IntersectsItemShape)
+            return sum(isinstance(i, (ComponentItem, ConnectionItem))
+                       for i in hits)
+
+        candidates = [clamp(p) for p in spots]
+        self.move(min(candidates, key=cost))
 
     def enterEvent(self, event) -> None:  # noqa: N802 (Qt override)
         self._timer.stop()

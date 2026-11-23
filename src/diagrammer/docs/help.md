@@ -340,7 +340,7 @@ part's lead, so in this mode:
   style of the wires already on them.
 - **Wiring leads that don't match** — a 2 pt `PAPER_2pt` part to a 3 pt
   `SLIDES_3pt` one — still makes the wire, and a notice appears beside it:
-  **Use 2 px**, **Use 3 px** or **Ignore**. Choosing one marks the wire as
+  **Use 2 pt**, **Use 3 pt** or **Ignore**. Choosing one marks the wire as
   set on purpose. The notice also names a part that comes in the other
   library, since swapping it is the real fix.
 - **Setting a wire's width or color by hand** in the Properties panel shows a

@@ -1031,7 +1031,14 @@ class DiagramScene(QGraphicsScene):
             logger.debug("Wiring check after connect failed", exc_info=True)
             return
         if findings:
-            self.wiring_disagreement.emit(findings, target.scene_center())
+            # The notice is about a wire, so place it by the wire's middle.
+            anchor = target.scene_center()
+            ids = set(findings[0].wire_ids)
+            for conn in self.connections_on_port(target):
+                if conn.instance_id in ids:
+                    anchor = conn.mapToScene(conn.path().pointAtPercent(0.5))
+                    break
+            self.wiring_disagreement.emit(findings, anchor)
 
     def _try_join_wire_endpoint(
         self, cursor_pos: QPointF, source_port, trace_vertices: list[QPointF],

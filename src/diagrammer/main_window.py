@@ -299,6 +299,10 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
             except Exception:
                 logger.debug("Failed to refresh library for polarity", exc_info=True)
         self._reassert_light_surfaces()
+        for doc in self._documents():
+            overlay = getattr(doc, "shortcut_overlay", None)
+            if overlay is not None:
+                overlay.apply_polarity()
         self._sync_appearance_actions()
 
     def _sync_appearance_actions(self) -> None:

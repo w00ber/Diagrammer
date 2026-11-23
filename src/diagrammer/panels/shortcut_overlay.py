@@ -62,23 +62,34 @@ class ShortcutOverlay(QWidget):
         # this the text follows the system palette and turns white (unreadable)
         # under macOS dark/night mode. Mirrors the "paper" convention used by
         # HelpWindow.
-        self._label.setStyleSheet("color: #111111;")
         layout.addWidget(self._label)
-
-        # objectName-scoped stylesheet so it doesn't bleed onto child labels of
-        # other widgets; translucent so the diagram shows through faintly.
-        self.setStyleSheet(
-            "#shortcutOverlay {"
-            "  background-color: rgba(250, 250, 250, 235);"
-            "  border: 1px solid rgba(0, 0, 0, 40);"
-            "  border-radius: 8px;"
-            "}"
-        )
+        self.apply_polarity()
         # Reposition whenever the viewport resizes.
         host.installEventFilter(self)
         self.hide()
 
     # ---- public API ---------------------------------------------------
+
+    def apply_polarity(self) -> None:
+        """Paper-on-canvas: light card with dark text, or — with View ▸
+        Invert Polarity on, when the canvas is black — dark with light text.
+        Explicit both ways, so it never follows the system palette (which
+        made the text white on the light card under macOS dark mode)."""
+        from diagrammer.utils.polarity import is_inverted
+        if is_inverted():
+            bg, border, text = "rgba(24, 24, 24, 235)", "rgba(255, 255, 255, 60)", "#eeeeee"
+        else:
+            bg, border, text = "rgba(250, 250, 250, 235)", "rgba(0, 0, 0, 40)", "#111111"
+        self._label.setStyleSheet(f"color: {text};")
+        # objectName-scoped so it doesn't bleed onto other widgets' labels;
+        # slightly translucent so the diagram shows through faintly.
+        self.setStyleSheet(
+            "#shortcutOverlay {"
+            f"  background-color: {bg};"
+            f"  border: 1px solid {border};"
+            "  border-radius: 8px;"
+            "}"
+        )
 
     def set_corner(self, corner: str) -> None:
         """Set the anchor corner ('top-left'|'top-right'|'bottom-left'|'bottom-right')."""
