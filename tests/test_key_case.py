@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from PySide6.QtCore import QPointF
 
 from diagrammer import svglint
@@ -39,14 +40,19 @@ def test_get_accepts_a_unique_case_insensitive_match(library) -> None:
 
 def test_get_refuses_to_guess_between_keys_differing_only_in_case(
         tmp_path: Path) -> None:
+    # Two folders differing only in case cannot coexist on a case-insensitive
+    # disk (macOS by default), so this case only arises — and is only
+    # testable — on a case-sensitive one.
+    (tmp_path / "Parts").mkdir()
+    if (tmp_path / "parts").exists():
+        pytest.skip("case-insensitive filesystem: Parts/ and parts/ are one folder")
+    (tmp_path / "parts").mkdir()
     src = next((COMPONENTS / "flowchart").glob("*.svg"))
     for folder in ("Parts", "parts"):
-        (tmp_path / folder).mkdir()
         (tmp_path / folder / src.name).write_bytes(src.read_bytes())
     lib = ComponentLibrary()
     lib.scan(tmp_path)
-    if len(lib._by_key) < 2:   # case-insensitive filesystem: one folder
-        return
+    assert len(lib._by_key) == 2
     stem = src.stem
     assert lib.get(f"Parts/{stem}") is not lib.get(f"parts/{stem}")
     assert lib.get(f"PARTS/{stem}") is None
