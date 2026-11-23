@@ -339,12 +339,13 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
             logger.debug("Failed to reassert canvas background brush", exc_info=True)
         try:
             # The library previews what will land on the canvas, so it
-            # follows polarity too; the annotations tool panel is UI.
+            # follows polarity too.
             self._library_panel.apply_light_surface(display_color(bg))
         except Exception:
             logger.debug("Failed to reassert library panel light surface", exc_info=True)
         try:
-            self._annotations_panel.apply_light_surface(bg)
+            # So does the annotations tool palette.
+            self._annotations_panel.apply_light_surface(display_color(bg))
         except Exception:
             logger.debug("Failed to reassert annotations panel light surface", exc_info=True)
 

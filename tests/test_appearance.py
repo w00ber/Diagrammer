@@ -194,3 +194,53 @@ def test_library_thumbnails_follow_polarity(win):
     polarity.set_inverted(True)
     f_dark, f_light = ink(_make_icon(cdef))
     assert n_dark > n_light and f_light > f_dark
+
+
+def test_annotations_palette_follows_polarity(win):
+    """It previews canvas ink like the library does: light icons on the
+    inverted (dark) surface, dark icons on the normal one."""
+    from PySide6.QtGui import QImage
+
+    def ink_lightness(panel):
+        btn, _ = panel._tool_buttons[0]
+        img = btn.icon().pixmap(28, 28).toImage().convertToFormat(
+            QImage.Format.Format_ARGB32)
+        vals = [img.pixelColor(x, y).lightness()
+                for y in range(img.height()) for x in range(img.width())
+                if img.pixelColor(x, y).alpha() > 200]
+        return sum(vals) / len(vals)
+
+    panel = win._annotations_panel
+    assert ink_lightness(panel) < 100
+    win._polarity_act.setChecked(True)
+    assert ink_lightness(panel) > 150
+    win._polarity_act.setChecked(False)
+    assert ink_lightness(panel) < 100
+
+
+def test_library_title_bars_follow_the_interface_theme(win):
+    """Title bars are UI, like the dock title bars: dark with white text in
+    the dark theme, whatever the canvas colours or polarity."""
+    from diagrammer.panels.library_panel import _CategorySection
+
+    def header_styles():
+        sections = win._library_panel.findChildren(_CategorySection)
+        assert sections
+        s = sections[0]
+        return s._header.styleSheet(), s._label.styleSheet()
+
+    # apply_theme restyles the whole QApplication, which outlives this test.
+    try:
+        win._on_theme_selected("light")
+        bg, fg = header_styles()
+        assert "#f0f0f0" in bg and "#000000" in fg
+        win._on_theme_selected("dark")
+        bg, fg = header_styles()
+        assert "#3a3a3a" in bg and "#ffffff" in fg
+        win._polarity_act.setChecked(True)          # rebuilds the sections
+        bg, fg = header_styles()
+        assert "#3a3a3a" in bg and "#ffffff" in fg
+        win._on_theme_selected("light")
+        assert "#f0f0f0" in header_styles()[0]
+    finally:
+        win._on_theme_selected("system")
