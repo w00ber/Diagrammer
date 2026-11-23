@@ -584,8 +584,9 @@ class Diagram:
         from diagrammer.io.exporter import render_scene_to_qimage
         if not self.scene.items():
             raise DiagramError("nothing to render: the diagram is empty")
+        from diagrammer.utils.polarity import display_color
         image = render_scene_to_qimage(self.scene, dpi=dpi, margin=margin,
-                                       background=QColor("white"))
+                                       background=display_color(QColor("white")))
         buf = QBuffer()
         buf.open(QIODevice.OpenModeFlag.WriteOnly)
         image.save(buf, "PNG")

@@ -93,7 +93,9 @@ class DiagramView(QGraphicsView):
         # against a white background, so even in dark mode the canvas
         # itself stays light for legibility.
         from diagrammer.panels.settings_dialog import app_settings
-        self.setBackgroundBrush(QBrush(app_settings.current_background_color()))
+        from diagrammer.utils.polarity import display_color
+        self.setBackgroundBrush(
+            QBrush(display_color(app_settings.current_background_color())))
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
@@ -440,13 +442,14 @@ class DiagramView(QGraphicsView):
         super().drawBackground(painter, rect)
         if self._grid_visible:
             from diagrammer.panels.settings_dialog import app_settings
+            from diagrammer.utils.polarity import display_color
             draw_grid(
                 painter,
                 rect,
                 self._grid_spacing,
                 self.current_scale(),
-                minor_color=app_settings.current_grid_color(),
-                major_color=app_settings.current_grid_major_color(),
+                minor_color=display_color(app_settings.current_grid_color()),
+                major_color=display_color(app_settings.current_grid_major_color()),
             )
 
     def drawForeground(self, painter: QPainter, rect) -> None:

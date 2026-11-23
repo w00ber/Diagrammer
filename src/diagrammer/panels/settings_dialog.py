@@ -88,6 +88,11 @@ class AppSettings:
         # chrome theme, because the diagram artwork is authored that way.
         self.theme: str = "system"
 
+        # Display polarity (View ▸ Invert Polarity): draw the canvas
+        # white-on-black, and export the same way. A view setting — no
+        # stored colour changes; see diagrammer.utils.polarity.
+        self.invert_polarity: bool = False
+
         # Per-theme appearance colors. ``background`` paints the canvas
         # and the library/annotations panels; ``grid`` and ``grid_major``
         # are the minor and major snap-grid line colors. Each theme has
@@ -335,6 +340,7 @@ class AppSettings:
                 "default_shape_arrow_extend": self.default_shape_arrow_extend,
                 "export_scale": self.export_scale,
                 "theme": self.theme,
+                "invert_polarity": self.invert_polarity,
                 "theme_colors": self.theme_colors,
                 "settings_dialog_geometry": self.settings_dialog_geometry,
                 "settings_dialog_splitter_state": self.settings_dialog_splitter_state,
@@ -467,6 +473,8 @@ class AppSettings:
                 self.default_shape_arrow_scale = data.get("default_shape_arrow_scale", self.default_shape_arrow_scale)
                 self.default_shape_arrow_extend = data.get("default_shape_arrow_extend", self.default_shape_arrow_extend)
                 self.export_scale = data.get("export_scale", self.export_scale)
+                self.invert_polarity = bool(
+                    data.get("invert_polarity", self.invert_polarity))
                 theme = data.get("theme", self.theme)
                 if theme in ("system", "light", "dark"):
                     self.theme = theme

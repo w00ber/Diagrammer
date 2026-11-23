@@ -214,6 +214,7 @@ _reg("view.close_tab",  QKeySequence.StandardKey.Close,    description="Close Ta
 _reg("view.next_tab",   _ks("Ctrl+Shift+]"),               description="Show Next Tab",     category="View")
 _reg("view.prev_tab",   _ks("Ctrl+Shift+["),               description="Show Previous Tab", category="View")
 _reg("view.toggle_grid", _ks("G"),                          description="Show / Hide Grid",  category="View")
+_reg("view.invert_polarity", _ks("Ctrl+Alt+I"),             description="Invert Polarity",   category="View")
 
 # ----- Routing -----
 _reg("routing.trace",  _ks("W"),                           description="Trace Routing Mode", category="Routing")

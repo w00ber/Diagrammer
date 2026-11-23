@@ -238,7 +238,9 @@ class DocumentTabsMixin:
         if spin is not None:
             view.grid_spacing = spin.value()
         self._sync_angle_snap(view)
-        view.setBackgroundBrush(QBrush(app_settings.current_background_color()))
+        from diagrammer.utils.polarity import display_color
+        view.setBackgroundBrush(
+            QBrush(display_color(app_settings.current_background_color())))
         doc.scene.default_routing_mode = app_settings.default_routing_mode
 
     @staticmethod

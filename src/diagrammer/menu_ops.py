@@ -311,6 +311,18 @@ class MenuMixin:
         # Kept so a newly opened diagram tab starts with the same grid state.
         self._toggle_grid_act = toggle_grid_act
 
+        # White-on-black for dark slides. Exports follow what the canvas
+        # shows; stored colours never change (diagrammer.utils.polarity).
+        polarity_act = QAction("&Invert Polarity", self)
+        polarity_act.setCheckable(True)
+        polarity_act.setChecked(app_settings.invert_polarity)
+        polarity_act.setStatusTip(
+            "Draw black as white and greys mirrored; exports match the canvas")
+        self._register_shortcut(polarity_act, "view.invert_polarity")
+        polarity_act.toggled.connect(self._set_polarity)
+        view_menu.addAction(polarity_act)
+        self._polarity_act = polarity_act
+
         view_menu.addSeparator()
 
         self._zoom_window_act = QAction("&Zoom Window", self)

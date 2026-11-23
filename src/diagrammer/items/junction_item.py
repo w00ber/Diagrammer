@@ -24,6 +24,7 @@ from PySide6.QtWidgets import QGraphicsItem
 
 from diagrammer.items.port_item import PortItem
 from diagrammer.models.component_def import PortDef
+from diagrammer.utils.polarity import display_color
 
 # Minimum radius of the filled dot drawn where >= 3 wires meet
 JUNCTION_DOT_RADIUS = 3.5
@@ -164,7 +165,8 @@ class JunctionItem(QGraphicsItem):
         self.update()
 
     def _attached_style(self, conns: list) -> tuple[QColor, float]:
-        """Color and max line width of the wires attached to this port."""
+        """Paint colour (polarity applied) and max line width of the wires
+        attached to this port."""
         color = QColor(50, 50, 50)
         width = 0.0
         for conn in conns:
@@ -172,7 +174,7 @@ class JunctionItem(QGraphicsItem):
             c = getattr(conn, 'line_color', None)
             if c is not None:
                 color = QColor(c)
-        return color, width
+        return display_color(color), width
 
     def _dot_connections(self) -> list:
         """Connections that justify drawing the junction dot.
@@ -226,7 +228,8 @@ class JunctionItem(QGraphicsItem):
                 r = max(4.5, width * 1.1)
                 painter.setPen(QPen(color, max(1.5, width * 0.6)))
                 # Background fill so the wire visually terminates at the ring
-                painter.setBrush(QBrush(app_settings.current_background_color()))
+                painter.setBrush(QBrush(
+                    display_color(app_settings.current_background_color())))
                 painter.drawEllipse(QRectF(-r, -r, r * 2, r * 2))
             return
 

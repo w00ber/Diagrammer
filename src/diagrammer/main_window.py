@@ -63,6 +63,11 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
         # used to re-apply shortcuts when the user customizes them)
         self._shortcut_actions: list[tuple[QAction, list[str], list[QKeySequence]]] = []
 
+        # Display polarity is process-wide paint state; set it before any
+        # document builds its renderers so the first paint is already right.
+        from diagrammer.utils import polarity
+        polarity.set_inverted(app_settings.invert_polarity)
+
         # -- Component library --
         self._library = ComponentLibrary()
         self._builtin_components_path = _find_builtin_components()
@@ -245,6 +250,18 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
         for doc in self._documents():
             doc.view.grid_visible = visible
 
+    def _set_polarity(self, inverted: bool) -> None:
+        """View ▸ Invert Polarity. Window-wide, like the grid: every open
+        diagram repaints, and exports follow. Not an undo step — nothing in
+        any document changes, only how it is drawn."""
+        from diagrammer.utils import polarity
+        app_settings.invert_polarity = bool(inverted)
+        polarity.set_inverted(inverted)
+        for doc in self._documents():
+            doc.scene.refresh_polarity()
+        self._reassert_light_surfaces()   # canvas background follows
+        app_settings.save()
+
     def _on_theme_selected(self, mode: str) -> None:
         """Handle Appearance submenu selection: live-switch the theme."""
         from PySide6.QtWidgets import QApplication
@@ -270,10 +287,13 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
         component artwork remain legible.
         """
         from PySide6.QtGui import QBrush
+        from diagrammer.utils.polarity import display_color
         bg = app_settings.current_background_color()
         try:
             for doc in self._documents():
-                doc.view.setBackgroundBrush(QBrush(bg))
+                # The canvas follows display polarity; the library and
+                # annotations panels below are UI and stay canonical.
+                doc.view.setBackgroundBrush(QBrush(display_color(bg)))
                 doc.view.viewport().update()
         except Exception:
             logger.debug("Failed to reassert canvas background brush", exc_info=True)
