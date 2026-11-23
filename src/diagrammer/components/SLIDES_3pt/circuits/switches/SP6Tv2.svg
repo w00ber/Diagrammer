@@ -4,7 +4,7 @@
   <defs>
     <style>
       .st0 { fill: #c66; }
-      .st1, .st2, .st3, .st4, .st5 { stroke: #231f20; stroke-linecap: butt; stroke-linejoin: round; }
+      .st1, .st2, .st3, .st4, .st5 { stroke: #000; stroke-linecap: butt; stroke-linejoin: round; }
       .st1 { fill: none; stroke-width: 2px; }
       .st2 { fill: #fff; stroke-width: 2px; }
       .st3 { fill: none; stroke-width: 4px; }

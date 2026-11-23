@@ -9,12 +9,13 @@ from diagrammer.models.lead_style import LeadStyle
 #: Widths closer than this are equal (the SVGs write 2, 2px, 2.0).
 WIDTH_TOL = 0.01
 
-#: Largest per-channel difference (0-255) still "the same colour". 80 shipped
-#: ports draw their leads in Illustrator's near-black #231f20 (spread 35 from
-#: #000000) while wires default to #000000; an exact comparison would flag
-#: nearly every wire on those parts. 48 keeps the two blacks together and
-#: still separates black from the darkest colours the libraries use
-#: (#0d72ba blue differs by 186, #cc3333 red by 204).
+#: Largest per-channel difference (0-255) still "the same colour". The
+#: shipped libraries are pure #000 now (svglint's ``near-black`` check found
+#: Illustrator's #231f20 on 80 ports, and its fix replaced it), but a user's
+#: own library exported from Illustrator will carry it, and flagging every
+#: wire on such a part would bury real findings. 48 keeps the two blacks
+#: together and still separates black from the darkest colours the libraries
+#: use (#0d72ba blue differs by 186, #cc3333 red by 204).
 COLOR_TOL = 48
 
 

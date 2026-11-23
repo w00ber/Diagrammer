@@ -24,7 +24,7 @@
       }
 
       .st2 {
-        stroke: #231f20;
+        stroke: #000;
         stroke-width: 2px;
       }
 

@@ -21,7 +21,7 @@
       }
 
       .st2 {
-        stroke: #231f20;
+        stroke: #000;
         stroke-linecap: round;
         stroke-width: 3px;
       }
