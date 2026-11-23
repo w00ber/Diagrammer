@@ -160,6 +160,9 @@ class LibraryPanel(QDockWidget):
         #   QScrollArea        — the "Grid" tab (_GroupedGrid) frame
         #   QScrollArea > QWidget > QWidget
         #                       — the grid's inner viewport widget
+        dark_chrome = chrome_is_dark()
+        for section in self.findChildren(_CategorySection):
+            section.apply_chrome(dark_chrome)
         self.setStyleSheet(
             f"QTreeWidget, QListWidget {{"
             f" background-color: {hex_color};"
@@ -678,6 +681,18 @@ class _GroupedGrid(QScrollArea):
         self._layout.addStretch()
 
 
+def chrome_is_dark() -> bool:
+    """Whether the interface (not the canvas) is currently dark: the "dark"
+    theme, or "system" while the OS is in dark mode. Read from the live
+    application palette, which apply_theme has already updated."""
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance()
+    if app is None:
+        return False
+    return app.palette().color(QPalette.ColorRole.Window).lightness() < 128
+
+
 class _CategorySection(QWidget):
     """A collapsible category section with header and flow grid of thumbnails."""
 
@@ -705,12 +720,7 @@ class _CategorySection(QWidget):
         header_layout.addWidget(self._toggle_btn)
 
         label = QLabel(f"<b>{category.replace('/', ' / ').replace('_', ' ')}</b>")
-        # Pin the header text to black. The header sits on a light-gray
-        # pill (`#f0f0f0`, set below) regardless of the chrome theme, so
-        # it needs explicit black text to stay legible in dark mode —
-        # otherwise the label would inherit the dark-mode palette text
-        # (near-white) and vanish on the light pill.
-        label.setStyleSheet("color: #000000; background: transparent;")
+        self._label = label
         header_layout.addWidget(label)
         header_layout.addStretch()
 
@@ -719,7 +729,6 @@ class _CategorySection(QWidget):
         table_btn.setText("\u2637")  # trigram for heaven (grid-like icon)
         table_btn.setToolTip("View as Table")
         table_btn.setFixedSize(18, 18)
-        table_btn.setStyleSheet("QToolButton { border: 1px solid #ccc; font-size: 10px; }")
         table_btn.clicked.connect(lambda: panel.open_library_table(category))
         header_layout.addWidget(table_btn)
 
@@ -727,18 +736,18 @@ class _CategorySection(QWidget):
         up_btn = QToolButton()
         up_btn.setText("\u2191")
         up_btn.setFixedSize(18, 18)
-        up_btn.setStyleSheet("QToolButton { border: 1px solid #ccc; font-size: 10px; }")
         up_btn.clicked.connect(lambda: panel.move_category(category, -1))
         header_layout.addWidget(up_btn)
 
         down_btn = QToolButton()
         down_btn.setText("\u2193")
         down_btn.setFixedSize(18, 18)
-        down_btn.setStyleSheet("QToolButton { border: 1px solid #ccc; font-size: 10px; }")
         down_btn.clicked.connect(lambda: panel.move_category(category, 1))
         header_layout.addWidget(down_btn)
 
-        header.setStyleSheet("background: #f0f0f0; border-radius: 3px;")
+        self._header = header
+        self._header_buttons = (table_btn, up_btn, down_btn)
+        self.apply_chrome(chrome_is_dark())
         layout.addWidget(header)
 
         # Thumbnail grid (flow layout)
@@ -748,6 +757,20 @@ class _CategorySection(QWidget):
             thumb = _DragThumbnail(comp_def, panel)
             self._grid_layout.addWidget(thumb)
         layout.addWidget(self._grid_widget)
+
+    def apply_chrome(self, dark: bool) -> None:
+        """Style the title bar like the dock title bars: it is UI, so it
+        follows the interface theme, not the canvas colours or polarity.
+        Explicit colours both ways — the label must not inherit a palette
+        text colour meant for some other surface."""
+        bg, fg, border = (("#3a3a3a", "#ffffff", "#5a5a5a") if dark
+                          else ("#f0f0f0", "#000000", "#cccccc"))
+        self._header.setStyleSheet(f"background: {bg}; border-radius: 3px;")
+        self._label.setStyleSheet(f"color: {fg}; background: transparent;")
+        for btn in self._header_buttons:
+            btn.setStyleSheet(
+                f"QToolButton {{ border: 1px solid {border}; color: {fg};"
+                f" font-size: 10px; }}")
 
     def _toggle_collapse(self) -> None:
         self._collapsed = not self._collapsed
@@ -883,8 +906,10 @@ def _make_icon(comp_def: ComponentDef) -> QIcon:
     from PySide6.QtGui import QPainter
 
     from diagrammer.items.component_item import ComponentItem
+    from diagrammer.utils.polarity import svg_renderer
     svg_bytes = ComponentItem._prepare_svg_bytes(comp_def.svg_path)
-    renderer = QSvgRenderer(svg_bytes)
+    # Thumbnails preview the canvas, so they draw in display polarity.
+    renderer = svg_renderer(svg_bytes)
     pixmap = QPixmap(THUMB_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
 

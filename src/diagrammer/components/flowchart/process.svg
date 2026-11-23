@@ -9,6 +9,9 @@
     <circle id="port:top" cx="60" cy="0" r="3"/>
     <circle id="port:bottom" cx="60" cy="60" r="3"/>
   </g>
+  <g id="stretch" display="none">
+    <line id="stretch:v" x1="60" y1="0" x2="60" y2="60"/>
+  </g>
   <g id="labels" display="none">
     <text id="label:title" x="60" y="30"/>
   </g>

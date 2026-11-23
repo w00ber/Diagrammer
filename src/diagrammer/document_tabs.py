@@ -132,6 +132,14 @@ class DocumentTabsMixin:
                 docs.append(doc)
         return docs
 
+    def _refresh_library_tables(self) -> None:
+        """Re-draw open library-table tabs in the current polarity."""
+        tabs = self._tab_widget
+        for i in range(tabs.count()):
+            refresh = getattr(tabs.widget(i), "refresh_polarity", None)
+            if refresh is not None:
+                refresh()
+
     # --------------------------------------------------------------- set-up
 
     def _init_document_tabs(self) -> None:
@@ -238,7 +246,9 @@ class DocumentTabsMixin:
         if spin is not None:
             view.grid_spacing = spin.value()
         self._sync_angle_snap(view)
-        view.setBackgroundBrush(QBrush(app_settings.current_background_color()))
+        from diagrammer.utils.polarity import display_color
+        view.setBackgroundBrush(
+            QBrush(display_color(app_settings.current_background_color())))
         doc.scene.default_routing_mode = app_settings.default_routing_mode
 
     @staticmethod

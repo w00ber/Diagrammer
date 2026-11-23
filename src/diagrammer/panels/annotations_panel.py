@@ -15,13 +15,18 @@ from PySide6.QtWidgets import (
 ICON_SIZE = 28
 
 
-def _make_icon(draw_func) -> QIcon:
+#: Icon ink on a light surface, and on a dark one (polarity inverted).
+INK_LIGHT_SURFACE = QColor(50, 50, 50)
+INK_DARK_SURFACE = QColor(205, 205, 205)
+
+
+def _make_icon(draw_func, ink: QColor = INK_LIGHT_SURFACE) -> QIcon:
     """Create a small icon by drawing into a QPixmap."""
     px = QPixmap(ICON_SIZE, ICON_SIZE)
     px.fill(Qt.GlobalColor.transparent)
     p = QPainter(px)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setPen(QPen(QColor(50, 50, 50), 1.5))
+    p.setPen(QPen(ink, 1.5))
     draw_func(p, ICON_SIZE)
     p.end()
     return QIcon(px)
@@ -46,7 +51,7 @@ def _draw_arrow(p: QPainter, s: int) -> None:
     from PySide6.QtGui import QPolygonF
     p.drawLine(4, s - 6, s - 4, 6)
     # Arrowhead
-    p.setBrush(QColor(50, 50, 50))
+    p.setBrush(p.pen().color())
     p.setPen(Qt.PenStyle.NoPen)
     tip = QPointF(s - 4, 6)
     p.drawPolygon(QPolygonF([
@@ -88,9 +93,11 @@ class AnnotationsPanel(QDockWidget):
             ("Text", _draw_text, "text"),
         ]
 
+        self._tool_buttons: list[tuple[QToolButton, object]] = []
         for tooltip, draw_func, tool_id in tools:
             btn = QToolButton()
             btn.setIcon(_make_icon(draw_func))
+            self._tool_buttons.append((btn, draw_func))
             btn.setToolTip(tooltip)
             btn.setFixedSize(36, 36)
             btn.clicked.connect(lambda checked=False, tid=tool_id: self.tool_activated.emit(tid))
@@ -108,22 +115,28 @@ class AnnotationsPanel(QDockWidget):
         self.setMaximumHeight(80)
 
     def apply_light_surface(self, color) -> None:  # noqa: ANN001
-        """Pin the annotations panel chrome to a light surface color.
+        """Put the tool palette on the canvas surface *color*.
 
-        The annotation tool icons are drawn with a dark stroke
-        (``QColor(50, 50, 50)``) at panel construction time, which
-        becomes invisible against a dark-mode tool-button background.
-        Keeping this panel on a light surface lets us reuse the light
-        icons without having to regenerate them per theme.
+        Like the library, the palette previews what lands on the canvas, so
+        MainWindow passes the background in display polarity. The icons are
+        redrawn in an ink that reads on that surface: dark on light (the
+        usual case, whatever the interface theme), light on dark (polarity
+        inverted).
         """
         hex_color = color.name()
+        dark = color.lightness() < 128
+        ink = INK_DARK_SURFACE if dark else INK_LIGHT_SURFACE
+        for btn, draw_func in self._tool_buttons:
+            btn.setIcon(_make_icon(draw_func, ink))
+        border, hover, pressed = (("#5a5a5a", "#24324a", "#1c2a44") if dark
+                                  else ("#c8c8c8", "#e8f0ff", "#d0e0ff"))
         self.setStyleSheet(
             f"QToolButton {{"
             f" background-color: {hex_color};"
-            f" border: 1px solid #c8c8c8;"
+            f" border: 1px solid {border};"
             f" border-radius: 3px; }}"
-            f"QToolButton:hover {{ background-color: #e8f0ff; }}"
-            f"QToolButton:pressed {{ background-color: #d0e0ff; }}"
+            f"QToolButton:hover {{ background-color: {hover}; }}"
+            f"QToolButton:pressed {{ background-color: {pressed}; }}"
             f"QWidget#AnnotationsPanelContainer {{"
             f" background-color: {hex_color}; }}"
         )

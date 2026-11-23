@@ -27,6 +27,8 @@ from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QTransform
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
+from diagrammer.utils.polarity import svg_renderer
+
 SELECTION_PEN_COLOR = QColor(0, 120, 215)
 SELECTION_PEN_WIDTH = 1.2
 SELECTION_DASH_PATTERN = [4, 3]
@@ -60,7 +62,7 @@ class SvgImageItem(QGraphicsItem):
         self._group_ids: list[str] = []
         self._svg_data = svg_data
 
-        self._renderer = QSvgRenderer(svg_data)
+        self._renderer = svg_renderer(svg_data)
         self._measure_source()
 
         self._width = width if width is not None else self._native_width
@@ -268,6 +270,12 @@ class SvgImageItem(QGraphicsItem):
         # neither repaints nor hit-tests it.
         rect = rect.united(self._painted_rect())
         return rect.adjusted(-m, -m, m, m)
+
+    def rebuild_renderer(self) -> None:
+        """Re-create the renderer from the canonical bytes (polarity change).
+        Colour does not change geometry, so the measured size stands."""
+        self._renderer = svg_renderer(self._svg_data)
+        self.update()
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None) -> None:
         sx, sy = self._source_scale()

@@ -311,6 +311,18 @@ class MenuMixin:
         # Kept so a newly opened diagram tab starts with the same grid state.
         self._toggle_grid_act = toggle_grid_act
 
+        # White-on-black for dark slides. Exports follow what the canvas
+        # shows; stored colours never change (diagrammer.utils.polarity).
+        polarity_act = QAction("&Invert Polarity", self)
+        polarity_act.setCheckable(True)
+        polarity_act.setChecked(app_settings.invert_polarity)
+        polarity_act.setStatusTip(
+            "Draw black as white and greys mirrored; exports match the canvas")
+        self._register_shortcut(polarity_act, "view.invert_polarity")
+        polarity_act.toggled.connect(self._set_polarity)
+        view_menu.addAction(polarity_act)
+        self._polarity_act = polarity_act
+
         view_menu.addSeparator()
 
         self._zoom_window_act = QAction("&Zoom Window", self)
@@ -351,6 +363,25 @@ class MenuMixin:
         current = app_settings.theme if app_settings.theme in self._theme_actions \
             else "system"
         self._theme_actions[current].setChecked(True)
+
+        # Canvas colours, independent of the interface theme. Mirrors
+        # Settings ▸ Appearance; _sync_appearance_actions keeps them agreeing.
+        appearance_menu.addSeparator()
+        self._canvas_group = QActionGroup(self)
+        self._canvas_group.setExclusive(True)
+        self._canvas_actions: dict[str, QAction] = {}
+        for mode, label in (("default", "Canvas: &Default (White)"),
+                            ("custom", "Canvas: &Custom Colors")):
+            act = QAction(label, self)
+            act.setCheckable(True)
+            act.setChecked(app_settings.canvas_colors == mode)
+            act.triggered.connect(
+                lambda _checked=False, m=mode: self._on_canvas_colors_selected(m))
+            self._canvas_group.addAction(act)
+            appearance_menu.addAction(act)
+            self._canvas_actions[mode] = act
+        appearance_menu.addSeparator()
+        appearance_menu.addAction(self._polarity_act)   # same action as View's
 
         view_menu.addSeparator()
 

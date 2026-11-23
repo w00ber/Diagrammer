@@ -16,6 +16,8 @@ from PySide6.QtCore import QLineF, QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPolygonF, QTransform
 from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
+from diagrammer.utils.polarity import display_color
+
 # Default style
 DEFAULT_STROKE_COLOR = QColor(50, 50, 50)
 DEFAULT_FILL_COLOR = QColor(255, 255, 255, 0)  # transparent
@@ -208,7 +210,7 @@ class ShapeItem(QGraphicsItem):
 
     def _make_pen(self) -> QPen:
         """Create a QPen with current stroke settings (color, width, dash, cap)."""
-        pen = QPen(self._stroke_color, self._stroke_width)
+        pen = QPen(display_color(self._stroke_color), self._stroke_width)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         pattern = DASH_PATTERNS.get(self._dash_style, [])
@@ -337,7 +339,7 @@ class RectangleItem(ShapeItem):
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None) -> None:
         painter.setPen(self._make_pen())
-        painter.setBrush(QBrush(self._fill_color))
+        painter.setBrush(QBrush(display_color(self._fill_color)))
         r = self._corner_radius
         rect = QRectF(0, 0, self._width, self._height)
         if r > 0:
@@ -352,7 +354,7 @@ class EllipseItem(ShapeItem):
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None) -> None:
         painter.setPen(self._make_pen())
-        painter.setBrush(QBrush(self._fill_color))
+        painter.setBrush(QBrush(display_color(self._fill_color)))
         painter.drawEllipse(QRectF(0, 0, self._width, self._height))
         self._draw_selection(painter)
 
@@ -531,7 +533,7 @@ class LineItem(QGraphicsItem):
     def _make_pen(self) -> QPen:
         cap = (Qt.PenCapStyle.SquareCap if self._cap_style == "square"
                else Qt.PenCapStyle.RoundCap)
-        pen = QPen(self._stroke_color, self._stroke_width, Qt.PenStyle.SolidLine, cap)
+        pen = QPen(display_color(self._stroke_color), self._stroke_width, Qt.PenStyle.SolidLine, cap)
         pattern = DASH_PATTERNS.get(self._dash_style, [])
         if pattern:
             pen.setDashPattern(pattern)
@@ -548,7 +550,7 @@ class LineItem(QGraphicsItem):
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None) -> None:
         color = (SELECTION_PEN_COLOR if (self.isSelected() and not self._group_id)
-                 else self._stroke_color)
+                 else display_color(self._stroke_color))
         pen = self._make_pen()
         pen.setColor(color)
         painter.setPen(pen)

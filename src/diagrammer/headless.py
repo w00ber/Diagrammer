@@ -439,9 +439,12 @@ class Diagram:
         *to* sets the stretch, *by* adds to the current one; both are
         ``(dx, dy)`` in the part's own frame, or a number for a one-axis part.
         *keep* names the port whose scene position must not move. By default
-        it is a port the stretch leaves in place — measured, not assumed,
-        since flip and rotation decide which end that is on screen — so the
-        part grows away from it. Wires follow. One undo step.
+        it is a wired port, when every wired port rides the same side of the
+        break (one end wired, or none) — so the circuit around the part stays
+        put and the free end grows. Otherwise, with wires on both sides, it
+        is a port the stretch leaves in place. Which end that is on screen is
+        measured, not assumed, since flip and rotation decide it. Wires
+        follow. One undo step.
 
         Returns ``{"stretch": [dx, dy], "kept": port}`` with the values
         actually applied (snapped to tiles, clamped to the minimum size).
@@ -472,9 +475,7 @@ class Diagram:
             self.undo_stack.push(StretchComponentCommand(item, *old, *new))
             after = {p.port_name: p.scene_center() for p in item.ports}
             if keep is None:
-                still = [n for n in before
-                         if (after[n] - before[n]).manhattanLength() < 1e-6]
-                keep = still[0] if still else next(iter(before), None)
+                keep = self._default_keep(item, before, after)
             if keep is not None:
                 delta = before[keep] - after[keep]
                 if delta.manhattanLength() > 1e-6:
@@ -485,6 +486,25 @@ class Diagram:
             self.undo_stack.endMacro()
         return {"stretch": [_r(item.stretch_dx), _r(item.stretch_dy)],
                 "kept": keep}
+
+    def _default_keep(self, item, before: dict, after: dict) -> str | None:
+        """The port :meth:`stretch` pins when the caller names none.
+
+        Ports are grouped by how far the stretch moved them. If every wired
+        port is in one group, pin one of those, so no wire has to move. If
+        the wired ports straddle the break, or none are wired, pin a port
+        the stretch left in place, as before.
+        """
+        def moved(n: str) -> tuple[float, float]:
+            d = after[n] - before[n]
+            return (round(d.x(), 6), round(d.y(), 6))
+
+        wired = [p.port_name for p in item.ports
+                 if p.port_name in before and self._connections_of(p)]
+        if wired and len({moved(n) for n in wired}) == 1:
+            return wired[0]
+        still = [n for n in before if moved(n) == (0.0, 0.0)]
+        return still[0] if still else next(iter(before), None)
 
     def remove(self, id: str) -> None:
         """Delete an item (and, for a component, the wires on it)."""
@@ -564,8 +584,9 @@ class Diagram:
         from diagrammer.io.exporter import render_scene_to_qimage
         if not self.scene.items():
             raise DiagramError("nothing to render: the diagram is empty")
+        from diagrammer.utils.polarity import display_color
         image = render_scene_to_qimage(self.scene, dpi=dpi, margin=margin,
-                                       background=QColor("white"))
+                                       background=display_color(QColor("white")))
         buf = QBuffer()
         buf.open(QIODevice.OpenModeFlag.WriteOnly)
         image.save(buf, "PNG")
@@ -613,13 +634,9 @@ class Diagram:
     # ------------------------------------------------------------------
 
     def _def(self, key: str) -> ComponentDef:
+        # get() already accepts a unique case-insensitive match ("FLAIR/" vs
+        # "flair/" between checkouts).
         d = self.library.get(key)
-        if d is None:
-            # Folder case differs between checkouts (git tracks "flair/", a
-            # case-insensitive disk may hold "FLAIR/"); accept a unique match.
-            same = [k for k in self.library._by_key if k.lower() == key.lower()]
-            if len(same) == 1:
-                return self.library.get(same[0])
         if d is None:
             import difflib
             names = {k: k.rsplit("/", 1)[-1].lower() for k in self.library._by_key}

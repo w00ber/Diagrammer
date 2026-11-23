@@ -26,6 +26,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from diagrammer.utils.polarity import display_color
+
 logger = logging.getLogger(__name__)
 
 SELECTION_PEN_COLOR = QColor(0, 120, 215)
@@ -1316,7 +1318,10 @@ class AnnotationItem(QGraphicsTextItem):
             if _has_display_math(text):
                 _maybe_warn_no_display_math_backend(parent_widget=None)
 
-            svg_bytes = _render_latex_svg(text, self.font_size, self.text_color,
+            # Rendered in display polarity: the SVG is a picture of the
+            # math, so its colour is baked in here, not at paint time.
+            svg_bytes = _render_latex_svg(text, self.font_size,
+                                           display_color(self.text_color),
                                            font_family=self.font_family)
             if svg_bytes is None:
                 self._math_renderer = None
@@ -1551,7 +1556,25 @@ class AnnotationItem(QGraphicsTextItem):
                 and _painter_target_is_vector_export(painter)
                 and _outlines_setting_enabled()):
             _paint_document_as_outlines(
-                painter, self.document(), self.defaultTextColor())
+                painter, self.document(), display_color(self.defaultTextColor()))
+            return
+
+        # Inverted polarity: draw the document ourselves with the text colour
+        # mapped. Swapping defaultTextColor here instead would schedule another
+        # paint from inside this one. While editing, QGraphicsTextItem must
+        # paint (caret, selection), so the colour is canonical until done.
+        # Inline colour spans in rich text keep their own colour either way.
+        if not self._editing and display_color(self.defaultTextColor()) != self.defaultTextColor():
+            from PySide6.QtGui import QAbstractTextDocumentLayout, QPalette
+            ctx = QAbstractTextDocumentLayout.PaintContext()
+            pal = QPalette(ctx.palette)
+            pal.setColor(QPalette.ColorRole.Text,
+                         display_color(self.defaultTextColor()))
+            ctx.palette = pal
+            ctx.clip = option.exposedRect
+            painter.save()
+            self.document().documentLayout().draw(painter, ctx)
+            painter.restore()
             return
 
         # Let QGraphicsTextItem handle text rendering

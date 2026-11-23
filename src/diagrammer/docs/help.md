@@ -410,6 +410,33 @@ system clipboard as PDF, SVG *and* PNG, so Keynote, PowerPoint, Illustrator,
 Inkscape and VectorCraft each take the best format they understand. Plain
 **Ctrl+C** copies inside Diagrammer only — for pasting into another diagram.
 
+### Light-on-dark (Invert Polarity)
+
+**View → Invert Polarity** (Ctrl+Alt+I) draws every diagram white-on-black,
+for dark slides. Every colour's lightness is mirrored and its hue kept: black
+and white swap, greys mirror, pale fills become dark fills of the same hue, and
+strong mid-tone colours (a red photon) barely change — so text on a filled box
+stays readable.
+
+The library panel and library tables switch too, so a part looks in the
+panel the way it will once placed.
+
+Polarity is drawn *on top of* your canvas colors and never changes them:
+turning it off brings back exactly the background and grid you had. Canvas
+colors are their own setting, independent of the interface theme — **View →
+Appearance** offers **Canvas: Default (White)** or **Canvas: Custom Colors**,
+and **Settings → Appearance** is where the custom background and grid are
+picked. The menu, the Appearance submenu and Settings always show the same
+state, whichever one you changed last.
+
+Exports and **Copy Selection as Image** come out as the canvas shows them.
+SVG, PDF and the clipboard keep a transparent page (white ink, ready for a
+dark slide); PNG gets a black page. Nothing in the diagram changes — the
+switch is not an undo step, Properties still shows the colours you chose, and
+the file opens normally in either mode. **Create Component from Selection**
+always saves the normal colours, so the new part inverts like any other.
+Text coloured with an inline rich-text colour keeps that colour.
+
 ### Examples and sessions
 
 - **File → Examples…** opens the bundled example diagrams.

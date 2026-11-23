@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from diagrammer.utils.polarity import display_color
 from diagrammer.utils.geometry import (
     build_rounded_path,
     closest_point_on_segment,
@@ -1043,7 +1044,7 @@ class ConnectionItem(QGraphicsPathItem):
 
         # The wire itself, always in its own colour — selection never
         # hides it.
-        pen = QPen(self._line_color, self._line_width)
+        pen = QPen(display_color(self._line_color), self._line_width)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
@@ -1108,13 +1109,14 @@ class ConnectionItem(QGraphicsPathItem):
                 # Hollow triangle: background fill masks the wire so the
                 # outline reads cleanly (junction "open" marker pattern).
                 from diagrammer.panels.settings_dialog import app_settings
-                pen = QPen(self._line_color, lw)
+                pen = QPen(display_color(self._line_color), lw)
                 pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
                 painter.setPen(pen)
-                painter.setBrush(app_settings.current_background_color())
+                painter.setBrush(
+                    display_color(app_settings.current_background_color()))
             else:
-                painter.setPen(QPen(self._line_color, 1.0))
-                painter.setBrush(self._line_color)
+                painter.setPen(QPen(display_color(self._line_color), 1.0))
+                painter.setBrush(display_color(self._line_color))
             painter.drawPolygon(tri)
 
     def boundingRect(self) -> QRectF:

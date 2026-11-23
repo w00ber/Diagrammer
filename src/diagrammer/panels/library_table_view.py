@@ -32,6 +32,10 @@ LABEL_FONT_SIZE = 9
 # Lightweight component renderer (artwork only, no interaction)
 # ---------------------------------------------------------------------------
 
+#: Cell frame grey, canonical; refresh_polarity maps it.
+_FRAME_RGB = (200, 200, 200)
+
+
 class _TableComponentItem(QGraphicsItem):
     """Renders a component's artwork at its native viewbox size.  Read-only."""
 
@@ -41,10 +45,16 @@ class _TableComponentItem(QGraphicsItem):
         self._width = comp_def.width
         self._height = comp_def.height
         from diagrammer.items.component_item import ComponentItem
-        svg_bytes = ComponentItem._prepare_svg_bytes(comp_def.svg_path)
-        self._renderer = QSvgRenderer(svg_bytes)
+        self._svg_bytes = ComponentItem._prepare_svg_bytes(comp_def.svg_path)
+        self.rebuild_renderer()
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
+
+    def rebuild_renderer(self) -> None:
+        """A table previews the canvas, so it draws in display polarity."""
+        from diagrammer.utils.polarity import svg_renderer
+        self._renderer = svg_renderer(self._svg_bytes)
+        self.update()
 
     def boundingRect(self) -> QRectF:
         return QRectF(0, 0, self._width, self._height)
@@ -71,6 +81,28 @@ class LibraryTableView(QGraphicsView):
     _ZOOM_FACTOR = 1.15
     _ZOOM_MAX = 20.0
 
+    def refresh_polarity(self) -> None:
+        """Page, frames, labels and artwork in the current display polarity.
+        Called at construction and by MainWindow when polarity flips."""
+        from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsSimpleTextItem
+
+        from diagrammer.utils.polarity import display_color
+        self.setBackgroundBrush(display_color(QColor(255, 255, 255)))
+        scene = self.scene()
+        if scene is None:
+            return
+        for item in scene.items():
+            if isinstance(item, _TableComponentItem):
+                item.rebuild_renderer()
+            elif isinstance(item, QGraphicsSimpleTextItem):
+                item.setBrush(display_color(QColor(0, 0, 0)))
+            elif isinstance(item, QGraphicsRectItem) and item.data(0) is not None:
+                # Cell frames carry their ComponentDef; the zoom rubber
+                # band is UI and has no data, so it keeps its blue.
+                pen = item.pen()
+                pen.setColor(display_color(QColor(*_FRAME_RGB)))
+                item.setPen(pen)
+
     def __init__(self, scene: QGraphicsScene, parent: QWidget | None = None):
         super().__init__(scene, parent)
         self.setRenderHints(
@@ -81,7 +113,7 @@ class LibraryTableView(QGraphicsView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setAcceptDrops(False)
-        self.setBackgroundBrush(QColor(255, 255, 255))
+        self.refresh_polarity()
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
         # Accept native gestures (pinch-to-zoom on trackpad)
@@ -376,7 +408,7 @@ def build_library_table(
     label_font.setPointSize(LABEL_FONT_SIZE)
 
     # Frame pen
-    frame_pen = QPen(QColor(200, 200, 200))
+    frame_pen = QPen(QColor(*_FRAME_RGB))
     frame_pen.setWidthF(0.5)
 
     y_cursor = 0.0

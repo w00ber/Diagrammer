@@ -11,6 +11,8 @@ from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
 from diagrammer.items.port_item import PortItem
 from diagrammer.models.component_def import ComponentDef
+from diagrammer.utils.polarity import is_inverted as polarity_inverted
+from diagrammer.utils.polarity import svg_renderer
 
 
 # Selection highlight — tweak these to change appearance:
@@ -166,7 +168,7 @@ class ComponentItem(QGraphicsItem):
         # it paints after the leads).
         _svg_bytes = self._prepare_svg_bytes(component_def.svg_path)
         self._has_upright = b'id="upright"' in _svg_bytes
-        self._renderer = QSvgRenderer(_svg_bytes)
+        self._renderer = svg_renderer(_svg_bytes)
         # Cache for dynamic lead shortening: maps port_name -> shorten_amount
         self._cached_lead_shortening: dict[str, float] = {}
         self._lead_renderer: QSvgRenderer | None = None  # rebuilt when shortening changes
@@ -246,7 +248,7 @@ class ComponentItem(QGraphicsItem):
 
     def _invalidate_renderers(self) -> None:
         """Force all cached renderers to be rebuilt with current style overrides."""
-        self._renderer = QSvgRenderer(
+        self._renderer = svg_renderer(
             self._prepare_svg_bytes(self._def.svg_path,
                                     style_overrides=self._style_overrides,
                                     flip_h=self._flip_h, flip_v=self._flip_v,
@@ -1088,7 +1090,7 @@ class ComponentItem(QGraphicsItem):
             self._cached_lead_shortening = shortening
             if shortening:
                 port_positions = [(p.name, p.x, p.y) for p in self._def.ports]
-                self._lead_renderer = QSvgRenderer(self._prepare_svg_bytes(
+                self._lead_renderer = svg_renderer(self._prepare_svg_bytes(
                     self._def.svg_path,
                     lead_shortening=shortening,
                     port_positions=port_positions,
@@ -1169,7 +1171,8 @@ class ComponentItem(QGraphicsItem):
         The result is cached and only rebuilt when the stretch amount changes.
         """
         cache_key = (self._stretch_dx, self._stretch_dy, hash(self._style_overrides),
-                     self._flip_h, self._flip_v, self._rotation_angle)
+                     self._flip_h, self._flip_v, self._rotation_angle,
+                     polarity_inverted())
         if (hasattr(self, '_stretched_cache_key')
                 and self._stretched_cache_key == cache_key
                 and hasattr(self, '_stretched_renderer_cache')):
@@ -1301,7 +1304,7 @@ class ComponentItem(QGraphicsItem):
             self._apply_style_overrides(root, self._style_overrides)
 
         svg_bytes = ET.tostring(root, encoding="unicode").encode("utf-8")
-        renderer = QSvgRenderer(svg_bytes)
+        renderer = svg_renderer(svg_bytes)
         self._stretched_cache_key = cache_key
         self._stretched_renderer_cache = renderer
         return renderer

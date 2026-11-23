@@ -8,6 +8,8 @@ from PySide6.QtCore import QByteArray, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtWidgets import QApplication, QGraphicsScene
 
+from diagrammer.utils.polarity import display_color
+
 logger = logging.getLogger(__name__)
 
 
@@ -123,7 +125,8 @@ class DiagramExporter:
         try:
             image = render_scene_to_qimage(
                 scene, dpi=dpi, margin=margin,
-                background=QColor(Qt.GlobalColor.white),
+                # The page follows display polarity, like everything on it.
+                background=display_color(QColor(Qt.GlobalColor.white)),
                 export_scale=_get_export_scale(),
             )
             image.save(path)

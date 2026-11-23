@@ -1517,6 +1517,28 @@ class DiagramScene(QGraphicsScene):
             if isinstance(item, ComponentItem):
                 item.refresh_lead_shortening()
 
+    def refresh_polarity(self) -> None:
+        """Rebuild what has colour baked in after a polarity change.
+
+        Painter-drawn items (wires, junctions, shapes, text) read polarity at
+        paint time and only need a repaint. SVG renderers and rendered math
+        hold colour in their bytes, so they are rebuilt.
+        """
+        from diagrammer.items.annotation_item import AnnotationItem
+        from diagrammer.items.component_item import ComponentItem
+        from diagrammer.items.svg_image_item import SvgImageItem
+        for item in self.items():
+            if isinstance(item, ComponentItem):
+                item._invalidate_renderers()
+            elif isinstance(item, SvgImageItem):
+                item.rebuild_renderer()
+            elif isinstance(item, AnnotationItem):
+                item._try_render_math()
+        # _invalidate_renderers drops the lead-shortened renderers; this
+        # rebuilds them along with the routes.
+        self.update_connections()
+        self.update()
+
     # -- Rotation pivot port --
 
     @property

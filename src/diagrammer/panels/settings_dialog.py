@@ -69,6 +69,20 @@ def _parse_color(value, default: QColor) -> QColor:
     return c if c.isValid() else QColor(default)
 
 
+#: The stock canvas: white page, light-grey grid. "Default" in Settings ▸
+#: Appearance and View ▸ Appearance.
+DEFAULT_CANVAS_COLORS: dict[str, str] = {
+    "background": "#ffffff", "grid": "#dcdcdc", "grid_major": "#bebebe",
+}
+
+
+def copy_appearance(state: dict) -> dict:
+    """A copy of an appearance state deep enough that edits don't alias."""
+    out = dict(state)
+    out["custom_canvas_colors"] = dict(state["custom_canvas_colors"])
+    return out
+
+
 class AppSettings:
     """Central store for application-wide default settings, persisted to disk."""
 
@@ -88,16 +102,20 @@ class AppSettings:
         # chrome theme, because the diagram artwork is authored that way.
         self.theme: str = "system"
 
-        # Per-theme appearance colors. ``background`` paints the canvas
-        # and the library/annotations panels; ``grid`` and ``grid_major``
-        # are the minor and major snap-grid line colors. Each theme has
-        # its own independent set so users can tune dark mode without
-        # affecting light mode.
-        self.theme_colors: dict[str, dict[str, str]] = {
-            "system": {"background": "#ffffff", "grid": "#dcdcdc", "grid_major": "#bebebe"},
-            "light":  {"background": "#ffffff", "grid": "#dcdcdc", "grid_major": "#bebebe"},
-            "dark":   {"background": "#ffffff", "grid": "#dcdcdc", "grid_major": "#b4b4b4"},
-        }
+        # Display polarity (View ▸ Invert Polarity): draw the canvas
+        # white-on-black, and export the same way. A view setting — no
+        # stored colour changes; see diagrammer.utils.polarity.
+        self.invert_polarity: bool = False
+
+        # Canvas colours, independent of the interface theme above.
+        # "default" is white with the stock grid (DEFAULT_CANVAS_COLORS);
+        # "custom" uses custom_canvas_colors, which the user edits and which
+        # survive switching back to default and out again. ``background``
+        # also paints the library panel; ``grid``/``grid_major`` are the
+        # minor/major snap-grid lines. Polarity (above) is applied on top
+        # of whichever is active and never rewrites them.
+        self.canvas_colors: str = "default"
+        self.custom_canvas_colors: dict[str, str] = dict(DEFAULT_CANVAS_COLORS)
 
         # Line styles (wiring)
         self.default_line_width = _d("wiring", "line_width", 3.0)
@@ -255,11 +273,12 @@ class AppSettings:
         the DEFAULT_VISIBLE_LIB_PREFIXES top-level groups."""
         if not self._first_launch or library is None:
             return
-        prefixes = self.DEFAULT_VISIBLE_LIB_PREFIXES
+        # Case-insensitive: git tracks "flair/", the constant says "FLAIR".
+        prefixes = {p.casefold() for p in self.DEFAULT_VISIBLE_LIB_PREFIXES}
         hidden = set()
         for cat in library.categories.keys():
             top = cat.split("/", 1)[0]
-            if top not in prefixes:
+            if top.casefold() not in prefixes:
                 hidden.add(cat)
         self.hidden_libraries = hidden
         self._first_launch = False
@@ -334,7 +353,9 @@ class AppSettings:
                 "default_shape_arrow_extend": self.default_shape_arrow_extend,
                 "export_scale": self.export_scale,
                 "theme": self.theme,
-                "theme_colors": self.theme_colors,
+                "invert_polarity": self.invert_polarity,
+                "canvas_colors": self.canvas_colors,
+                "custom_canvas_colors": self.custom_canvas_colors,
                 "settings_dialog_geometry": self.settings_dialog_geometry,
                 "settings_dialog_splitter_state": self.settings_dialog_splitter_state,
             }
@@ -466,18 +487,12 @@ class AppSettings:
                 self.default_shape_arrow_scale = data.get("default_shape_arrow_scale", self.default_shape_arrow_scale)
                 self.default_shape_arrow_extend = data.get("default_shape_arrow_extend", self.default_shape_arrow_extend)
                 self.export_scale = data.get("export_scale", self.export_scale)
+                self.invert_polarity = bool(
+                    data.get("invert_polarity", self.invert_polarity))
                 theme = data.get("theme", self.theme)
                 if theme in ("system", "light", "dark"):
                     self.theme = theme
-                tc = data.get("theme_colors")
-                if isinstance(tc, dict):
-                    for k in ("system", "light", "dark"):
-                        sub = tc.get(k)
-                        if isinstance(sub, dict):
-                            for kk in ("background", "grid", "grid_major"):
-                                vv = sub.get(kk)
-                                if isinstance(vv, str) and QColor(vv).isValid():
-                                    self.theme_colors[k][kk] = vv
+                self._load_canvas_colors(data)
                 self.settings_dialog_geometry = data.get(
                     "settings_dialog_geometry", "")
                 self.settings_dialog_splitter_state = data.get(
@@ -486,23 +501,55 @@ class AppSettings:
             logger.debug("Failed to load settings from %s", _SETTINGS_FILE, exc_info=True)
 
 
+    def _load_canvas_colors(self, data: dict) -> None:
+        """Read canvas colours, migrating the old per-theme ``theme_colors``.
+
+        Older settings kept a background/grid set per interface theme, and
+        the Settings theme radios switched between them, so "System" then
+        "Light" was the way back to your own colours. Now there is one custom
+        set. On first load after the change, the set of the theme that was
+        active becomes it, and is selected only if it was actually changed
+        from the stock colours.
+        """
+        def valid(d) -> dict[str, str]:
+            out = {}
+            if isinstance(d, dict):
+                for k in DEFAULT_CANVAS_COLORS:
+                    v = d.get(k)
+                    if isinstance(v, str) and QColor(v).isValid():
+                        out[k] = QColor(v).name()
+            return out
+
+        if "canvas_colors" in data or "custom_canvas_colors" in data:
+            self.custom_canvas_colors = {**DEFAULT_CANVAS_COLORS,
+                                         **valid(data.get("custom_canvas_colors"))}
+            mode = data.get("canvas_colors", "default")
+            self.canvas_colors = mode if mode in ("default", "custom") else "default"
+            return
+        legacy = data.get("theme_colors")
+        if isinstance(legacy, dict):
+            mine = {**DEFAULT_CANVAS_COLORS, **valid(legacy.get(self.theme))}
+            self.custom_canvas_colors = mine
+            self.canvas_colors = ("custom" if mine != DEFAULT_CANVAS_COLORS
+                                  else "default")
+
+    def active_canvas_colors(self) -> dict[str, str]:
+        """The canonical canvas colours in force (before polarity)."""
+        if self.canvas_colors == "custom":
+            return {**DEFAULT_CANVAS_COLORS, **self.custom_canvas_colors}
+        return dict(DEFAULT_CANVAS_COLORS)
+
     def current_background_color(self) -> QColor:
-        """Background color for canvas + library/annotations panels."""
-        return QColor(
-            self.theme_colors.get(self.theme, {}).get("background", "#ffffff")
-        )
+        """Canvas + library panel background, before polarity."""
+        return QColor(self.active_canvas_colors()["background"])
 
     def current_grid_color(self) -> QColor:
-        """Minor gridline color for the active theme."""
-        return QColor(
-            self.theme_colors.get(self.theme, {}).get("grid", "#dcdcdc")
-        )
+        """Minor gridline colour, before polarity."""
+        return QColor(self.active_canvas_colors()["grid"])
 
     def current_grid_major_color(self) -> QColor:
-        """Major gridline color for the active theme."""
-        return QColor(
-            self.theme_colors.get(self.theme, {}).get("grid_major", "#bebebe")
-        )
+        """Major gridline colour, before polarity."""
+        return QColor(self.active_canvas_colors()["grid_major"])
 
     def enabled_custom_library_paths(self) -> list[str]:
         """Return only the custom library paths the user has enabled."""
@@ -880,11 +927,11 @@ class SettingsDialog(QDialog):
         appearance_tab = QWidget()
         appearance_layout = QVBoxLayout(appearance_tab)
 
-        theme_group = QGroupBox("Theme")
+        theme_group = QGroupBox("Interface Theme")
         theme_v = QVBoxLayout()
         theme_hint = QLabel(
-            "Select which theme's appearance to edit. The chosen theme also "
-            "becomes the active theme when you click OK."
+            "Menus, panels and dialogs. The canvas colors below are separate "
+            "and do not change with the theme."
         )
         from diagrammer.app import hint_text_color as _htc
         theme_hint.setStyleSheet(f"color: {_htc()}; font-size: 11px;")
@@ -897,7 +944,6 @@ class SettingsDialog(QDialog):
         self._theme_btn_group.setExclusive(True)
         for label, key in (("System", "system"), ("Light", "light"), ("Dark", "dark")):
             rb = QRadioButton(label)
-            rb.setAutoExclusive(True)
             self._theme_radios[key] = rb
             self._theme_btn_group.addButton(rb)
             radio_row.addWidget(rb)
@@ -926,59 +972,87 @@ class SettingsDialog(QDialog):
             self._overlay_corner_combo.setCurrentIndex(_ci)
         hints_form.addRow("Overlay position:", self._overlay_corner_combo)
         hints_group.setLayout(hints_form)
-        appearance_layout.addWidget(hints_group)
 
-        # Working copy of theme_colors so Cancel discards edits
-        import copy
-        self._theme_colors_edit: dict[str, dict[str, str]] = copy.deepcopy(
-            settings.theme_colors
-        )
-        # Snapshot of original state for Cancel/restore
-        self._appearance_orig_colors: dict[str, dict[str, str]] = copy.deepcopy(
-            settings.theme_colors
-        )
-        self._appearance_orig_theme: str = settings.theme
-        # Editor scope: which theme key is currently being edited
-        self._appearance_edit_theme: str = settings.theme
+        # Working copy and the snapshot Cancel restores. Edits preview live
+        # (see _live_apply_appearance); done() rolls back unless accepted.
+        self._appearance_orig = {
+            "theme": settings.theme,
+            "canvas_colors": settings.canvas_colors,
+            "custom_canvas_colors": dict(settings.custom_canvas_colors),
+            "invert_polarity": settings.invert_polarity,
+        }
+        self._appearance_edit = copy_appearance(self._appearance_orig)
 
-        colors_group = QGroupBox("Colors for Selected Theme")
+        canvas_group = QGroupBox("Canvas Colors")
+        canvas_v = QVBoxLayout()
+        canvas_row = QHBoxLayout()
+        self._canvas_radios: dict[str, QRadioButton] = {}
+        self._canvas_btn_group = QButtonGroup(self)
+        self._canvas_btn_group.setExclusive(True)
+        for label, key in (("Default (white)", "default"), ("Custom", "custom")):
+            rb = QRadioButton(label)
+            self._canvas_radios[key] = rb
+            self._canvas_btn_group.addButton(rb)
+            canvas_row.addWidget(rb)
+        canvas_row.addStretch()
+        canvas_v.addLayout(canvas_row)
+
         colors_form = QFormLayout()
-
         self._bg_color_btn = QPushButton()
         self._bg_color_btn.setFixedSize(60, 24)
         self._bg_color_btn.setAutoDefault(False)
-        self._bg_color_btn.clicked.connect(self._pick_appearance_bg_color)
+        self._bg_color_btn.clicked.connect(
+            lambda: self._pick_canvas_color("background", "Background Color"))
         colors_form.addRow("Background:", self._bg_color_btn)
 
         self._grid_color_btn = QPushButton()
         self._grid_color_btn.setFixedSize(60, 24)
         self._grid_color_btn.setAutoDefault(False)
-        self._grid_color_btn.clicked.connect(self._pick_appearance_grid_color)
+        self._grid_color_btn.clicked.connect(
+            lambda: self._pick_canvas_color("grid", "Minor Grid Color"))
         colors_form.addRow("Grid (minor):", self._grid_color_btn)
 
         self._grid_major_color_btn = QPushButton()
         self._grid_major_color_btn.setFixedSize(60, 24)
         self._grid_major_color_btn.setAutoDefault(False)
-        self._grid_major_color_btn.clicked.connect(self._pick_appearance_grid_major_color)
+        self._grid_major_color_btn.clicked.connect(
+            lambda: self._pick_canvas_color("grid_major", "Major Grid Color"))
         colors_form.addRow("Grid (major):", self._grid_major_color_btn)
+        canvas_v.addLayout(colors_form)
 
-        colors_group.setLayout(colors_form)
-        appearance_layout.addWidget(colors_group)
+        self._canvas_reset_btn = QPushButton("Reset Custom Colors")
+        self._canvas_reset_btn.setAutoDefault(False)
+        self._canvas_reset_btn.clicked.connect(self._reset_custom_canvas_colors)
+        canvas_v.addWidget(self._canvas_reset_btn,
+                           alignment=Qt.AlignmentFlag.AlignRight)
 
-        appearance_reset = QPushButton("Reset This Theme's Colors")
-        appearance_reset.setAutoDefault(False)
-        appearance_reset.clicked.connect(self._reset_appearance_for_current_theme)
-        appearance_layout.addWidget(
-            appearance_reset, alignment=Qt.AlignmentFlag.AlignRight)
+        self._polarity_cb = QCheckBox(
+            "Invert polarity (white on black; exports match the canvas)")
+        canvas_v.addWidget(self._polarity_cb)
+        polarity_hint = QLabel(
+            "Drawn on top of the colors above and never changes them: "
+            "turning it off brings back exactly what you had. Also in "
+            "View \u25b8 Invert Polarity.")
+        polarity_hint.setStyleSheet(f"color: {_htc()}; font-size: 11px;")
+        polarity_hint.setWordWrap(True)
+        canvas_v.addWidget(polarity_hint)
+
+        canvas_group.setLayout(canvas_v)
+        appearance_layout.addWidget(canvas_group)
+        appearance_layout.addWidget(hints_group)
         appearance_layout.addStretch()
 
-        # Wire radios after buttons exist so callbacks find them
+        # Wire controls after they all exist, then load the working copy.
+        self._sync_appearance_controls()
         for key, rb in self._theme_radios.items():
             rb.toggled.connect(
-                lambda checked, k=key: checked and self._on_appearance_theme_radio(k)
-            )
-        self._theme_radios[self._appearance_edit_theme].setChecked(True)
-        self._refresh_appearance_color_buttons()
+                lambda checked, k=key: checked and self._edit_appearance(theme=k))
+        for key, rb in self._canvas_radios.items():
+            rb.toggled.connect(
+                lambda checked, k=key: checked
+                and self._edit_appearance(canvas_colors=k))
+        self._polarity_cb.toggled.connect(
+            lambda on: self._edit_appearance(invert_polarity=on))
 
         tabs.addTab(_scrollable(appearance_tab), "Appearance")
 
@@ -1257,94 +1331,83 @@ class SettingsDialog(QDialog):
 
     # ---- Appearance tab helpers ----
 
-    def _on_appearance_theme_radio(self, theme_key: str) -> None:
-        self._appearance_edit_theme = theme_key
-        self._refresh_appearance_color_buttons()
+    def _sync_appearance_controls(self) -> None:
+        """Show the working copy in the controls, without re-triggering."""
+        e = self._appearance_edit
+        for group in (self._theme_radios, self._canvas_radios):
+            for rb in group.values():
+                rb.blockSignals(True)
+        self._polarity_cb.blockSignals(True)
+        try:
+            self._theme_radios.get(e["theme"],
+                                   self._theme_radios["system"]).setChecked(True)
+            self._canvas_radios[e["canvas_colors"]].setChecked(True)
+            self._polarity_cb.setChecked(e["invert_polarity"])
+        finally:
+            for group in (self._theme_radios, self._canvas_radios):
+                for rb in group.values():
+                    rb.blockSignals(False)
+            self._polarity_cb.blockSignals(False)
+        custom = e["canvas_colors"] == "custom"
+        colors = (e["custom_canvas_colors"] if custom
+                  else DEFAULT_CANVAS_COLORS)
+        for btn, key in ((self._bg_color_btn, "background"),
+                         (self._grid_color_btn, "grid"),
+                         (self._grid_major_color_btn, "grid_major")):
+            self._update_color_btn(btn, QColor(colors[key]))
+            btn.setEnabled(custom)
+        self._canvas_reset_btn.setEnabled(custom)
+
+    def _edit_appearance(self, **changes) -> None:
+        self._appearance_edit.update(changes)
+        self._sync_appearance_controls()
         self._live_apply_appearance()
+
+    def _pick_canvas_color(self, key: str, title: str) -> None:
+        cur = QColor(self._appearance_edit["custom_canvas_colors"][key])
+        c = QColorDialog.getColor(cur, self, title)
+        if c.isValid():
+            custom = dict(self._appearance_edit["custom_canvas_colors"])
+            custom[key] = c.name()
+            self._edit_appearance(custom_canvas_colors=custom)
+
+    def _reset_custom_canvas_colors(self) -> None:
+        self._edit_appearance(custom_canvas_colors=dict(DEFAULT_CANVAS_COLORS))
+
+    def _push_appearance(self, state: dict) -> None:
+        """Write *state* into the settings and onto the running app."""
+        # Compare against what is on screen, not the settings object:
+        # reset_all() changes the latter without restyling anything.
+        old_theme = getattr(self, "_applied_theme", self._appearance_orig["theme"])
+        self._applied_theme = state["theme"]
+        self._settings.theme = state["theme"]
+        self._settings.canvas_colors = state["canvas_colors"]
+        self._settings.custom_canvas_colors = dict(state["custom_canvas_colors"])
+        self._settings.invert_polarity = state["invert_polarity"]
+        if state["theme"] != old_theme:
+            try:
+                from PySide6.QtWidgets import QApplication
+                from diagrammer.app import apply_theme
+                app = QApplication.instance()
+                if app is not None:
+                    apply_theme(app, state["theme"])
+            except Exception:
+                logger.debug("Failed to apply theme '%s'", state["theme"], exc_info=True)
+        parent = self.parent()
+        if parent is not None and hasattr(parent, "_apply_appearance"):
+            try:
+                parent._apply_appearance()
+            except Exception:
+                logger.debug("Failed to apply appearance to the window", exc_info=True)
 
     def _live_apply_appearance(self) -> None:
-        """Push the in-progress appearance edits onto the running app so
-        the user can see colors update as they pick them. Restored on
-        Cancel via _restore_appearance_snapshot."""
-        self._settings.theme_colors = self._theme_colors_edit
-        self._settings.theme = self._appearance_edit_theme
-        try:
-            from PySide6.QtWidgets import QApplication
-            from diagrammer.app import apply_theme
-            app = QApplication.instance()
-            if app is not None:
-                apply_theme(app, self._appearance_edit_theme)
-        except Exception:
-            logger.debug("Failed to live-apply theme '%s'", self._appearance_edit_theme, exc_info=True)
-        parent = self.parent()
-        if parent is not None and hasattr(parent, "_reassert_light_surfaces"):
-            try:
-                parent._reassert_light_surfaces()
-            except Exception:
-                logger.debug("Failed to reassert light surfaces during live preview", exc_info=True)
+        """Preview the working copy on the running app. Cancel undoes it
+        via _restore_appearance_snapshot."""
+        self._push_appearance(self._appearance_edit)
 
     def _restore_appearance_snapshot(self) -> None:
-        """Roll the running app back to the colors/theme captured at
-        dialog open. Called when the user cancels."""
-        import copy
-        self._settings.theme_colors = copy.deepcopy(self._appearance_orig_colors)
-        self._settings.theme = self._appearance_orig_theme
-        try:
-            from PySide6.QtWidgets import QApplication
-            from diagrammer.app import apply_theme
-            app = QApplication.instance()
-            if app is not None:
-                apply_theme(app, self._appearance_orig_theme)
-        except Exception:
-            logger.debug("Failed to restore theme '%s' on cancel", self._appearance_orig_theme, exc_info=True)
-        parent = self.parent()
-        if parent is not None and hasattr(parent, "_reassert_light_surfaces"):
-            try:
-                parent._reassert_light_surfaces()
-            except Exception:
-                logger.debug("Failed to reassert light surfaces during appearance restore", exc_info=True)
-
-    def _refresh_appearance_color_buttons(self) -> None:
-        colors = self._theme_colors_edit.get(self._appearance_edit_theme, {})
-        self._update_color_btn(self._bg_color_btn, QColor(colors.get("background", "#ffffff")))
-        self._update_color_btn(self._grid_color_btn, QColor(colors.get("grid", "#dcdcdc")))
-        self._update_color_btn(self._grid_major_color_btn, QColor(colors.get("grid_major", "#bebebe")))
-
-    def _pick_appearance_bg_color(self) -> None:
-        cur = QColor(self._theme_colors_edit[self._appearance_edit_theme]["background"])
-        c = QColorDialog.getColor(cur, self, "Background Color")
-        if c.isValid():
-            self._theme_colors_edit[self._appearance_edit_theme]["background"] = c.name()
-            self._refresh_appearance_color_buttons()
-            self._live_apply_appearance()
-
-    def _pick_appearance_grid_color(self) -> None:
-        cur = QColor(self._theme_colors_edit[self._appearance_edit_theme]["grid"])
-        c = QColorDialog.getColor(cur, self, "Minor Grid Color")
-        if c.isValid():
-            self._theme_colors_edit[self._appearance_edit_theme]["grid"] = c.name()
-            self._refresh_appearance_color_buttons()
-            self._live_apply_appearance()
-
-    def _pick_appearance_grid_major_color(self) -> None:
-        cur = QColor(self._theme_colors_edit[self._appearance_edit_theme]["grid_major"])
-        c = QColorDialog.getColor(cur, self, "Major Grid Color")
-        if c.isValid():
-            self._theme_colors_edit[self._appearance_edit_theme]["grid_major"] = c.name()
-            self._refresh_appearance_color_buttons()
-            self._live_apply_appearance()
-
-    def _reset_appearance_for_current_theme(self) -> None:
-        defaults = {
-            "system": {"background": "#ffffff", "grid": "#dcdcdc", "grid_major": "#bebebe"},
-            "light":  {"background": "#ffffff", "grid": "#dcdcdc", "grid_major": "#bebebe"},
-            "dark":   {"background": "#ffffff", "grid": "#dcdcdc", "grid_major": "#b4b4b4"},
-        }
-        self._theme_colors_edit[self._appearance_edit_theme] = dict(
-            defaults[self._appearance_edit_theme]
-        )
-        self._refresh_appearance_color_buttons()
-        self._live_apply_appearance()
+        """Roll the running app back to what it was when the dialog opened."""
+        self._push_appearance(self._appearance_orig)
 
     def _browse_latex_bin_path(self) -> None:
         from PySide6.QtWidgets import QFileDialog
@@ -1566,6 +1629,13 @@ class SettingsDialog(QDialog):
         self._update_color_btn(self._annot_color_btn, self._annot_color)
         self._annot_outlines_cb.setChecked(self._settings.annotation_text_as_outlines)
         self._export_scale_spin.setValue(self._settings.export_scale * 100.0)
+        # reset_all() put theme, canvas colours and polarity back to stock;
+        # adopt that as the working copy and show it.
+        self._edit_appearance(
+            theme=self._settings.theme,
+            canvas_colors=self._settings.canvas_colors,
+            custom_canvas_colors=dict(self._settings.custom_canvas_colors),
+            invert_polarity=self._settings.invert_polarity)
 
     def _pick_annot_color(self) -> None:
         c = QColorDialog.getColor(self._annot_color, self, "Default Annotation Color")
@@ -1829,18 +1899,7 @@ class SettingsDialog(QDialog):
             s = _sc.SHORTCUTS.get(aid)
             if s is not None:
                 s.set_override(row["edit"].keySequence())
-        # Appearance: per-theme colors and active theme
-        self._settings.theme_colors = self._theme_colors_edit
-        new_theme = self._appearance_edit_theme
-        if new_theme != self._settings.theme:
-            self._settings.theme = new_theme
-            try:
-                from PySide6.QtWidgets import QApplication
-                from diagrammer.app import apply_theme
-                app = QApplication.instance()
-                if app is not None:
-                    apply_theme(app, new_theme)
-            except Exception:
-                logger.debug("Failed to apply theme '%s' on accept", new_theme, exc_info=True)
+        # Appearance: already previewed live; make the working copy final.
+        self._push_appearance(self._appearance_edit)
         # Persist to disk (save() also dumps live overrides)
         self._settings.save()
