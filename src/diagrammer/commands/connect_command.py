@@ -10,80 +10,49 @@ from diagrammer.items.connection_item import ConnectionItem
 from diagrammer.items.port_item import PortItem
 
 
-def _get_lead_stroke_width(port: PortItem) -> float | None:
-    """Extract the stroke width of the lead connected to this port from the SVG.
+def lead_style_at(port: PortItem):
+    """The ``LeadStyle`` of the lead a wire on *port* continues, or None.
 
-    Parses the component's SVG file, finds the leads layer, and reads
-    the stroke-width from CSS classes or inline styles. Returns None
-    if no leads layer exists or no stroke width is found.
+    The lead that ends at this very port when there is one; otherwise the
+    part's first lead (``ComponentDef.default_lead``), which is what every
+    port used to get. A junction has no lead of its own: None.
     """
-    import re
-    import xml.etree.ElementTree as ET
-
-    from diagrammer.io.svg_parse import parse_svg
-
-    comp = port.component
-    if not hasattr(comp, 'component_def'):
+    from diagrammer.models.lead_style import LeadStyle
+    comp = getattr(port, "component", None)
+    cdef = getattr(comp, "component_def", None)
+    if cdef is None:
         return None
+    pdef = getattr(port, "port_def", None)
+    if pdef is not None and (pdef.lead_width is not None
+                             or pdef.lead_color is not None):
+        fallback = cdef.default_lead
+        return LeadStyle(
+            pdef.lead_width if pdef.lead_width is not None
+            else getattr(fallback, "width", None),
+            pdef.lead_color if pdef.lead_color is not None
+            else getattr(fallback, "color", None))
+    return cdef.default_lead
 
-    cdef = comp.component_def
-    try:
-        tree = parse_svg(cdef.svg_path)
-        root = tree.getroot()
-    except (OSError, ET.ParseError):
-        return None
 
-    def _strip_ns(tag):
-        return tag.split("}", 1)[1] if "}" in tag else tag
+def _get_lead_stroke_width(port: PortItem) -> float | None:
+    """Stroke width of the lead a wire on *port* continues (see
+    :func:`lead_style_at`). Kept under its old name: svglint's messages and
+    the headless API refer to it."""
+    style = lead_style_at(port)
+    return style.width if style is not None else None
 
-    # Parse CSS classes
-    css_classes: dict[str, dict[str, str]] = {}
-    for elem in root.iter():
-        if _strip_ns(elem.tag) == "style" and elem.text:
-            for m in re.finditer(r'([^{}]+)\{([^}]+)\}', elem.text):
-                props = {}
-                for pm in re.finditer(r'([\w-]+)\s*:\s*([^;]+)', m.group(2)):
-                    props[pm.group(1).strip()] = pm.group(2).strip()
-                # [\w-] not \w: a hyphen is legal in a CSS class name, and
-                # \w+ would read ".foo-bar" as "foo" — recording the wrong
-                # class and then failing to resolve the element's real one.
-                for cm in re.finditer(r'\.([\w-]+)', m.group(1)):
-                    css_classes.setdefault(cm.group(1), {}).update(props)
 
-    # Find any lead layer (legacy "leads" or direction-tagged variants).
-    # We pick whichever appears first; their stroke-width should match
-    # since they all represent the same lead style.
-    leads = None
-    lead_ids = ("leads", "leads-left", "leads-right", "leads-top", "leads-bottom")
-    for elem in root.iter():
-        if _strip_ns(elem.tag) == "g" and elem.get("id") in lead_ids:
-            leads = elem
-            break
+def wire_width_for(source: PortItem, target: PortItem) -> float | None:
+    """The lead width a new wire between *source* and *target* should take.
 
-    if leads is None:
-        return None
-
-    # Check the first leaf element in leads for stroke-width
-    for elem in leads.iter():
-        tag = _strip_ns(elem.tag)
-        if tag in ("line", "path", "polyline"):
-            # Check inline style first
-            style = elem.get("style", "")
-            if style:
-                m = re.search(r'stroke-width\s*:\s*([\d.]+)', style)
-                if m:
-                    return float(m.group(1))
-            # Check direct attribute
-            sw = elem.get("stroke-width")
-            if sw:
-                return float(sw.replace("px", "").replace("pt", "").strip())
-            # Check CSS class
-            for cls in elem.get("class", "").split():
-                if cls in css_classes:
-                    sw_val = css_classes[cls].get("stroke-width")
-                    if sw_val:
-                        return float(sw_val.replace("px", "").replace("pt", "").strip())
-
+    The source end's lead when it has one, else the target's: a wire drawn
+    *from* a junction or a lead-less terminal used to fall straight to the
+    global default even when its other end was a part with a 3 px lead.
+    """
+    for port in (source, target):
+        w = _get_lead_stroke_width(port)
+        if w:
+            return w
     return None
 
 
@@ -204,8 +173,9 @@ class CreateConnectionCommand(QUndoCommand):
                 self._connection.routing_mode = self._scene.default_routing_mode
             else:
                 self._connection.routing_mode = app_settings.default_routing_mode
-            # Try to match the lead stroke width from the source port's component
-            lead_width = _get_lead_stroke_width(self._source_port)
+            # Match the lead the wire continues: the source end's, or the
+            # target's when the source is a junction or has no lead.
+            lead_width = wire_width_for(self._source_port, self._target_port)
             self._connection.line_width = lead_width if lead_width else app_settings.default_line_width
             self._connection.line_color = app_settings.default_line_color
             self._connection.corner_radius = app_settings.default_corner_radius

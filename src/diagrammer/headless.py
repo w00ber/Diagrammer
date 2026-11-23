@@ -685,11 +685,10 @@ class Diagram:
         """Lead width at either end, else the library's house weight."""
         import re
 
-        from diagrammer.commands.connect_command import _get_lead_stroke_width
-        for port in ports:
-            w = _get_lead_stroke_width(port)
-            if w:
-                return w
+        from diagrammer.commands.connect_command import wire_width_for
+        w = wire_width_for(*ports)
+        if w:
+            return w
         keys = [getattr(p.component, "library_key", "") for p in ports]
         keys += [getattr(i, "library_key", "") for i in self._items.values()]
         for key in keys:

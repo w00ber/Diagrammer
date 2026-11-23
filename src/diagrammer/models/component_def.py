@@ -30,6 +30,10 @@ class PortDef:
     y: float
     approach_dx: float = 0.0  # set after viewBox is known
     approach_dy: float = 0.0
+    # The lead that ends on this port, as drawn (models/lead_style.py).
+    # None when no lead ends here or the SVG does not say.
+    lead_width: float | None = None
+    lead_color: str | None = None
 
 
 @dataclass
@@ -77,6 +81,10 @@ class ComponentDef:
     # Searched by the headless API so "wavy arrow" finds a photon. A title
     # that is only the file name (Illustrator writes one) is dropped.
     description: str = ""
+    # The first lead's style, for ports with no lead of their own; what wire
+    # creation used for every port before per-port styles existed.
+    # (A LeadStyle from models/lead_style.py.)
+    default_lead: object | None = None
     # If this def came from a user-saved compound, the path to its sibling
     # ``.dgmcomp`` manifest. When set, the canvas drop handler instantiates
     # the manifest as a group instead of placing the SVG as a single item,
@@ -197,6 +205,11 @@ class ComponentDef:
         # Auto-detect approach directions from port positions vs viewBox
         _assign_approach_directions(ports, viewbox)
 
+        # Which lead ends at each port, and its stroke; plus the part-wide
+        # fallback (first lead) for ports that have none of their own.
+        from diagrammer.models.lead_style import assign_lead_styles
+        default_lead = assign_lead_styles(root, ports)
+
         # Parse labels
         labels = _parse_labels(root)
 
@@ -260,6 +273,7 @@ class ComponentDef:
             snap_point=snap_point,
             category=category,
             description=description,
+            default_lead=default_lead,
             compound_manifest_path=manifest_path,
         )
 
