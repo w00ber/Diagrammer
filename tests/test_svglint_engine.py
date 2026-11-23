@@ -326,6 +326,27 @@ def test_two_upright_groups_is_an_error(tmp_path: Path) -> None:
     assert f.severity == "error"
 
 
+def test_metadata_stretch_without_a_break_line_is_flagged(tmp_path: Path) -> None:
+    """The flag alone moves nothing: handles and the headless API act only
+    where a break line is defined. flowchart/process shipped like this."""
+    meta = ('  <metadata><component stretch-h="false" stretch-v="true"/>'
+            "</metadata>\n")
+    f = next(x for x in svglint.check_file(write(tmp_path, SOUND_BODY + meta),
+                                           profile=PAPER)
+             if x.check_id == "phantom-stretch")
+    assert f.severity == "warning"
+    assert "stretch-v" in f.message
+
+
+def test_metadata_stretch_with_its_break_line_passes(tmp_path: Path) -> None:
+    body = (SOUND_BODY
+            + '  <g id="stretch"><line id="stretch:h" x1="0" y1="50" '
+              'x2="60" y2="50"/></g>\n'
+            + '  <metadata><component stretch-v="true"/></metadata>\n')
+    assert "phantom-stretch" not in ids(
+        svglint.check_file(write(tmp_path, body), profile=PAPER))
+
+
 def test_profile_can_opt_out_of_a_check(tmp_path: Path) -> None:
     """circuits/ parts centre their common port off the edge by design."""
     body = (

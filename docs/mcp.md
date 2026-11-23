@@ -195,9 +195,10 @@ Start short, as above, and add detail only where the result is wrong:
   value actually applied. `describe_component`'s older `stretch: {h, v}` field
   names the *break line*, so `"v": true` means it lengthens horizontally.
 - **`stretch_component` keeps a port fixed, not the part.** By default it keeps
-  a port the stretch leaves in place, so the part grows away from it. Flip
-  decides which end that is on screen; pass `keep="<port>"` to pin the end
-  that is wired.
+  the wired end when every wire is on one end, so the circuit stays put and
+  the free end grows. With wires on both ends (or none) it keeps a port the
+  stretch leaves in place, and one side's wires re-route; pass
+  `keep="<port>"` to choose which.
 - **Only the libraries this machine has.** A local server loads the shipped
   parts, your edited copies in `~/.diagrammer/components/`, and the custom
   library folders enabled in the app's settings. An edited copy takes

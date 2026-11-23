@@ -608,6 +608,50 @@ def check_duplicate_upright(text: str, path: Path,
     )]
 
 
+def check_phantom_stretch(text: str, path: Path,
+                          profile: LibraryProfile) -> list[Finding]:
+    """``<metadata>`` says the part stretches, but nothing defines where.
+
+    The metadata flag alone moves nothing: ``ComponentItem`` draws a stretch
+    handle, and the headless ``stretch`` acts, only where a break line exists
+    (a ``stretch`` layer, a ``tile`` group, or direction-tagged leads). The
+    Properties panel still offers the stretch fields, which then do nothing.
+    """
+    from diagrammer.models.component_def import ComponentDef
+
+    meta = re.search(r"<metadata\b.*?</metadata>", text, re.S)
+    if not meta:
+        return []
+    def declared(attr: str) -> bool:
+        m = re.search(rf'{attr}\s*=\s*"([^"]*)"', meta.group(0))
+        return bool(m) and m.group(1).strip().lower() == "true"
+    try:
+        cdef = ComponentDef.from_svg_text(text, path=path)
+    except Exception:
+        return []  # check_parse already reported it
+    # Horizontal stretch comes from a *vertical* break line (stretch:v), and
+    # vertical from a horizontal one — the ComponentDef field names follow
+    # the line, the metadata attributes follow the motion.
+    missing = []
+    if declared("stretch-h") and (cdef.stretch_v_pos is None
+                                  and cdef.stretch_v_repeat is None):
+        missing.append(("stretch-h", "horizontally", "stretch:v"))
+    if declared("stretch-v") and (cdef.stretch_h_pos is None
+                                  and cdef.stretch_h_repeat is None):
+        missing.append(("stretch-v", "vertically", "stretch:h"))
+    return [Finding(
+        check_id="phantom-stretch",
+        severity="warning",
+        message=f'<metadata> {attr}="true" but no break line for it',
+        detail=(f"The part is declared stretchable {how}, but nothing says "
+                f"where it breaks, so it never stretches: no handle on the "
+                f"canvas, the Properties stretch fields do nothing, and the "
+                f"headless API reports it as not stretchable. Add a "
+                f'<line id="{line}"> in <g id="stretch">, a <g id="tile">, or '
+                f"direction-tagged leads — or drop the flag."),
+    ) for attr, how, line in missing]
+
+
 #: Run order. ``check_parse`` is first because a file the app cannot load makes
 #: every other result meaningless; the rest are grouped structure, then ports,
 #: then leads, then style, which is also roughly how a reader wants them.
@@ -617,6 +661,7 @@ ALL_CHECKS = (
     check_mangled_ids,
     check_degraded_primitives,
     check_duplicate_upright,
+    check_phantom_stretch,
     check_lead_like_layer,
     check_viewbox,
     check_artwork_layer,

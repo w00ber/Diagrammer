@@ -260,6 +260,43 @@ def test_stretch_default_keeps_a_port_that_did_not_move(d):
     assert _ports(d, "TL")[kept]["at"] == at[kept]["at"]
 
 
+@pytest.mark.parametrize("wired_end", ["left", "right"])
+def test_stretch_default_keeps_the_only_wired_end(d, wired_end):
+    """One end wired: that end stays, whichever side the break moves."""
+    d.add(COAX, (0, 0), anchor="left", id="TL")
+    d.node((-200, 0) if wired_end == "left" else (400, 0), id="N")
+    d.connect("N", "center", "TL", wired_end)
+    at = _ports(d, "TL")[wired_end]["at"]
+    out = d.stretch("TL", by=80)
+    assert out["kept"] == wired_end
+    assert _ports(d, "TL")[wired_end]["at"] == at
+    assert _stale_wires(d) == []
+
+
+def test_stretch_default_with_both_ends_wired_keeps_a_still_port(d):
+    d.add(COAX, (0, 0), anchor="left", id="TL")
+    d.node((-200, 0), id="A")
+    d.node((400, 0), id="B")
+    d.connect("A", "center", "TL", "left")
+    d.connect("B", "center", "TL", "right")
+    before = _ports(d, "TL")
+    out = d.stretch("TL", by=80)
+    assert _ports(d, "TL")[out["kept"]]["at"] == before[out["kept"]]["at"]
+    moved = [n for n in before if _ports(d, "TL")[n]["at"] != before[n]["at"]]
+    assert moved and out["kept"] not in moved
+    assert _stale_wires(d) == []
+
+
+def test_flowchart_process_box_stretches_horizontally(d):
+    """It declared stretch-h in <metadata> with no break line, so it never
+    stretched; the break line now sits at its centre."""
+    d.add("flowchart/process", (0, 0), anchor="left", id="P")
+    out = d.stretch("P", by=(40, 0), keep="left")
+    assert out["stretch"] == [40.0, 0.0]
+    ports = _ports(d, "P")
+    assert ports["right"]["at"][0] - ports["left"]["at"][0] == pytest.approx(160)
+
+
 def test_repeat_stretch_snaps_and_reports_what_was_applied(d):
     tile = d.describe(JJ)["stretch_tile"]
     (axis, size), = tile.items()

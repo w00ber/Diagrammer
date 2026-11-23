@@ -274,7 +274,8 @@ async def stretch_component(id: str, to: float | list[float] | None = None,
 
     to sets the stretch, by adds to it: [dx, dy] in the part's own unrotated
     frame, or one number for a one-axis part. keep is the port that must not
-    move (default: one the stretch leaves in place). Returns the applied
+    move (default: the wired end, if all wires are on one end; else one the
+    stretch leaves in place). Returns the applied
     stretch, which may be snapped to whole tiles."""
     applied = _d().stretch(id, to=to, by=by, keep=keep)
     return {**_brief(id), **applied}
