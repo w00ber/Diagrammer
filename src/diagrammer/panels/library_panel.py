@@ -883,8 +883,10 @@ def _make_icon(comp_def: ComponentDef) -> QIcon:
     from PySide6.QtGui import QPainter
 
     from diagrammer.items.component_item import ComponentItem
+    from diagrammer.utils.polarity import svg_renderer
     svg_bytes = ComponentItem._prepare_svg_bytes(comp_def.svg_path)
-    renderer = QSvgRenderer(svg_bytes)
+    # Thumbnails preview the canvas, so they draw in display polarity.
+    renderer = svg_renderer(svg_bytes)
     pixmap = QPixmap(THUMB_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
 

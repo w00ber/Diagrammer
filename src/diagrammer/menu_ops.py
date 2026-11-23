@@ -364,6 +364,25 @@ class MenuMixin:
             else "system"
         self._theme_actions[current].setChecked(True)
 
+        # Canvas colours, independent of the interface theme. Mirrors
+        # Settings ▸ Appearance; _sync_appearance_actions keeps them agreeing.
+        appearance_menu.addSeparator()
+        self._canvas_group = QActionGroup(self)
+        self._canvas_group.setExclusive(True)
+        self._canvas_actions: dict[str, QAction] = {}
+        for mode, label in (("default", "Canvas: &Default (White)"),
+                            ("custom", "Canvas: &Custom Colors")):
+            act = QAction(label, self)
+            act.setCheckable(True)
+            act.setChecked(app_settings.canvas_colors == mode)
+            act.triggered.connect(
+                lambda _checked=False, m=mode: self._on_canvas_colors_selected(m))
+            self._canvas_group.addAction(act)
+            appearance_menu.addAction(act)
+            self._canvas_actions[mode] = act
+        appearance_menu.addSeparator()
+        appearance_menu.addAction(self._polarity_act)   # same action as View's
+
         view_menu.addSeparator()
 
         next_tab_act = QAction("Show Next Tab", self)

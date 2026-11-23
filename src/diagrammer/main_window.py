@@ -254,13 +254,52 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
         """View ▸ Invert Polarity. Window-wide, like the grid: every open
         diagram repaints, and exports follow. Not an undo step — nothing in
         any document changes, only how it is drawn."""
-        from diagrammer.utils import polarity
         app_settings.invert_polarity = bool(inverted)
-        polarity.set_inverted(inverted)
-        for doc in self._documents():
-            doc.scene.refresh_polarity()
-        self._reassert_light_surfaces()   # canvas background follows
+        self._apply_appearance()
         app_settings.save()
+
+    def _on_canvas_colors_selected(self, mode: str) -> None:
+        """View ▸ Appearance ▸ Default / Custom canvas colours."""
+        app_settings.canvas_colors = mode
+        self._apply_appearance()
+        app_settings.save()
+
+    def _apply_appearance(self) -> None:
+        """Make the window match app_settings' canvas colours and polarity.
+
+        The one path every appearance control goes through — the View menu
+        toggle, the Appearance submenu, and Settings (live preview, OK and
+        Cancel) — so the canvas, the library and every menu check mark agree
+        whichever control was used last.
+        """
+        from diagrammer.utils import polarity
+        changed = polarity.is_inverted() != bool(app_settings.invert_polarity)
+        polarity.set_inverted(app_settings.invert_polarity)
+        if changed:
+            for doc in self._documents():
+                doc.scene.refresh_polarity()
+            try:
+                self._library_panel._refresh_views()   # thumbnails re-render
+                self._refresh_library_tables()
+            except Exception:
+                logger.debug("Failed to refresh library for polarity", exc_info=True)
+        self._reassert_light_surfaces()
+        self._sync_appearance_actions()
+
+    def _sync_appearance_actions(self) -> None:
+        """Check marks in View ▸ Appearance and View ▸ Invert Polarity."""
+        pairs = [(getattr(self, "_theme_actions", {}), app_settings.theme),
+                 (getattr(self, "_canvas_actions", {}), app_settings.canvas_colors)]
+        for actions, current in pairs:
+            for key, act in actions.items():
+                act.blockSignals(True)
+                act.setChecked(key == current)
+                act.blockSignals(False)
+        act = getattr(self, "_polarity_act", None)
+        if act is not None:
+            act.blockSignals(True)
+            act.setChecked(bool(app_settings.invert_polarity))
+            act.blockSignals(False)
 
     def _on_theme_selected(self, mode: str) -> None:
         """Handle Appearance submenu selection: live-switch the theme."""
@@ -273,6 +312,7 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
         apply_theme(app, mode)
         app_settings.theme = mode
         app_settings.save()
+        self._sync_appearance_actions()
         # The canvas and library panel are pinned to a light background
         # regardless of theme; re-assert that pin so a style change
         # can't leak a dark Base palette into their viewports.
@@ -298,7 +338,9 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
         except Exception:
             logger.debug("Failed to reassert canvas background brush", exc_info=True)
         try:
-            self._library_panel.apply_light_surface(bg)
+            # The library previews what will land on the canvas, so it
+            # follows polarity too; the annotations tool panel is UI.
+            self._library_panel.apply_light_surface(display_color(bg))
         except Exception:
             logger.debug("Failed to reassert library panel light surface", exc_info=True)
         try:
@@ -702,7 +744,7 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
         if dlg.exec() == SettingsDialog.DialogCode.Accepted:
             dlg.apply()
             self._apply_settings()
-            self._reassert_light_surfaces()
+            self._apply_appearance()
             # If the user changed the LaTeX bin path, force the next math
             # render to re-probe so the new path takes effect immediately.
             from diagrammer.items.annotation_item import (

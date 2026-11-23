@@ -132,6 +132,14 @@ class DocumentTabsMixin:
                 docs.append(doc)
         return docs
 
+    def _refresh_library_tables(self) -> None:
+        """Re-draw open library-table tabs in the current polarity."""
+        tabs = self._tab_widget
+        for i in range(tabs.count()):
+            refresh = getattr(tabs.widget(i), "refresh_polarity", None)
+            if refresh is not None:
+                refresh()
+
     # --------------------------------------------------------------- set-up
 
     def _init_document_tabs(self) -> None:

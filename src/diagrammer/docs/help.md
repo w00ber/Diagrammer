@@ -418,6 +418,17 @@ and white swap, greys mirror, pale fills become dark fills of the same hue, and
 strong mid-tone colours (a red photon) barely change — so text on a filled box
 stays readable.
 
+The library panel and library tables switch too, so a part looks in the
+panel the way it will once placed.
+
+Polarity is drawn *on top of* your canvas colors and never changes them:
+turning it off brings back exactly the background and grid you had. Canvas
+colors are their own setting, independent of the interface theme — **View →
+Appearance** offers **Canvas: Default (White)** or **Canvas: Custom Colors**,
+and **Settings → Appearance** is where the custom background and grid are
+picked. The menu, the Appearance submenu and Settings always show the same
+state, whichever one you changed last.
+
 Exports and **Copy Selection as Image** come out as the canvas shows them.
 SVG, PDF and the clipboard keep a transparent page (white ink, ready for a
 dark slide); PNG gets a black page. Nothing in the diagram changes — the

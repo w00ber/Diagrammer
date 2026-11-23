@@ -97,6 +97,11 @@ def isolate_app_settings(tmp_path, monkeypatch):
         # The singleton outlives the test, so leave it at defaults rather
         # than at whatever this test set.
         sd.app_settings.reset_all()
+        # Display polarity is process-wide paint state mirrored from the
+        # settings; a test that inverted it must not leave the next test
+        # rendering white-on-black. (polarity imports no Qt.)
+        from diagrammer.utils import polarity
+        polarity.set_inverted(False)
 
 
 @pytest.fixture(autouse=True)
