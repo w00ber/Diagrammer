@@ -250,6 +250,21 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
         for doc in self._documents():
             doc.view.grid_visible = visible
 
+    def _set_regularize_wiring(self, on: bool) -> None:
+        """Routing ▸ Regularize Wiring / the toolbar checkbox / Shift+W."""
+        app_settings.regularize_wiring = bool(on)
+        cb = getattr(self, "_regularize_cb", None)
+        if cb is not None and cb.isChecked() != bool(on):
+            cb.blockSignals(True)
+            cb.setChecked(bool(on))
+            cb.blockSignals(False)
+        if not on:
+            for doc in self._documents():
+                notice = getattr(doc.view, "_wiring_notice", None)
+                if notice is not None:
+                    notice.dismiss()
+        app_settings.save()
+
     def _set_polarity(self, inverted: bool) -> None:
         """View ▸ Invert Polarity. Window-wide, like the grid: every open
         diagram repaints, and exports follow. Not an undo step — nothing in
@@ -946,6 +961,7 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
             cmd.connection.vertices = merged_wps
             cmd.connection.line_width = wire_a.line_width
             cmd.connection.line_color = wire_a.line_color
+            cmd.connection.style_deliberate = wire_a.style_deliberate
         self._scene.undo_stack.endMacro()
         self._scene.update_connections()
 

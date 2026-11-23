@@ -327,6 +327,28 @@ New arrows use the default style from **Settings → Line Styles** (filled or ho
 | Snap to Angle | Waypoints snap to angle increments |
 | Discrete Angle Routing | Route with configurable angle steps (default 15°) |
 | Show Junctions | Toggle junction dot visibility |
+| Regularize Wiring | New wires match the leads they connect (Shift+W; also a toolbar checkbox) |
+
+### Regularize Wiring (Shift+W)
+
+On by default; toggle it with the **Regularize wiring** checkbox in the
+toolbar, **Routing → Regularize Wiring**, or **Shift+W**. A wire continues a
+part's lead, so in this mode:
+
+- **A new wire takes the width and color of the lead it starts from** (or ends
+  on, when it starts at a junction). A wire between two junctions takes the
+  style of the wires already on them.
+- **Wiring leads that don't match** — a 2 pt `PAPER_2pt` part to a 3 pt
+  `SLIDES_3pt` one — still makes the wire, and a notice appears beside it:
+  **Use 2 px**, **Use 3 px** or **Ignore**. Choosing one marks the wire as
+  set on purpose. The notice also names a part that comes in the other
+  library, since swapping it is the real fix.
+- **Setting a wire's width or color by hand** in the Properties panel shows a
+  note under the fields when it no longer matches its leads. Keeping it marks
+  the wire as set on purpose, so it is not flagged; **Match Leads** puts it
+  back.
+
+With the mode off, wires keep the default color and nothing is reported.
 
 ### Wire properties
 

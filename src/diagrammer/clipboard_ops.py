@@ -213,6 +213,7 @@ class ClipboardMixin:
                     "waypoints": [[w.x(), w.y()] for w in conn.vertices],
                     "line_width": conn.line_width,
                     "line_color": conn.line_color.name(),
+                    "style_deliberate": conn.style_deliberate,
                     "corner_radius": conn.corner_radius,
                     "routing_mode": conn.routing_mode,
                     "closed": conn.closed,
@@ -600,6 +601,8 @@ class ClipboardMixin:
                         conn.line_width = entry["line_width"]
                     if "line_color" in entry:
                         conn.line_color = QColor(entry["line_color"])
+                    conn.style_deliberate = bool(
+                        entry.get("style_deliberate", False))
                     if "corner_radius" in entry:
                         conn.corner_radius = entry["corner_radius"]
                     if "routing_mode" in entry:

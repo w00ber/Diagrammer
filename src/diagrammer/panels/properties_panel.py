@@ -121,6 +121,9 @@ class PropertiesPanel(QDockWidget):
         while self._form.rowCount() > 0:
             self._form.removeRow(0)
         self._live_widgets = {}
+        # removeRow deleted them; never touch the C++-dead wrappers.
+        self._wire_note = None
+        self._wire_match_btn = None
 
     def _live_refresh(self) -> None:
         """Periodically update read-only fields to reflect transforms."""
@@ -154,7 +157,7 @@ class PropertiesPanel(QDockWidget):
         width_spin.setSuffix(" pt")
         width_spin.setSingleStep(0.5)
         width_spin.valueChanged.connect(
-            lambda v, it=item: self._push_style(it, 'line_width', it.line_width, v)
+            lambda v, it=item: self._push_wire_style(it, 'line_width', v)
         )
         self._form.addRow("Width:", width_spin)
 
@@ -170,9 +173,22 @@ class PropertiesPanel(QDockWidget):
 
         color_btn = self._make_color_button(
             item.line_color,
-            lambda c, it=item: self._push_style(it, 'line_color', it.line_color, c),
+            lambda c, it=item: self._push_wire_style(it, 'line_color', c),
         )
         self._form.addRow("Color:", color_btn)
+
+        # Regularize Wiring (#47): say when this wire differs from its leads.
+        self._wire_note = QLabel()
+        self._wire_note.setWordWrap(True)
+        self._wire_note.setStyleSheet("color: #b8860b;")
+        self._wire_match_btn = QPushButton("Match Leads")
+        self._wire_match_btn.setToolTip(
+            "Give this wire the width and colour of the leads it connects")
+        self._wire_match_btn.clicked.connect(
+            lambda checked=False, it=item, w=width_spin: self._match_leads(it, w))
+        self._form.addRow(self._wire_note)
+        self._form.addRow("", self._wire_match_btn)
+        self._refresh_wire_note(item)
 
         # Routing mode
         from diagrammer.items.connection_item import ROUTE_ORTHO, ROUTE_ORTHO_45, ROUTE_DIRECT
@@ -203,6 +219,103 @@ class PropertiesPanel(QDockWidget):
         default_btn.setToolTip("Use this wire's style as the default for new connections")
         default_btn.clicked.connect(lambda checked=False, it=item: self._set_wire_defaults(it))
         self._form.addRow("", default_btn)
+
+    # -- Regularize Wiring (#47) --
+
+    def _push_wire_style(self, item, prop: str, value) -> None:
+        """A hand edit of a wire's width or colour.
+
+        Outside Regularize Wiring mode this is a plain style change. In the
+        mode, a value that differs from the wire's leads marks the wire
+        deliberate in the same undo step — the warning under the field says
+        so — and a value that matches them again clears the mark.
+        """
+        from diagrammer.panels.settings_dialog import app_settings
+        old = getattr(item, prop)
+        if prop == 'line_color':
+            old = QColor(old)
+        if old == value:
+            return
+        if not (app_settings.regularize_wiring and self._scene
+                and hasattr(self._scene, 'undo_stack')):
+            self._push_style(item, prop, old, value)
+            return
+        stack = self._scene.undo_stack
+        stack.beginMacro(f"Change {prop}")
+        try:
+            self._push_style(item, prop, old, value)
+            deliberate = self._differs_from_leads(item)
+            if deliberate != item.style_deliberate:
+                self._push_style(item, 'style_deliberate',
+                                 item.style_deliberate, deliberate)
+        finally:
+            stack.endMacro()
+        self._refresh_wire_note(item)
+
+    def _differs_from_leads(self, item) -> bool:
+        from diagrammer.wirecheck import WIDTH_TOL, colors_match
+        from diagrammer.wirecheck.scene import expected_style
+        want_w, want_c = expected_style(self._scene, item)
+        return ((want_w is not None
+                 and abs(item.line_width - want_w) > WIDTH_TOL)
+                or (want_c is not None
+                    and not colors_match(item.line_color.name(), want_c)))
+
+    def _refresh_wire_note(self, item) -> None:
+        note = getattr(self, "_wire_note", None)
+        btn = getattr(self, "_wire_match_btn", None)
+        if note is None or btn is None:
+            return
+        from diagrammer.panels.settings_dialog import app_settings
+        text = ""
+        disagree = ""
+        if app_settings.regularize_wiring and self._scene is not None:
+            from diagrammer.wirecheck import WIDTH_TOL, colors_match
+            from diagrammer.wirecheck.scene import lead_values
+            vals = lead_values(self._scene, item)
+            want_w = vals["width"][0] if len(vals["width"]) == 1 else None
+            want_c = vals["color"][0] if len(vals["color"]) == 1 else None
+            if len(vals["width"]) > 1:
+                disagree = ("\u26a0 The leads here differ: "
+                            + " / ".join(f"{w:g} pt" for w in vals["width"])
+                            + ". Pick one, or swap a part for its version in "
+                            "the other library.")
+            parts = []
+            if want_w is not None and abs(item.line_width - want_w) > WIDTH_TOL:
+                parts.append(f"{want_w:g} pt")
+            if want_c is not None and not colors_match(item.line_color.name(),
+                                                       want_c):
+                parts.append(want_c)
+            if parts:
+                text = (f"\u26a0 The leads here are {' / '.join(parts)}. "
+                        + ("Kept as set on purpose, so the wiring check "
+                           "will not flag it."
+                           if item.style_deliberate else
+                           "The wiring check will flag this wire."))
+        note.setText(text or disagree)
+        note.setVisible(bool(text or disagree))
+        btn.setVisible(bool(text))
+
+    def _match_leads(self, item, width_spin) -> None:
+        """Give the wire its leads' style and clear the deliberate mark."""
+        from diagrammer.wirecheck.scene import expected_style
+        want_w, want_c = expected_style(self._scene, item)
+        stack = self._scene.undo_stack
+        stack.beginMacro("Match leads")
+        try:
+            if want_w is not None and item.line_width != want_w:
+                self._push_style(item, 'line_width', item.line_width, want_w)
+            if want_c is not None and QColor(want_c) != item.line_color:
+                self._push_style(item, 'line_color', QColor(item.line_color),
+                                 QColor(want_c))
+            if item.style_deliberate:
+                self._push_style(item, 'style_deliberate', True, False)
+        finally:
+            stack.endMacro()
+        width_spin.blockSignals(True)
+        width_spin.setValue(item.line_width)
+        width_spin.blockSignals(False)
+        self._refresh_wire_note(item)
 
     def _set_wire_defaults(self, item) -> None:
         """Copy this connection's style to app-wide wiring defaults."""
@@ -934,7 +1047,7 @@ class PropertiesPanel(QDockWidget):
                 if self._scene and hasattr(self._scene, 'undo_stack'):
                     self._scene.undo_stack.beginMacro("Set width")
                 for c in conns:
-                    self._push_style(c, 'line_width', c.line_width, v)
+                    self._push_wire_style(c, 'line_width', v)
                 if self._scene and hasattr(self._scene, 'undo_stack'):
                     self._scene.undo_stack.endMacro()
             width_spin.valueChanged.connect(set_all_width)

@@ -143,11 +143,17 @@ class CreateConnectionCommand(QUndoCommand):
         source_port: PortItem,
         target_port: PortItem,
         parent: QUndoCommand | None = None,
+        *,
+        style: tuple[float | None, str | None] | None = None,
     ) -> None:
         super().__init__(parent)
         self._scene = scene
         self._source_port = source_port
         self._target_port = target_port
+        # (width, colour) chosen by the caller — Regularize Wiring passes the
+        # leads' — applied on first redo so it is part of this undo step.
+        # None per attribute keeps the default behaviour.
+        self._style = style
         self._connection: ConnectionItem | None = None
         self._z: float | None = None
         src_comp = source_port.component
@@ -178,6 +184,13 @@ class CreateConnectionCommand(QUndoCommand):
             lead_width = wire_width_for(self._source_port, self._target_port)
             self._connection.line_width = lead_width if lead_width else app_settings.default_line_width
             self._connection.line_color = app_settings.default_line_color
+            if self._style is not None:
+                width, color = self._style
+                if width is not None:
+                    self._connection.line_width = width
+                if color is not None:
+                    from PySide6.QtGui import QColor
+                    self._connection.line_color = QColor(color)
             self._connection.corner_radius = app_settings.default_corner_radius
             # Assign to active layer
             if hasattr(self._scene, 'assign_active_layer'):

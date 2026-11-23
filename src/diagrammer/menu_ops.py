@@ -439,6 +439,20 @@ class MenuMixin:
 
         routing_menu.addSeparator()
 
+        # Regularize Wiring (#47): new wires take their leads' width and
+        # colour; mismatches are reported on the canvas. Mirrored by a
+        # toolbar checkbox; _set_regularize_wiring keeps the two agreeing.
+        self._regularize_act = QAction("Re&gularize Wiring", self)
+        self._regularize_act.setCheckable(True)
+        self._regularize_act.setChecked(app_settings.regularize_wiring)
+        self._regularize_act.setStatusTip(
+            "New wires match the leads they connect; mismatches are reported")
+        self._register_shortcut(self._regularize_act, "routing.regularize")
+        self._regularize_act.toggled.connect(self._set_regularize_wiring)
+        routing_menu.addAction(self._regularize_act)
+
+        routing_menu.addSeparator()
+
         hv_info_act = QAction("Hold Shift for &H/V Constraint", self)
         hv_info_act.setEnabled(False)
         routing_menu.addAction(hv_info_act)
@@ -587,6 +601,17 @@ class MenuMixin:
         reset_btn.setFixedWidth(50)
         reset_btn.clicked.connect(self._reset_grid_spacing)
         toolbar.addWidget(reset_btn)
+
+        toolbar.addSeparator()
+        # Visible switch for Routing ▸ Regularize Wiring (Shift+W).
+        from PySide6.QtWidgets import QCheckBox
+        self._regularize_cb = QCheckBox("Regularize wiring")
+        self._regularize_cb.setChecked(app_settings.regularize_wiring)
+        self._regularize_cb.setToolTip(
+            "New wires take the width and colour of the leads they connect, "
+            "and a wire joining leads that disagree is reported. (Shift+W)")
+        self._regularize_cb.toggled.connect(self._regularize_act.setChecked)
+        toolbar.addWidget(self._regularize_cb)
 
     # ----------------------------------------------------------- shortcuts
 

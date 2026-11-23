@@ -218,6 +218,11 @@ class DocumentTabsMixin:
         scene.undo_stack.cleanChanged.connect(
             lambda _clean, d=doc: self._from_document(
                 d, self._refresh_document_tab, d, active_only=False))
+        # Regularize Wiring (#47): a just-drawn wire joins disagreeing leads.
+        from diagrammer.canvas.wiring_notice import show_wiring_notice
+        scene.wiring_disagreement.connect(
+            lambda findings, anchor, v=doc.view:
+            show_wiring_notice(v, findings, anchor))
 
         self._tab_widget.addTab(doc.container, doc.display_name)
         self._update_tab_bar_visibility()

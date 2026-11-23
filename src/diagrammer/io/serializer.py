@@ -463,6 +463,7 @@ class DiagramSerializer:
                 conn.line_width = cd["line_width"]
             if "line_color" in cd:
                 conn.line_color = QColor(cd["line_color"])
+            conn.style_deliberate = bool(cd.get("style_deliberate", False))
             if "corner_radius" in cd:
                 conn.corner_radius = cd["corner_radius"]
             if "routing_mode" in cd:
@@ -754,6 +755,9 @@ def _serialize_connection(item) -> dict:
         "z": item.zValue(),
         "group": getattr(item, '_group_ids', []) or [],
     }
+    # Wiring checks (#47): additive optional field, only when set
+    if item.style_deliberate:
+        data["style_deliberate"] = True
     # Direction arrows (2.4+) — additive optional field, only when present
     if item._arrows:
         data["arrows"] = [_serialize_arrow(a) for a in item._arrows]

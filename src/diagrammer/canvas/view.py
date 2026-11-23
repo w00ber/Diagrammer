@@ -1806,6 +1806,7 @@ class DiagramView(QGraphicsView):
                         if conn:
                             conn.line_width = si.line_width
                             conn.line_color = si.line_color
+                            conn.style_deliberate = si.style_deliberate
                             conn.corner_radius = si.corner_radius
                             conn.routing_mode = si.routing_mode
                             conn.closed = si.closed

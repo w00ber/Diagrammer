@@ -124,6 +124,10 @@ class AppSettings:
         self.default_routing_mode = _d("wiring", "routing_mode", "ortho")
         self.default_crossover_style = _d("wiring", "crossover_style", "plain")
         self.show_junction_dots = _d("wiring", "junction_dots", True)
+        # Regularize Wiring mode (Routing menu, toolbar, Shift+W): new wires
+        # take their leads' width and colour, disagreements are reported on
+        # the canvas, hand-set styles are marked deliberate. Issue #47.
+        self.regularize_wiring = _d("wiring", "regularize", True)
         # Which components show their ports while a wire is being drawn:
         # "all", "nearby" (source + components near the cursor) or
         # "target" (only the snap target lights up).
@@ -298,6 +302,7 @@ class AppSettings:
                 "default_routing_mode": self.default_routing_mode,
                 "default_crossover_style": self.default_crossover_style,
                 "show_junction_dots": self.show_junction_dots,
+                "regularize_wiring": self.regularize_wiring,
                 "wiring_port_reveal": self.wiring_port_reveal,
                 "default_wire_arrow_style": self.default_wire_arrow_style,
                 "default_wire_arrow_size": self.default_wire_arrow_size,
@@ -378,6 +383,8 @@ class AppSettings:
                 self.default_routing_mode = data.get("default_routing_mode", self.default_routing_mode)
                 self.default_crossover_style = data.get("default_crossover_style", self.default_crossover_style)
                 self.show_junction_dots = data.get("show_junction_dots", self.show_junction_dots)
+                self.regularize_wiring = bool(
+                    data.get("regularize_wiring", self.regularize_wiring))
                 self.wiring_port_reveal = data.get("wiring_port_reveal", self.wiring_port_reveal)
                 if self.wiring_port_reveal not in ("all", "nearby", "target"):
                     self.wiring_port_reveal = "nearby"
