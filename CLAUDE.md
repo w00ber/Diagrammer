@@ -59,9 +59,18 @@ conda env, and run headless:
 QT_QPA_PLATFORM=offscreen ~/miniforge3/envs/CMT/bin/python -m pytest tests -q
 ```
 
-As of 2026-11-06 the suite is **fully green — 786 passed, 0 failed**. Any
+As of 2026-11-23 the suite is **fully green on macOS — 972 passed, 2 skipped,
+0 failed** (one skip is a test that needs a case-sensitive filesystem). Any
 failure you see is yours. Earlier notes here claimed 6 then 11 permanent
 failures; both were measurement artifacts, from the traps below.
+
+**In a Linux cloud container** (no CMT env: `pip install -e . pytest mcp` into
+a venv) the single-process run hangs in `test_library_profiles.py` and, with
+that file excluded, segfaults later — on a clean `main` too, so it is the
+environment, not your diff. Run each `tests/test_*.py` in its own process on
+both `main` and your branch and compare. Two failures there are also the
+environment: the writable-tree inspector test (root ignores `chmod`) and a
+nested `pytest.approx` in `test_transform_invariants.py` (newer pytest).
 
 **Never measure a baseline in a `git worktree`.** The conda env has an editable
 install whose `.pth` hardcodes this checkout's `src`:
