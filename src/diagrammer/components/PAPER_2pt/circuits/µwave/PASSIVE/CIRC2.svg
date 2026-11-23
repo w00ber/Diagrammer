@@ -60,8 +60,8 @@
       <rect class="st4" x="100.3" y="70.1" width="50" height="50"/>
     </g>
     <g id="ports">
-      <circle id="port:2" class="st7" cx="160" cy="29.7" r="3"/>
-      <circle id="port:1" class="st7" cy="29.7" r="3"/>
+      <circle id="port:2" class="st7" cx="160" cy="30" r="3"/>
+      <circle id="port:1" class="st7" cy="30" r="3"/>
       <circle id="port:3" class="st7" cx="80" cy="140" r="3"/>
     </g>
     <g id="artwork">
@@ -84,10 +84,10 @@
       <polygon class="st2" points="105.3 21.6 55.3 21.6 30.3 64.9 55.3 108.2 105.3 108.2 130.3 64.9 105.3 21.6"/>
     </g>
     <g id="leads">
-      <path class="st3" d="M160,29.7h-18.7l-15.6,9"/>
+      <path class="st3" d="M160,30L141.3,29.7L125.7,38.7"/>
       <g id="leads1">
         <g id="leads2">
-          <path class="st3" d="M34.2,38.7l-15.4-8.9H0"/>
+          <path class="st3" d="M34.2,38.7L18.8,29.8L0,30"/>
         </g>
       </g>
       <line class="st3" x1="80" y1="118" x2="80" y2="140"/>

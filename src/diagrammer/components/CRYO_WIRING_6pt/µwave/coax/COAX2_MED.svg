@@ -77,11 +77,11 @@
     <line id="stretch:v" class="st6" x1="60" x2="60" y2="40"/>
   </g>
   <g id="leads">
-    <line class="st0" x1="4.6" y1="19.9" y2="19.9"/>
+    <line x2="0" class="st0" x1="4.6" y1="20" y2="20"/>
     <line class="st0" x1="120" y1="20" x2="110.2" y2="20"/>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st7" cy="19.9" r="3"/>
+    <circle id="port:left" class="st7" cy="20" r="3"/>
     <circle id="port:right" class="st7" cx="120" cy="20" r="3"/>
   </g>
   <g id="artwork">

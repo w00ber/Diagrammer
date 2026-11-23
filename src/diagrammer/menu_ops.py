@@ -105,6 +105,7 @@ class MenuMixin:
         file_menu.addSeparator()
 
         quit_act = QAction("&Quit", self)
+        quit_act.setMenuRole(QAction.MenuRole.QuitRole)
         self._register_shortcut(quit_act, "file.quit")
         quit_act.triggered.connect(self.close)
         file_menu.addAction(quit_act)
@@ -273,6 +274,10 @@ class MenuMixin:
         edit_menu.addSeparator()
 
         settings_act = QAction("Se&ttings\u2026", self)
+        # Claim the macOS Preferences slot explicitly. Left to Qt's text
+        # heuristic, any later action whose text mentions "settings" (the
+        # Help menu's "Settings" chapter) takes the slot -- and Cmd+, with it.
+        settings_act.setMenuRole(QAction.MenuRole.PreferencesRole)
         self._register_shortcut(settings_act, "edit.settings")
         settings_act.triggered.connect(self._open_settings)
         edit_menu.addAction(settings_act)
@@ -495,6 +500,10 @@ class MenuMixin:
         help_menu.addSeparator()
         for chapter in help_chapters():
             act = QAction(chapter, self)
+            # Chapter titles are arbitrary text: never let Qt's macOS role
+            # heuristic move one into the app menu ("Settings" became the
+            # Preferences item and hijacked Cmd+,).
+            act.setMenuRole(QAction.MenuRole.NoRole)
             act.triggered.connect(
                 lambda _=False, c=chapter: HelpWindow.show_help(self, chapter=c))
             help_menu.addAction(act)

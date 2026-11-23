@@ -51,14 +51,14 @@
     <rect class="st4" x="33.2" y="38.2" width="50" height="20"/>
   </g>
   <g id="ports">
-    <circle id="port:RF" class="st5" cx="90.1" cy="0" r="3"/>
+    <circle id="port:RF" class="st5" cx="90" cy="0" r="3"/>
     <circle id="port:COM" class="st5" cx="90" cy="100" r="3"/>
-    <circle id="port:DC" class="st5" cx="10" cy="59.7" r="3"/>
+    <circle id="port:DC" class="st5" cx="10" cy="60" r="3"/>
   </g>
   <g id="leads">
-    <path class="st3" d="M90,0v9.7"/>
+    <path class="st3" d="M90,0V9.7"/>
     <path class="st3" d="M90,90v10"/>
-    <path class="st3" d="M20,59.7h-10"/>
+    <path class="st3" d="M20,60H10"/>
   </g>
   <g id="artwork">
     <g>

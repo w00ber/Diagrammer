@@ -108,9 +108,9 @@ def _shunted_junction(scene, library):
         pytest.skip("JJ1 / RES1 not in bundled library")
     jj = _place(scene, jj_def, QPointF(200, 100))
     res = _place(scene, res_def, QPointF(120, 100))
-    _connect(scene, jj.port_by_name("bot"), res.port_by_name("left"))
-    _connect(scene, jj.port_by_name("top"), res.port_by_name("right"))
-    for name, dy in (("bot", -60), ("top", 60)):
+    _connect(scene, jj.port_by_name("top"), res.port_by_name("top"))
+    _connect(scene, jj.port_by_name("bottom"), res.port_by_name("bottom"))
+    for name, dy in (("top", -60), ("bottom", 60)):
         end = JunctionItem()
         end.setPos(jj.port_by_name(name).scene_center() + QPointF(0, dy))
         scene.addItem(end)

@@ -18,6 +18,8 @@ place, and you tidy spacing and details in the app. See
 ```
 
 This adds the `mcp` SDK (1.x and 2.x both work) and a `diagrammer-mcp` command.
+`python -m diagrammer.mcp_server` starts the same server, if the entry point
+is not on the `PATH` a client sees.
 
 ## Connect it
 
@@ -51,6 +53,7 @@ The plain claude.ai web chat cannot reach a local server.
 
 | Tool | Does |
 | ---- | ---- |
+| `new_diagram` | Discard the current diagram and start an empty one |
 | `list_categories` | Every folder of the catalogue with counts, and which library roots are loaded — the first call from a sketch |
 | `search_components`, `describe_component` | Find parts by key or description (reports `total` and `truncated`); list ports with the direction each lead points |
 | `add_component` | Place a part so a chosen port (or its centre) lands on a point; `stretch=` lengthens it first |
@@ -58,9 +61,30 @@ The plain claude.ai web chat cannot reach a local server.
 | `attach_component` | Place a part next to an existing port, turned to face it, and wire them — chains are repeated calls |
 | `add_node`, `connect` | T-junctions; wires between existing ports |
 | `add_text` | Labels; `$...$` is LaTeX |
-| `move`, `remove`, `undo` | Fix layout |
+| `move`, `remove`, `undo` | Fix layout; wires on a moved part follow it |
 | `get_diagram`, `render` | Inspect as JSON; see it as a PNG |
 | `save_diagram`, `export_diagram`, `open_diagram` | `.dgm`; `.pdf`/`.svg`/`.png`; reopen a `.dgm` |
+
+Options that change what a tool does (the docstrings have the rest):
+
+- **`attach_component`**: `gap` is how far out from the existing port the new
+  one lands, default 40 (two grid steps). `direction` (`right`, `left`, `up`,
+  `down`) sets which way to step out, and is required when attaching to a node
+  or to a port whose lead has no direction. `wire=false` places without
+  wiring. With `gap=0` the ports coincide and the wire is zero-length:
+  touching ports are not connected unless a wire joins them.
+- **`connect`**: `routing` is `ortho` (default, horizontal and vertical only),
+  `ortho_45`, or `direct` (straight).
+- **`move`**: either `x`, `y`, which puts the item's `anchor` port (or its
+  centre) on that point, or `dx`, `dy`, which shifts it.
+- **`add_node`**: the junction dot is drawn only where three or more wires
+  meet, as in the app.
+- **`render`**: `dpi`, default 96.
+- **`save_diagram`** always writes `.dgm`: any other suffix is replaced, so
+  `rc.png` is saved as `rc.dgm`. Use `export_diagram` for images.
+- **`add_text`** takes its font, size and colour from your app settings
+  (`~/.diagrammer/settings.json`), like a label placed by hand; `size`
+  overrides the size.
 
 The server's instructions tell Claude the coordinate conventions and to render
 and look before it is done. The same operations are a plain Python API in
@@ -69,8 +93,8 @@ and look before it is done. The same operations are a plain Python API in
 ```python
 from diagrammer.headless import Diagram
 d = Diagram()
-d.add("PAPER_2pt/circuits/LCR/CAP1", (0, 0), anchor="left", id="C")
-d.attach("PAPER_2pt/circuits/gnds/GND1", "left", to=("C", "right"))
+d.add("PAPER_2pt/circuits/LCR/CAP1", (0, 0), anchor="top", id="C")
+d.attach("PAPER_2pt/circuits/gnds/GND1", "top", to=("C", "bottom"))
 d.save("~/Desktop/rc.dgm")
 ```
 
@@ -153,9 +177,12 @@ Start short, as above, and add detail only where the result is wrong:
 
 ## Things that will trip you up
 
-- **Port names are not directions.** In the shipped library a capacitor's
-  `left` port points *up*. Tools report a `points` field computed from the
-  geometry after rotation and flip; Claude is told to use it.
+- **Port names describe the unrotated part.** A capacitor's `top` port
+  points right once the part is turned a quarter clockwise. Tools report a
+  `points` field computed from the geometry after rotation and flip; Claude
+  is told to use it. (Before 2026-11 the shipped names did not even match
+  the unrotated part: vertical LCR parts used `left`/`right`, and the
+  quantum parts had `bot` at the top.)
 - **Short ids are not saved.** `J1`, `Cc` live only in the server session; a
   reopened `.dgm` uses its 12-hex instance ids.
 - **Stretch is in the part's own frame; `stretch_axes` is on screen.**
@@ -173,7 +200,9 @@ Start short, as above, and add detail only where the result is wrong:
   that is wired.
 - **Only the libraries this machine has.** A local server loads the shipped
   parts, your edited copies in `~/.diagrammer/components/`, and the custom
-  library folders enabled in the app's settings. A cloud session has only
+  library folders enabled in the app's settings. An edited copy takes
+  precedence over the shipped part with the same key, as in the app, so
+  Claude draws with your fork, not the original. A cloud session has only
   what is in the repository. `list_categories` lists the roots it loaded and
   says so when only the shipped library is there.
 - **Search results are capped.** `search_components` returns `total` and

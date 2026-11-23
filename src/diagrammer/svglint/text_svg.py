@@ -15,9 +15,14 @@ pre-commit hook share one implementation instead of three.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 # Tolerance for calling a coordinate "on the grid", in pt.
 GRID_TOL = 0.05
+# How far off a grid line still reads as drift rather than design, in pt.
+# Editor drift is 0.1-0.4 pt (a port at 59.7 for 60); deliberate offsets in
+# the shipped tree are 2 pt or more (GND's port at 23, the flowchart insets).
+NEAR_GRID_TOL = 1.0
 # Tolerance for accepting a path as a circle approximation, in pt.
 CIRCLE_TOL = 0.15
 # The app's own port/edge detection tolerance (ComponentDef.EDGE_TOLERANCE).
@@ -48,6 +53,30 @@ def fmt(v: float) -> str:
 def grid_delta(v: float, grid: float) -> float:
     """Signed distance to the nearest grid line."""
     return v - round(v / grid) * grid
+
+
+def snap_lattice(grid: float) -> float:
+    """The spacing ports are snapped to: a quarter of the library grid.
+
+    Not the grid itself, because whole-grid conformance is deliberately not
+    checked — circuits/ parts centre ports on half-grid lines by design, and
+    parts like the 30-wide filters sit on 5 pt lines. A coordinate *near* one
+    of these lines but not on it is drift, whatever the design.
+    """
+    return grid / 4.0
+
+
+def near_grid_target(v: float, grid: float) -> float | None:
+    """The lattice line ``v`` has drifted off, or None if it has not.
+
+    None both when ``v`` is on a line (within ``GRID_TOL``) and when it is so
+    far from one (over ``NEAR_GRID_TOL``) that the offset is likely meant.
+    """
+    lat = snap_lattice(grid)
+    d = grid_delta(v, lat)
+    if GRID_TOL < abs(d) <= NEAR_GRID_TOL:
+        return v - d
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -204,94 +233,156 @@ def path_as_line(d: str) -> tuple[float, float, float, float] | None:
 
 
 def simple_path_ends(d: str) -> tuple[float, float, float, float] | None:
-    """Start and end of a path built only from absolute M/L/H/V.
+    """Start and end of a path built only from M/L/H/V, absolute or relative.
 
-    Anything with curves, arcs or relative commands returns ``None`` rather
-    than a guess: a wrong endpoint here would be a confident false alarm, which
-    is worse than staying quiet.
+    Relative ``m/l/h/v`` are read exactly — Illustrator writes most straight
+    leads as ``M59.7,98.5v-21.1`` — and ``ComponentItem._shorten_path_elem``
+    shortens them, so skipping them hid real faults. Anything with curves or
+    arcs still returns ``None`` rather than a guess: a wrong endpoint here would
+    be a confident false alarm, which is worse than staying quiet.
     """
-    tokens = re.findall(r"([MLHV])([^MLHVmlhvCcSsQqTtAaZz]*)", d)
+    tokens = re.findall(r"([MLHVmlhv])([^MLHVmlhvCcSsQqTtAaZz]*)", d)
     if not tokens or len(re.findall(r"[A-Za-z]", d)) != len(tokens):
         return None
     x = y = None
     start = None
     for cmd, args in tokens:
-        nums = [float(v) for v in re.findall(r"-?\d*\.?\d+(?:e-?\d+)?", args)]
-        if cmd == "M":
+        nums = [float(v) for v in re.findall(NUM, args)]
+        rel = cmd.islower() and x is not None
+        op = cmd.upper()
+        if op == "M":
             if len(nums) < 2:
                 return None
-            x, y = nums[0], nums[1]
+            # The first pair of a leading ``m`` is absolute; the rest of an
+            # ``m`` are implicit ``l`` pairs, relative like the command.
+            x, y = (x + nums[0], y + nums[1]) if rel else (nums[0], nums[1])
             start = (x, y)
             nums = nums[2:]
+            op = "L"
+        if x is None or y is None:
+            return None  # drawing before any moveto
+        if op == "L":
             for i in range(0, len(nums) - 1, 2):
-                x, y = nums[i], nums[i + 1]
-        elif cmd == "L":
-            for i in range(0, len(nums) - 1, 2):
-                x, y = nums[i], nums[i + 1]
-        elif cmd == "H":
-            if nums:
-                x = nums[-1]
-        elif cmd == "V":
-            if nums:
-                y = nums[-1]
+                x, y = ((x + nums[i], y + nums[i + 1]) if cmd.islower()
+                        else (nums[i], nums[i + 1]))
+        elif op == "H":
+            for v in nums:
+                x = x + v if cmd.islower() else v
+        elif op == "V":
+            for v in nums:
+                y = y + v if cmd.islower() else v
     if start is None or x is None or y is None:
         return None
     return (start[0], start[1], x, y)
 
 
-def shift_path_data(d: str, dx: float, dy: float) -> str:
-    """Shift absolute path coordinates; relative commands need no change."""
-    tokens = re.findall(rf"[A-Za-z]|{NUM}", d)
-    out: list[str] = []
-    cmd = ""
-    i = 0
-    while i < len(tokens):
-        t = tokens[i]
-        if re.match(r"[A-Za-z]", t):
-            cmd = t
-            out.append(t)
-            i += 1
-            continue
-        n = _NARGS.get(cmd.upper())
-        if n is None:
-            out.append(t)
-            i += 1
-            continue
-        args = [float(a) for a in tokens[i:i + n]]
-        if len(args) < n:
-            out.extend(tokens[i:])
-            break
-        i += n
-        up = cmd.upper()
-        if cmd.isupper():
-            if up in ("M", "L", "T"):
-                args = [args[0] + dx, args[1] + dy]
-            elif up == "H":
-                args = [args[0] + dx]
-            elif up == "V":
-                args = [args[0] + dy]
-            elif up == "C":
-                args = [args[0] + dx, args[1] + dy, args[2] + dx,
-                        args[3] + dy, args[4] + dx, args[5] + dy]
-            elif up in ("S", "Q"):
-                args = [args[0] + dx, args[1] + dy, args[2] + dx, args[3] + dy]
-            elif up == "A":
-                args = args[:5] + [args[5] + dx, args[6] + dy]
-        out.extend(fmt(a) for a in args)
-        if cmd == "M":
-            cmd = "L"
-        elif cmd == "m":
-            cmd = "l"
-    res: list[str] = []
-    for tok in out:
-        if res and (not re.match(r"[A-Za-z]", tok)
-                    and not re.match(r"[A-Za-z]", res[-1])):
-            res.append(" " + tok)
-        elif res and re.match(r"[A-Za-z]", tok):
-            res.append(" " + tok)
+def simple_path_points(d: str) -> list[tuple[float, float]] | None:
+    """Absolute vertices of a single-subpath M/L/H/V path, or None.
+
+    The same grammar as ``simple_path_ends``, kept to one subpath: a fix that
+    moves one end of a lead must know it is rewriting the whole of it.
+    """
+    tokens = re.findall(r"([MLHVmlhv])([^MLHVmlhvCcSsQqTtAaZz]*)", d)
+    if not tokens or len(re.findall(r"[A-Za-z]", d)) != len(tokens):
+        return None
+    pts: list[tuple[float, float]] = []
+    for i, (cmd, args) in enumerate(tokens):
+        nums = [float(v) for v in re.findall(NUM, args)]
+        op, rel = cmd.upper(), cmd.islower()
+        if op == "M":
+            if i or len(nums) < 2:
+                return None  # a second subpath, or a bare M
+            pts.append((nums[0], nums[1]))
+            nums, op = nums[2:], "L"
+        if not pts:
+            return None
+        x, y = pts[-1]
+        if op == "L":
+            if len(nums) % 2:
+                return None
+            for j in range(0, len(nums), 2):
+                x, y = (x + nums[j], y + nums[j + 1]) if rel else (nums[j], nums[j + 1])
+                pts.append((x, y))
+        elif op == "H":
+            for v in nums:
+                x = x + v if rel else v
+                pts.append((x, y))
+        elif op == "V":
+            for v in nums:
+                y = y + v if rel else v
+                pts.append((x, y))
+    return pts if len(pts) >= 2 else None
+
+
+def polyline_d(points: list[tuple[float, float]]) -> str:
+    """Absolute path data through ``points``, using H/V where they apply."""
+    (x, y), rest = points[0], points[1:]
+    out = [f"M{fmt(x)},{fmt(y)}"]
+    for nx, ny in rest:
+        if abs(ny - y) < 1e-9:
+            out.append(f"H{fmt(nx)}")
+        elif abs(nx - x) < 1e-9:
+            out.append(f"V{fmt(ny)}")
         else:
-            res.append(tok)
-    return "".join(res).replace("  ", " ").strip()
+            out.append(f"L{fmt(nx)},{fmt(ny)}")
+        x, y = nx, ny
+    return "".join(out)
+
+
+def shift_path_data(d: str, dx: float, dy: float) -> str:
+    """Shift absolute path coordinates; relative commands need no change.
+
+    Rewrites only the numbers that move and keeps every other character —
+    Illustrator's compact ``-4.9-2.2`` spacing included — so a translated
+    path diffs as the coordinates that changed, not as a reformatted line.
+    """
+    out: list[str] = []
+    pos = 0
+    cmd = ""
+    k = 0  # index of the next argument within the current command's group
+    first = True  # a path's opening moveto is absolute even when written "m"
+    leading_m = False
+    for m in re.finditer(rf"[A-Za-z]|{NUM}", d):
+        t = m.group(0)
+        out.append(d[pos:m.start()])
+        pos = m.end()
+        if t.isalpha():
+            cmd, k = t, 0
+            leading_m, first = first and t == "m", False
+            out.append(t)
+            continue
+        up = cmd.upper()
+        n = _NARGS.get(up)
+        if not n:
+            out.append(t)
+            continue
+        i = k % n
+        k += 1
+        delta = 0.0
+        absolute = cmd.isupper() or (leading_m and k <= 2)
+        if absolute:
+            if up in ("M", "L", "T", "C", "S", "Q"):
+                delta = dx if i % 2 == 0 else dy
+            elif up == "H":
+                delta = dx
+            elif up == "V":
+                delta = dy
+            elif up == "A" and i in (5, 6):
+                delta = dx if i == 5 else dy
+        if up == "M" and k == n:
+            # Pairs after a moveto are implicit linetos of the same case.
+            cmd, k, leading_m = ("L" if cmd == "M" else "l"), 0, False
+        if delta == 0.0:
+            out.append(t)
+            continue
+        new = fmt(float(t) + delta)
+        prev = out[-1][-1:] if out[-1] else (out[-2][-1:] if len(out) > 1 else "")
+        # "4.9-2" shifted to "4.9" + "0.3" must not fuse into "4.90.3".
+        if not new.startswith("-") and (prev.isdigit() or prev == "."):
+            new = " " + new
+        out.append(new)
+    out.append(d[pos:])
+    return "".join(out)
 
 
 # --------------------------------------------------------------------------
@@ -430,20 +521,47 @@ def lead_classes(text: str) -> list[str]:
     return seen
 
 
-def lead_endpoints(text: str) -> list[tuple[float, float, float, float]]:
-    """``(x1, y1, x2, y2)`` for every lead whose ends we can read exactly."""
-    pts: list[tuple[float, float, float, float]] = []
+@dataclass(frozen=True)
+class LeadElement:
+    """One lead whose ends can be read exactly, and where its tag sits.
+
+    ``start``/``end`` index the whole document, so a fix can rewrite this one
+    tag and leave every other byte alone.
+    """
+
+    kind: str                 # "line" or "path"
+    ends: tuple[float, float, float, float]
+    start: int
+    end: int
+
+
+def lead_elements(text: str) -> list[LeadElement]:
+    """Every ``<line>`` and simple ``<path>`` inside a lead layer."""
+    out: list[LeadElement] = []
     for g in re.finditer(rf'<g id="{LEAD_LAYER_RE}"[^>]*>(.*?)</g>', text, re.S):
-        for m in re.finditer(r"<line\b([^>]*)>", g.group(1)):
-            a = m.group(1)
-            got = {k: re.search(rf'\b{k}="([-\d.]+)"', a)
-                   for k in ("x1", "y1", "x2", "y2")}
+        base = g.start(1)
+        body = g.group(1)
+        for m in re.finditer(r"<line\b([^>]*)>", body):
             # Omitted coordinates default to 0, which is how the library
             # writes edge leads (x2 absent means x2=0).
-            pts.append(tuple(float(got[k].group(1)) if got[k] else 0.0
-                             for k in ("x1", "y1", "x2", "y2")))  # type: ignore[arg-type]
-        for m in re.finditer(r'<path\b[^>]*\bd="([^"]+)"', g.group(1)):
+            ends = tuple(line_attr(m.group(1), k)
+                         for k in ("x1", "y1", "x2", "y2"))
+            out.append(LeadElement("line", ends,  # type: ignore[arg-type]
+                                   base + m.start(), base + m.end()))
+        for m in re.finditer(r'<path\b[^>]*\bd="([^"]+)"[^>]*>', body):
             ends = simple_path_ends(m.group(1))
             if ends:
-                pts.append(ends)
-    return pts
+                out.append(LeadElement("path", ends,
+                                       base + m.start(), base + m.end()))
+    return sorted(out, key=lambda e: e.start)
+
+
+def line_attr(attrs: str, name: str) -> float:
+    """A numeric attribute of a tag, 0 when omitted (the SVG default)."""
+    m = re.search(rf'\s{name}="({NUM})"', " " + attrs)
+    return float(m.group(1)) if m else 0.0
+
+
+def lead_endpoints(text: str) -> list[tuple[float, float, float, float]]:
+    """``(x1, y1, x2, y2)`` for every lead whose ends we can read exactly."""
+    return [e.ends for e in lead_elements(text)]

@@ -38,7 +38,7 @@
     <line class="st1" x1="20" y1="100" x2="20" y2="77"/>
   </g>
   <g id="ports">
-    <circle id="port:left" class="st0" cx="20" r="3"/>
-    <circle id="port:right" class="st0" cx="20" cy="100" r="3"/>
+    <circle id="port:top" class="st0" cx="20" r="3"/>
+    <circle id="port:bottom" class="st0" cx="20" cy="100" r="3"/>
   </g>
 </svg>

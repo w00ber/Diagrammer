@@ -29,20 +29,20 @@
   </defs>
   <g id="artwork">
     <g id="artwork1">
-      <circle class="st2" cx="40" cy="50" r="26.5"/>
-      <line class="st0" x1="75.4" y1="54.9" x2="57.7" y2="44.5"/>
-      <line class="st0" x1="57.7" y1="54.9" x2="75.4" y2="44.5"/>
-      <line class="st0" x1="22.3" y1="54.9" x2="4.6" y2="44.5"/>
-      <line class="st0" x1="4.6" y1="54.9" x2="22.3" y2="44.5"/>
-      <rect class="st0" x="13.5" y="23.5" width="53" height="53" rx="1.1" ry="1.1"/>
+      <circle class="st2" cx="39.9" cy="50" r="26.5"/>
+      <line class="st0" x1="75.3" y1="54.9" x2="57.6" y2="44.5"/>
+      <line class="st0" x1="57.6" y1="54.9" x2="75.3" y2="44.5"/>
+      <line class="st0" x1="22.2" y1="54.9" x2="4.5" y2="44.5"/>
+      <line class="st0" x1="4.5" y1="54.9" x2="22.2" y2="44.5"/>
+      <rect class="st0" x="13.4" y="23.5" width="53" height="53" rx="1.1" ry="1.1"/>
     </g>
   </g>
   <g id="leads">
     <path class="st1" d="M40,23.5V0"/>
-    <path class="st1" d="M40,100v-23.3"/>
+    <path class="st1" d="M40,100V76.7"/>
   </g>
   <g id="ports">
-    <circle id="port:bot" class="st3" cx="40.1" r="3"/>
-    <circle id="port:top" class="st3" cx="40.1" cy="100" r="3"/>
+    <circle id="port:top" class="st3" cx="40" r="3"/>
+    <circle id="port:bottom" class="st3" cx="40" cy="100" r="3"/>
   </g>
 </svg>

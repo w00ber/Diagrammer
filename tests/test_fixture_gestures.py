@@ -105,12 +105,17 @@ class TestSelectAllAndDragIsRigid:
             dx = after[probe][0] - before[probe][0]
             dy = after[probe][1] - before[probe][1]
             assert (dx, dy) != (0, 0)
+            # To float precision, not bit-exactly: a part loaded with a
+            # whole-symbol drift repair is moved back by a fraction of a
+            # point (see serializer._match_saved_ports), so dx carries noise.
+            near = lambda pts: pytest.approx(pts, abs=1e-9)  # noqa: E731
             for key, was in before.items():
                 now = after[key]
                 if isinstance(was, tuple):
-                    assert now == (was[0] + dx, was[1] + dy), key
+                    assert now == near((was[0] + dx, was[1] + dy)), key
                 else:
-                    assert now == [(x + dx, y + dy) for x, y in was], key
+                    assert [c for pt in now for c in pt] == near(
+                        [c for x, y in was for c in (x + dx, y + dy)]), key
 
 
 class TestPartialSelectionLeavesTheRestAlone:

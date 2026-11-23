@@ -154,11 +154,13 @@ platform-specific while the app is correct on both.
 - **A new check must be selective or it is worse than nothing.** The bar is that
   some app code path misbehaves *silently*; an error means the part is broken on
   the canvas. Deliberately excluded: grid conformance (`--check-grid` warns on
-  97 of 208 shipped files and most are off-grid by design), and body-weight
+  97 of 208 shipped files and most are off-grid by design) — only *drift*, a
+  port within 1 pt of a 5 pt line but not on it, is checked — and body-weight
   consistency (House Conventions makes it inconsistent *per family* on purpose,
   so any threshold is wrong). Linecap is a warning, not an error, because 74
   shipped files still declare `round` mid-migration. There are tests asserting
-  the shipped tree stays at one failing file and under 15% non-linecap warnings.
+  the shipped tree stays at one failing file and under 15% warnings, not
+  counting linecap and grid drift (both known library-wide debts).
 - **Never save a component through `io/compound_export.py`.** It emits only
   `artwork` + `ports` and exists to flatten a canvas selection; using it to save
   an *edited* component destroys leads, stretch, labels and the `<style>` block.

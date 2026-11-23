@@ -42,11 +42,11 @@
   </g>
   <g id="ports">
     <circle id="port:com" class="st0" cx="0" cy="50" r="3"/>
-    <circle id="port:1" class="st0" cx="80" cy="29.9" r="3"/>
+    <circle id="port:1" class="st0" cx="80" cy="30" r="3"/>
     <circle id="port:2" class="st0" cx="80" cy="70" r="3"/>
   </g>
   <g id="leads">
-    <line id="_x32_" class="st4" x1="60.7" y1="29.9" x2="80" y2="29.9"/>
+    <line id="_x32_" class="st4" x1="60.7" y1="30" x2="80" y2="30"/>
     <line id="_x31_" class="st4" x1="60.7" y1="70" x2="80" y2="70"/>
     <line id="com" class="st4" x1="19.7" y1="50" y2="50"/>
   </g>

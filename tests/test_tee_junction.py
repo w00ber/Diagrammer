@@ -50,7 +50,7 @@ def host(scene):
 
 
 def _capacitor(scene, library, port_pos: QPointF):
-    """CAP1 placed so its top ('left') port sits at *port_pos*."""
+    """CAP1 placed so its top port sits at *port_pos*."""
     from diagrammer.items.component_item import ComponentItem
 
     cdef = library.get("PAPER_2pt/circuits/LCR/CAP1")
@@ -58,7 +58,7 @@ def _capacitor(scene, library, port_pos: QPointF):
         pytest.skip("CAP1 not in bundled library")
     cap = ComponentItem(cdef)
     scene.addItem(cap)
-    offset = cap.port_by_name("left").scene_center() - cap.pos()
+    offset = cap.port_by_name("top").scene_center() - cap.pos()
     cap.setPos(port_pos - offset)
     scene.update_connections()
     return cap
@@ -109,11 +109,11 @@ class TestComponentTee:
         cap = _capacitor(scene, library, QPointF(100, 0))
         hit = scene.find_tee_at(QPointF(98, -3), tolerance=12.0)
         assert hit is not None
-        assert hit[0] is host and hit[1] is cap.port_by_name("left")
+        assert hit[0] is host and hit[1] is cap.port_by_name("top")
 
     def test_convert_adds_junction_and_zero_length_connector(self, scene, library, host):
         cap = _capacitor(scene, library, QPointF(100, 0))
-        port = cap.port_by_name("left")
+        port = cap.port_by_name("top")
         scene.convert_tee_to_junction(*scene.find_tee_at(QPointF(100, 0), 12.0))
 
         connectors = scene.connections_on_port(port)
@@ -137,7 +137,7 @@ class TestComponentTee:
         from diagrammer.commands.add_command import MoveComponentCommand
 
         cap = _capacitor(scene, library, QPointF(100, 0))
-        port = cap.port_by_name("left")
+        port = cap.port_by_name("top")
         scene.convert_tee_to_junction(*scene.find_tee_at(QPointF(100, 0), 12.0))
         connector = scene.connections_on_port(port)[0]
         scene.undo_stack.push(MoveComponentCommand(
@@ -151,7 +151,7 @@ class TestComponentTee:
         cap = _capacitor(scene, library, QPointF(100, 0.4))
         scene.convert_tee_to_junction(*scene.find_tee_at(QPointF(100, 0), 12.0))
         junction = scene.connections_on_port(
-            cap.port_by_name("left"))[0].target_port.component
+            cap.port_by_name("top"))[0].target_port.component
         assert (junction.pos().x(), junction.pos().y()) == (
             pytest.approx(100), pytest.approx(0))
         halves = _host_halves(scene, junction)

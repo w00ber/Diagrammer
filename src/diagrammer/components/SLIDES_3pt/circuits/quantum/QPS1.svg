@@ -46,12 +46,12 @@
     <rect class="st2" x="0" y="30.3" width="40" height="30"/>
   </g>
   <g id="leads">
-    <path class="st3" d="M40.1,16.5V0"/>
-    <path class="st3" d="M40.1,60v-15.9"/>
+    <path class="st3" d="M40,16.5V0"/>
+    <path class="st3" d="M40,60V44.1"/>
   </g>
   <g id="ports">
-    <circle id="port:bot" class="st4" cx="40" r="3"/>
-    <circle id="port:top" class="st4" cx="40.1" cy="60" r="3"/>
+    <circle id="port:top" class="st4" cx="40" r="3"/>
+    <circle id="port:bottom" class="st4" cx="40" cy="60" r="3"/>
   </g>
   <g>
     <rect class="st0" x="30.1" y="20.3" width="20" height="20" transform="translate(33.2 -19.5) rotate(45)"/>
