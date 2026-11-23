@@ -255,11 +255,12 @@ class AppSettings:
         the DEFAULT_VISIBLE_LIB_PREFIXES top-level groups."""
         if not self._first_launch or library is None:
             return
-        prefixes = self.DEFAULT_VISIBLE_LIB_PREFIXES
+        # Case-insensitive: git tracks "flair/", the constant says "FLAIR".
+        prefixes = {p.casefold() for p in self.DEFAULT_VISIBLE_LIB_PREFIXES}
         hidden = set()
         for cat in library.categories.keys():
             top = cat.split("/", 1)[0]
-            if top not in prefixes:
+            if top.casefold() not in prefixes:
                 hidden.add(cat)
         self.hidden_libraries = hidden
         self._first_launch = False

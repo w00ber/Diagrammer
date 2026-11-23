@@ -143,10 +143,16 @@ def builtin_profile_name(path: Path) -> str | None:
     overlay too, because the overlay mirrors the built-in tree by relative
     path — so ``~/.diagrammer/components/PAPER_2pt/foo.svg`` is correctly read
     as a PAPER_2pt part.
+
+    Case-insensitive: git tracks ``flair/`` while the profile is ``FLAIR``,
+    and a case-insensitive disk can hold either spelling. An exact match
+    used to send every flair part on a fresh clone to the generic profile.
     """
+    by_fold = {name.casefold(): name for name in BUILTIN_PROFILES}
     for part in path.parts:
-        if part in BUILTIN_PROFILES:
-            return part
+        name = by_fold.get(part.casefold())
+        if name is not None:
+            return name
     return None
 
 

@@ -64,8 +64,21 @@ class ComponentLibrary:
         return list(self._shadowed.get(key, ()))
 
     def get(self, key: str) -> ComponentDef | None:
-        """Look up a component by its library key (e.g. 'flowchart/process')."""
-        return self._by_key.get(key)
+        """Look up a component by its library key (e.g. 'flowchart/process').
+
+        An exact key wins. Failing that, a *unique* case-insensitive match is
+        accepted: folder case differs between checkouts (git tracks
+        ``flair/``; a case-insensitive Mac disk held ``FLAIR/``), and every
+        key saved in a .dgm, a favourite or the clipboard carries whichever
+        spelling the saving machine had. Two keys differing only in case are
+        ambiguous, so neither is guessed.
+        """
+        found = self._by_key.get(key)
+        if found is not None:
+            return found
+        folded = key.casefold()
+        same = [d for k, d in self._by_key.items() if k.casefold() == folded]
+        return same[0] if len(same) == 1 else None
 
     def scan(self, root: Path, *, source_kind: str = "",
              flat_category: str | None = None) -> None:

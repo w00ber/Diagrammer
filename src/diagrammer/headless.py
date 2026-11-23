@@ -633,13 +633,9 @@ class Diagram:
     # ------------------------------------------------------------------
 
     def _def(self, key: str) -> ComponentDef:
+        # get() already accepts a unique case-insensitive match ("FLAIR/" vs
+        # "flair/" between checkouts).
         d = self.library.get(key)
-        if d is None:
-            # Folder case differs between checkouts (git tracks "flair/", a
-            # case-insensitive disk may hold "FLAIR/"); accept a unique match.
-            same = [k for k in self.library._by_key if k.lower() == key.lower()]
-            if len(same) == 1:
-                return self.library.get(same[0])
         if d is None:
             import difflib
             names = {k: k.rsplit("/", 1)[-1].lower() for k in self.library._by_key}
