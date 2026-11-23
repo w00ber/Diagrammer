@@ -26,25 +26,52 @@ from diagrammer.utils import polarity as P
     ("#323232", "#cdcdcd"),
     ("black", "#ffffff"),
     ("White", "#000000"),
+    ("navy", "#7f7fff"),          # L 0.251 -> 0.749
     ("rgb(0, 0, 0)", "#ffffff"),
     ("#000 !important", "#ffffff !important"),
 ])
-def test_neutrals_invert_lightness(value, expected) -> None:
+def test_lightness_inverts(value, expected) -> None:
     assert P.map_color_value(value) == expected
 
 
 @pytest.mark.parametrize("value", [
-    "#c66",          # port marker red
-    "#e8f4fd",       # flowchart process fill: a pale tint, not a grey
-    "#ff2222",
+    "#ff0000",       # saturated, L = 0.5: a fixed point
     "red",
     "none",
     "currentColor",
     "url(#abc)",     # a gradient id that happens to look like hex
     "inherit",
+    "rebeccapurple", # not in the name table: left alone
 ])
-def test_everything_else_passes_through(value) -> None:
+def test_non_colours_and_fixed_points_pass_through(value) -> None:
     assert P.map_color_value(value) == value
+
+
+def test_pale_tints_become_dark_tints_of_the_same_hue() -> None:
+    """The flowchart fills: dark text on them must stay readable, so they
+    have to darken along with the text lightening."""
+    import colorsys
+    for hexv in ("#e8f4fd", "#e8f5e9", "#fff3e0"):
+        out = P.map_color_value(hexv)
+        rgb_in = [int(hexv[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        rgb_out = [int(out[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        h0, l0, _ = colorsys.rgb_to_hls(*rgb_in)
+        h1, l1, _ = colorsys.rgb_to_hls(*rgb_out)
+        assert l1 < 0.15 and l0 > 0.85
+        assert h1 == pytest.approx(h0, abs=0.02)
+
+
+def test_contrast_between_any_two_colours_is_preserved() -> None:
+    """The reason for inverting everything: |ΔL| survives for every pair."""
+    import colorsys
+    import itertools
+    samples = [(0, 0, 0), (255, 255, 255), (51, 51, 51), (232, 244, 253),
+               (204, 102, 102), (0, 0, 128), (255, 165, 0), (35, 31, 32)]
+    L = lambda c: colorsys.rgb_to_hls(*(v / 255 for v in c))[1]  # noqa: E731
+    for a, b in itertools.combinations(samples, 2):
+        before = L(a) - L(b)
+        after = L(P.invert_rgb(*a)) - L(P.invert_rgb(*b))
+        assert after == pytest.approx(-before, abs=0.01)
 
 
 def test_mid_grey_is_a_fixed_point_and_near_blacks_flip() -> None:
@@ -53,11 +80,13 @@ def test_mid_grey_is_a_fixed_point_and_near_blacks_flip() -> None:
     assert min(r, g, b) > 0xD0
 
 
-def test_the_rule_is_its_own_inverse_on_every_grey() -> None:
-    for v in range(256):
-        once = P.invert_rgb(v, v, v)
-        twice = P.invert_rgb(*once)
-        assert all(abs(a - v) <= 1 for a in twice), (v, once, twice)
+def test_the_rule_is_its_own_inverse() -> None:
+    for r in range(0, 256, 15):
+        for g in range(0, 256, 15):
+            for b in range(0, 256, 15):
+                twice = P.invert_rgb(*P.invert_rgb(r, g, b))
+                assert all(abs(x - y) <= 2 for x, y in zip(twice, (r, g, b))), \
+                    ((r, g, b), twice)
 
 
 def test_svg_text_maps_attributes_css_and_inline_style() -> None:
@@ -72,7 +101,7 @@ def test_svg_text_maps_attributes_css_and_inline_style() -> None:
     )
     out = P.map_svg_text(svg)
     assert "stroke:#ffffff" in out
-    assert "fill:#c66" in out
+    assert "fill:#c66" not in out          # coloured too, now
     assert 'fill="#000000"' in out
     assert 'stroke="url(#g1a)"' in out
     assert "fill: #cccccc" in out and "stroke:red" in out
