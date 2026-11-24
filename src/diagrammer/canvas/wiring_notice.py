@@ -29,6 +29,18 @@ from PySide6.QtWidgets import (
 MIN_WIDTH = 360
 MAX_WIDTH = 520
 
+#: Card and button colours, per polarity: light card on the normal canvas,
+#: dark one when polarity is inverted. Set in full so neither depends on
+#: the platform theme.
+NOTICE_COLORS = {
+    "light": dict(bg="#fffdf3", fg="#111111", border="#c9b46a",
+                  button="#ffffff", button_border="#d6cca4",
+                  hover="#f6f0da", pressed="#ece3c3", accent="#a8902f"),
+    "dark": dict(bg="#202020", fg="#eeeeee", border="#5a5a5a",
+                 button="#2d2d2d", button_border="#555555",
+                 hover="#383838", pressed="#444444", accent="#b9a35a"),
+}
+
 #: How long the notice stays before fading, unless hovered.
 LINGER_MS = 8000
 FADE_MS = 600
@@ -44,15 +56,31 @@ class WiringNotice(QFrame):
         # Opaque, and explicit: the palette's tooltip colour is translucent
         # on macOS, which let the wiring show through the text. Light card
         # on the normal canvas, dark one when polarity is inverted.
+        #
+        # The buttons are coloured here too, not left to the platform. A
+        # styled QPushButton is drawn from the *application* palette, so
+        # with macOS in dark mode the light card got white button text on
+        # a near-white button.
         from diagrammer.utils.polarity import is_inverted
-        bg, fg, border = (("#202020", "#eeeeee", "#5a5a5a") if is_inverted()
-                          else ("#fffdf3", "#111111", "#c9b46a"))
+        c = NOTICE_COLORS["dark" if is_inverted() else "light"]
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAutoFillBackground(True)
         self.setStyleSheet(
-            f"#WiringNotice {{ background-color: {bg}; color: {fg};"
-            f" border: 1px solid {border}; border-radius: 6px; }}"
-            f"#WiringNotice QLabel {{ background: transparent; color: {fg}; }}")
+            f"#WiringNotice {{ background-color: {c['bg']}; color: {c['fg']};"
+            f" border: 1px solid {c['border']}; border-radius: 6px; }}"
+            f"#WiringNotice QLabel {{ background: transparent;"
+            f" color: {c['fg']}; }}"
+            f"#WiringNotice QPushButton {{ background-color: {c['button']};"
+            f" color: {c['fg']}; border: 1px solid {c['button_border']};"
+            f" border-radius: 4px; padding: 5px 10px; text-align: left; }}"
+            f"#WiringNotice QPushButton:hover {{"
+            f" background-color: {c['hover']}; }}"
+            f"#WiringNotice QPushButton:pressed {{"
+            f" background-color: {c['pressed']}; }}"
+            f"#WiringNotice QPushButton[recommended=\"true\"] {{"
+            f" font-weight: bold; border: 1px solid {c['accent']}; }}"
+            f"#WiringNotice QPushButton#ignore {{ text-align: center;"
+            f" padding: 5px 18px; }}")
 
         from diagrammer.wirecheck.scene import (
             ordered_fixes,
@@ -60,8 +88,8 @@ class WiringNotice(QFrame):
             swap_hint,
         )
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(10, 8, 10, 8)
-        lay.setSpacing(4)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(6)
         finding = findings[0]
         self._finding = finding
         title = QLabel("<b>Leads don't match</b>")
@@ -82,13 +110,13 @@ class WiringNotice(QFrame):
         # squeezed every label to a few clipped letters.
         best = recommended_fix(self._scene, finding)
         fixes = ordered_fixes(self._scene, finding)
+        lay.addSpacing(4)
         buttons = []
         for fix in fixes:
             btn = QPushButton(fix.label)
             btn.setAutoDefault(False)
-            btn.setStyleSheet("text-align: left; padding: 2px 8px;"
-                              + (" font-weight: bold;" if fix is best else ""))
             if fix is best:
+                btn.setProperty("recommended", True)
                 btn.setToolTip("Recommended: matches the rest of the diagram")
             btn.clicked.connect(lambda _=False, f=fix: self._apply(f))
             lay.addWidget(btn)
@@ -96,6 +124,7 @@ class WiringNotice(QFrame):
         row = QHBoxLayout()
         row.addStretch()
         ignore = QPushButton("Ignore")
+        ignore.setObjectName("ignore")
         ignore.setAutoDefault(False)
         ignore.clicked.connect(self.dismiss)
         row.addWidget(ignore)

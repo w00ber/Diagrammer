@@ -341,7 +341,7 @@ def test_notice_offers_swap_first(d):
     assert labels[1] == "Swap CAP1 to SLIDES_3pt"
     assert labels[-3:] == ["Use 2 pt", "Use 3 pt", "Ignore"]
     first = notice.findChildren(QPushButton)[0]
-    assert "bold" in first.styleSheet()
+    assert first.property("recommended") is True
     n = d.undo_stack.count()
     first.click()
     assert d.undo_stack.count() == n + 1
@@ -648,3 +648,48 @@ def test_notice_fits_a_narrow_view(d):
     assert notice.width() <= view.viewport().width()
     for lbl in notice.findChildren(QLabel):
         assert lbl.height() >= lbl.heightForWidth(lbl.width()), lbl.text()
+
+
+def _palette(dark: bool):
+    from PySide6.QtGui import QColor, QPalette
+    pal = QPalette()
+    fg, bg, btn = (("#ffffff", "#202020", "#303030") if dark
+                   else ("#000000", "#f0f0f0", "#e0e0e0"))
+    for role, col in ((QPalette.ColorRole.Window, bg),
+                      (QPalette.ColorRole.WindowText, fg),
+                      (QPalette.ColorRole.Button, btn),
+                      (QPalette.ColorRole.ButtonText, fg),
+                      (QPalette.ColorRole.Base, bg),
+                      (QPalette.ColorRole.Text, fg)):
+        pal.setColor(role, QColor(col))
+    return pal
+
+
+@pytest.mark.parametrize("inverted", [False, True], ids=["light", "dark"])
+def test_notice_buttons_do_not_follow_the_app_theme(d, inverted):
+    """The card has its own colours, so its buttons must too. A styled
+    button left to the app palette got white text on a white button on
+    macOS in dark mode with the canvas in normal polarity. The native mac
+    style can't run here, so this asserts the cause instead: the buttons
+    draw the same under a dark and a light app palette."""
+    from PySide6.QtWidgets import QApplication, QPushButton
+
+    from diagrammer.utils.polarity import is_inverted, set_inverted
+    app = QApplication.instance()
+    old_pal, old_inv = app.palette(), is_inverted()
+    set_inverted(inverted)
+    shots = []
+    try:
+        for dark in (True, False):
+            app.setPalette(_palette(dark))
+            _view, notice = _coax_notice(d)
+            shots.append([b.grab().toImage()
+                          for b in notice.findChildren(QPushButton)])
+            notice.dismiss()
+            d.clear()
+    finally:
+        app.setPalette(old_pal)
+        set_inverted(old_inv)
+    assert len(shots[0]) == len(shots[1]) > 0
+    for a, b in zip(*shots):
+        assert a == b
