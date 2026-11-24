@@ -59,16 +59,16 @@ conda env, and run headless:
 QT_QPA_PLATFORM=offscreen ~/miniforge3/envs/CMT/bin/python -m pytest tests -q
 ```
 
-As of 2026-11-23 the suite is **fully green on macOS — 972 passed, 2 skipped,
+As of 2026-11-24 the suite is **fully green on macOS — 1053 passed, 2 skipped,
 0 failed** (one skip is a test that needs a case-sensitive filesystem). Any
 failure you see is yours. Earlier notes here claimed 6 then 11 permanent
 failures; both were measurement artifacts, from the traps below.
 
 **In a Linux cloud container** (no CMT env: `pip install -e . pytest mcp` into
-a venv) the single-process run hangs in `test_library_profiles.py` and, with
-that file excluded, segfaults later — on a clean `main` too, so it is the
-environment, not your diff. Run each `tests/test_*.py` in its own process on
-both `main` and your branch and compare. Two failures there are also the
+a venv) the single-process run hangs in `test_library_profiles.py`; with that
+file excluded (`--ignore=tests/test_library_profiles.py`) it runs to the end
+since the fixes below. Running each `tests/test_*.py` in its own process is
+still the quick check, but it cannot catch a crash that needs earlier tests. Two failures there are also the
 environment: the writable-tree inspector test (root ignores `chmod`) and a
 nested `pytest.approx` in `test_transform_invariants.py` (newer pytest).
 
@@ -112,6 +112,37 @@ in your own diff — the suite was sitting on a cliff at ~716 tests on this
 machine and anything pushed it over. Freezing Qt's global state into the
 permanent generation, where the collector never traverses it, removes the cliff
 rather than moving it: verified with 60 ballast tests on top.
+
+**What was really crashing the single-process run** (found 2026-11-24; it
+segfaulted or aborted in `test_validation_report.py`, the first file that pumps
+events after a long run, on macOS and Linux alike). Three defects, each
+crashing a *later* test far from its cause:
+
+1. `test_layer_visibility.py` built `RectangleItem(QRectF(...))`. The signature
+   is `(width, height)`, so `_width` became a `QRectF` and `boundingRect()`
+   raised on every call. Its MainWindow was only hidden, so the item lived on,
+   and when Qt asked for its bounds inside another test's `processEvents()`,
+   the exception escaped a C++ virtual call. **On PySide 6.8 with Python 3.13
+   that is fatal**: `_PyThreadState_Attach: non-NULL old thread state`. Any
+   Python override Qt calls (`boundingRect`, `paint`, a timer slot) must not
+   raise on an object a test leaves behind.
+2. The validation sweep ran on `QThreadPool`. The cyclic GC, which runs on
+   whichever thread is allocating, freed main-thread QObjects on the worker
+   (`QObject::~QObject: Timers cannot be stopped from another thread`), and
+   the pool deleted a main-thread QObject there too. The sweep is now a plain
+   Python thread that touches no Qt, with collection paused while it runs.
+3. Timers firing into dead objects: `QTimer.singleShot(ms, callable)` with no
+   context object, and wiring notices a test never dismissed. Every
+   `singleShot` now passes a context object; `conftest.dismiss_wiring_notices`
+   cleans up notices.
+
+Diagnosing the next one: run with **`-s`** (pytest's capture swallows the
+fatal message when the process aborts); `gdb -batch -ex run -ex bt --args
+python -m pytest …` for the native stack; bisect by *exit status*, not by
+grepping for "Segmentation fault", because an abort is not a segfault; and
+`QT_FATAL_WARNINGS=1` on a small reproducing pair of files turns a Qt warning
+into a stack trace. Whether `gc.freeze()` is still needed after these fixes is
+untested, so leave it in.
 
 Things that look like fixes and are not: importing `AppKit` early (at conftest
 scope or test-module scope) makes it *worse*, hoisting the `importorskip` makes
@@ -168,7 +199,7 @@ platform-specific while the app is correct on both.
   consistency (House Conventions makes it inconsistent *per family* on purpose,
   so any threshold is wrong). Linecap is a warning, not an error, because 74
   shipped files still declare `round` mid-migration. There are tests asserting
-  the shipped tree stays at one failing file and under 15% warnings, not
+  the shipped tree stays at zero failing files and under 15% warnings, not
   counting linecap and grid drift (both known library-wide debts).
 - **Never save a component through `io/compound_export.py`.** It emits only
   `artwork` + `ports` and exists to flatten a canvas selection; using it to save

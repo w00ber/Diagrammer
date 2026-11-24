@@ -156,15 +156,18 @@ class DiagramView(QGraphicsView):
         By the time the deferred call executes the scene is either
         alive or fully gone (``self.scene()`` is None).
         """
+        # With the view as context, Qt drops the call if the view is
+        # destroyed first. Without it the timer fired into a deleted view
+        # (``Internal C++ object (DiagramView) already deleted``).
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, self._prune_stale_waypoint_selection)
+        QTimer.singleShot(0, self, self._prune_stale_waypoint_selection)
 
     def _prune_stale_waypoint_selection(self) -> None:
-        if self.scene() is None:
-            return
         try:
+            if self.scene() is None:
+                return
             scene_items = self._diagram_scene.selectedItems()
-        except RuntimeError:
+        except RuntimeError:            # view or scene already deleted
             return
         selected_conn_ids = set()
         for item in scene_items:
@@ -1806,6 +1809,7 @@ class DiagramView(QGraphicsView):
                         if conn:
                             conn.line_width = si.line_width
                             conn.line_color = si.line_color
+                            conn.style_deliberate = si.style_deliberate
                             conn.corner_radius = si.corner_radius
                             conn.routing_mode = si.routing_mode
                             conn.closed = si.closed
@@ -2084,6 +2088,34 @@ class DiagramView(QGraphicsView):
 
     # -- Context menu --
 
+    def _add_swap_action(self, menu, item) -> None:
+        """Convert to Library for one part (#47 stage 4): *Swap to
+        <library> Twin*, or a disabled entry saying why not."""
+        from diagrammer.wirecheck.scene import WEIGHT_LIBRARIES, twin_key
+        lib = item.library_key.split("/", 1)[0]
+        if lib not in WEIGHT_LIBRARIES:
+            return
+        library = getattr(self._diagram_scene, "library", None)
+        twin = twin_key(library, item.library_key) if library else None
+        other = next(o for o in WEIGHT_LIBRARIES if o != lib)
+        if menu.actions():
+            menu.addSeparator()
+        if twin is None:
+            act = menu.addAction(f"Swap to {other} Twin (none)")
+            act.setEnabled(False)
+            act.setToolTip(f"{item.component_def.name} has no twin in {other} "
+                           "with the same port names")
+            return
+        act = menu.addAction(f"Swap to {other} Twin")
+        act.setToolTip(f"Replace this part with {twin}, keeping its place "
+                       "and its wires")
+
+        def swap(_checked=False, it=item):
+            from diagrammer.wirecheck.scene import swap_to_twin
+            swap_to_twin(self._diagram_scene, it)
+
+        act.triggered.connect(swap)
+
     def contextMenuEvent(self, event) -> None:
         from PySide6.QtWidgets import QMenu
         from diagrammer.items.shape_item import LineItem, ShapeItem
@@ -2222,6 +2254,8 @@ class DiagramView(QGraphicsView):
         elif isinstance(item, (ShapeItem, LineItem)):
             adopt_act = menu.addAction("Use as Default Style")
             adopt_act.triggered.connect(lambda: self._adopt_shape_style(item))
+        elif isinstance(item, ComponentItem):
+            self._add_swap_action(menu, item)
 
         selected = self._diagram_scene.selectedItems()
 

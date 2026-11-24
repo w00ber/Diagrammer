@@ -439,6 +439,41 @@ class MenuMixin:
 
         routing_menu.addSeparator()
 
+        # Regularize Wiring (#47): new wires take their leads' width and
+        # colour; mismatches are reported on the canvas. Mirrored by a
+        # toolbar checkbox; _set_regularize_wiring keeps the two agreeing.
+        self._regularize_act = QAction("Re&gularize Wiring", self)
+        self._regularize_act.setCheckable(True)
+        self._regularize_act.setChecked(app_settings.regularize_wiring)
+        self._regularize_act.setStatusTip(
+            "New wires match the leads they connect; mismatches are reported")
+        self._register_shortcut(self._regularize_act, "routing.regularize")
+        self._regularize_act.toggled.connect(self._set_regularize_wiring)
+        routing_menu.addAction(self._regularize_act)
+
+        # The auditor for wires that already exist (#47 stage 3).
+        self._check_wiring_act = check_wiring_act = QAction(
+            "&Check Wiring…", self)
+        check_wiring_act.setStatusTip(
+            "List wires whose width or colour does not match their leads, "
+            "and accept or reject each fix")
+        check_wiring_act.triggered.connect(self._show_wiring_check)
+        routing_menu.addAction(check_wiring_act)
+
+        # Convert to Library, whole diagram (#47 stage 4): swap every part
+        # with a twin to one weight library, as one undo step.
+        convert_menu = routing_menu.addMenu("Con&vert Diagram to Library")
+        from diagrammer.wirecheck.scene import WEIGHT_LIBRARIES
+        for lib_name, weight in WEIGHT_LIBRARIES.items():
+            act = QAction(f"{lib_name} ({weight:g} pt)", self)
+            act.setStatusTip(f"Swap every part that has a twin in {lib_name} "
+                             "for it, then check the wiring")
+            act.triggered.connect(
+                lambda _c=False, n=lib_name: self._convert_diagram(n))
+            convert_menu.addAction(act)
+
+        routing_menu.addSeparator()
+
         hv_info_act = QAction("Hold Shift for &H/V Constraint", self)
         hv_info_act.setEnabled(False)
         routing_menu.addAction(hv_info_act)
@@ -587,6 +622,17 @@ class MenuMixin:
         reset_btn.setFixedWidth(50)
         reset_btn.clicked.connect(self._reset_grid_spacing)
         toolbar.addWidget(reset_btn)
+
+        toolbar.addSeparator()
+        # Visible switch for Routing ▸ Regularize Wiring (Shift+W).
+        from PySide6.QtWidgets import QCheckBox
+        self._regularize_cb = QCheckBox("Regularize wiring")
+        self._regularize_cb.setChecked(app_settings.regularize_wiring)
+        self._regularize_cb.setToolTip(
+            "New wires take the width and colour of the leads they connect, "
+            "and a wire joining leads that disagree is reported. (Shift+W)")
+        self._regularize_cb.toggled.connect(self._regularize_act.setChecked)
+        toolbar.addWidget(self._regularize_cb)
 
     # ----------------------------------------------------------- shortcuts
 

@@ -218,6 +218,11 @@ class DocumentTabsMixin:
         scene.undo_stack.cleanChanged.connect(
             lambda _clean, d=doc: self._from_document(
                 d, self._refresh_document_tab, d, active_only=False))
+        # Regularize Wiring (#47): a just-drawn wire joins disagreeing leads.
+        from diagrammer.canvas.wiring_notice import show_wiring_notice
+        scene.wiring_disagreement.connect(
+            lambda findings, anchor, v=doc.view:
+            show_wiring_notice(v, findings, anchor))
 
         self._tab_widget.addTab(doc.container, doc.display_name)
         self._update_tab_bar_visibility()
@@ -332,6 +337,9 @@ class DocumentTabsMixin:
         props = getattr(self, "_props_panel", None)
         if props is not None:
             props.update_for_selection(scene)
+        wiring = getattr(self, "_wiring_panel", None)
+        if wiring is not None:
+            wiring.set_document(scene, self._active_doc.view)
         if hasattr(self, "_layer_warning_label"):
             self._refresh_layer_warning()
 
@@ -482,7 +490,7 @@ class DocumentTabsMixin:
         self._tab_widget.setCurrentIndex(index)
         self._update_tab_bar_visibility()
         # Deferred so the view has its final geometry.
-        QTimer.singleShot(0, view.fit_all)
+        QTimer.singleShot(0, view, view.fit_all)
 
     def _validation_report_tab(self):
         """The validation report tab, if one is open (there is at most one)."""

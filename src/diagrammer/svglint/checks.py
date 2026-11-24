@@ -652,6 +652,29 @@ def check_phantom_stretch(text: str, path: Path,
     ) for attr, how, line in missing]
 
 
+def check_near_black(text: str, path: Path,
+                     profile: LibraryProfile) -> list[Finding]:
+    """Illustrator's "rich black" (#231f20) where the library uses #000."""
+    hits = T.near_black_paints(text)
+    if not hits:
+        return []
+    values = sorted({m.group(3).lower() for m in hits})
+    return [Finding(
+        check_id="near-black",
+        severity="warning",
+        message=(f"{len(hits)} paint(s) use near-black "
+                 + ", ".join(values) + " instead of #000"),
+        detail=("Illustrator's default black is #231f20, a rich black, not "
+                "#000. A wire drawn from this part is #000, so where it meets "
+                "the lead the two blacks differ — invisible on screen, visible "
+                "in print and on a projector — and the wiring checks have to "
+                "allow a tolerance just to call them the same. Everything else "
+                "in the library is #000."),
+        fix_ids=("use-pure-black",),
+        data={"values": ", ".join(values)},
+    )]
+
+
 #: Run order. ``check_parse`` is first because a file the app cannot load makes
 #: every other result meaningless; the rest are grouped structure, then ports,
 #: then leads, then style, which is also roughly how a reader wants them.
@@ -673,6 +696,7 @@ ALL_CHECKS = (
     check_lead_width,
     check_lead_linecap,
     check_artwork_linecap,
+    check_near_black,
     check_stray_anchors,
 )
 

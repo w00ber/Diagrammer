@@ -1,0 +1,262 @@
+"""The on-canvas notice for a wire that joins disagreeing leads (#47).
+
+Regularize Wiring mode never blocks a connection: wiring a 2 px lead to a
+3 px lead still makes the wire, and this notice appears beside it with the
+choices — one button per verified fix, stacked: the recommended one first,
+then swap the part to its twin, match the part's lead, set the wire (*Use 2
+pt*, *Use 3 pt*), then *Ignore* — plus a line saying which library most of
+the diagram uses.
+
+It sits on the view's viewport, not in the scene: it is UI, so it is never
+exported, never selected, and never on the undo stack (the fix it applies
+is). It fades after :data:`LINGER_MS` unless the pointer is over it, and a
+new notice replaces the old one.
+"""
+
+from __future__ import annotations
+
+from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt, QTimer
+from PySide6.QtWidgets import (
+    QFrame,
+    QGraphicsOpacityEffect,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+)
+
+#: The notice's width range in pixels; it grows to fit its longest button.
+MIN_WIDTH = 360
+MAX_WIDTH = 520
+
+#: Card and button colours, per polarity: light card on the normal canvas,
+#: dark one when polarity is inverted. Set in full so neither depends on
+#: the platform theme.
+NOTICE_COLORS = {
+    "light": dict(bg="#fffdf3", fg="#111111", border="#c9b46a",
+                  button="#ffffff", button_border="#d6cca4",
+                  hover="#f6f0da", pressed="#ece3c3", accent="#a8902f"),
+    "dark": dict(bg="#202020", fg="#eeeeee", border="#5a5a5a",
+                 button="#2d2d2d", button_border="#555555",
+                 hover="#383838", pressed="#444444", accent="#b9a35a"),
+}
+
+#: How long the notice stays before fading, unless hovered.
+LINGER_MS = 8000
+FADE_MS = 600
+
+
+class WiringNotice(QFrame):
+    #: Notices that have not been dismissed. A notice runs its own timers
+    #: (linger, fade), so one left behind fires later into whatever is
+    #: running then; :meth:`dismiss_all` is the way to be sure none is.
+    _live: set = set()
+
+    @classmethod
+    def dismiss_all(cls) -> None:
+        """Dismiss every live notice now (closing a document, test
+        teardown)."""
+        for notice in list(cls._live):
+            notice.dismiss()
+
+    def __init__(self, view, findings, anchor) -> None:
+        super().__init__(view.viewport())
+        WiringNotice._live.add(self)
+        self.setObjectName("WiringNotice")
+        self._view = view
+        self._scene = view.scene()
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        # Opaque, and explicit: the palette's tooltip colour is translucent
+        # on macOS, which let the wiring show through the text. Light card
+        # on the normal canvas, dark one when polarity is inverted.
+        #
+        # The buttons are coloured here too, not left to the platform. A
+        # styled QPushButton is drawn from the *application* palette, so
+        # with macOS in dark mode the light card got white button text on
+        # a near-white button.
+        from diagrammer.utils.polarity import is_inverted
+        c = NOTICE_COLORS["dark" if is_inverted() else "light"]
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(True)
+        self.setStyleSheet(
+            f"#WiringNotice {{ background-color: {c['bg']}; color: {c['fg']};"
+            f" border: 1px solid {c['border']}; border-radius: 6px; }}"
+            f"#WiringNotice QLabel {{ background: transparent;"
+            f" color: {c['fg']}; }}"
+            f"#WiringNotice QPushButton {{ background-color: {c['button']};"
+            f" color: {c['fg']}; border: 1px solid {c['button_border']};"
+            f" border-radius: 4px; padding: 5px 10px; text-align: left; }}"
+            f"#WiringNotice QPushButton:hover {{"
+            f" background-color: {c['hover']}; }}"
+            f"#WiringNotice QPushButton:pressed {{"
+            f" background-color: {c['pressed']}; }}"
+            f"#WiringNotice QPushButton[recommended=\"true\"] {{"
+            f" font-weight: bold; border: 1px solid {c['accent']}; }}"
+            f"#WiringNotice QPushButton#ignore {{ text-align: center;"
+            f" padding: 5px 18px; }}")
+
+        from diagrammer.wirecheck.scene import (
+            ordered_fixes,
+            recommended_fix,
+            swap_hint,
+        )
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(6)
+        finding = findings[0]
+        self._finding = finding
+        title = QLabel("<b>Leads don't match</b>")
+        lay.addWidget(title)
+        msg = QLabel(_plain(finding.message))
+        msg.setWordWrap(True)
+        lay.addWidget(msg)
+        hint = swap_hint(self._scene, finding)
+        if hint:
+            tip = QLabel(f"<i>{hint}</i>")
+            tip.setWordWrap(True)
+            lay.addWidget(tip)
+
+        # One button per fix, stacked: the recommended one first, in bold,
+        # so the reason in the hint and the button order agree; then swap
+        # to twin, match this part's lead, set the wire. Stacked, not in a
+        # row: with swap and lead fixes there are up to six, and a row
+        # squeezed every label to a few clipped letters.
+        best = recommended_fix(self._scene, finding)
+        fixes = ordered_fixes(self._scene, finding)
+        lay.addSpacing(4)
+        buttons = []
+        for fix in fixes:
+            btn = QPushButton(fix.label)
+            btn.setAutoDefault(False)
+            if fix is best:
+                btn.setProperty("recommended", True)
+                btn.setToolTip("Recommended: matches the rest of the diagram")
+            btn.clicked.connect(lambda _=False, f=fix: self._apply(f))
+            lay.addWidget(btn)
+            buttons.append(btn)
+        row = QHBoxLayout()
+        row.addStretch()
+        ignore = QPushButton("Ignore")
+        ignore.setObjectName("ignore")
+        ignore.setAutoDefault(False)
+        ignore.clicked.connect(self.dismiss)
+        row.addWidget(ignore)
+        lay.addLayout(row)
+
+        # Size explicitly. adjustSize() does not run height-for-width on a
+        # child widget, so the word-wrapped labels were given their one-line
+        # height and clipped. Fix the width first (wide enough for the
+        # longest button, within reason), then ask the layout how tall it
+        # is at that width.
+        m = lay.contentsMargins()
+        widest = max((b.sizeHint().width() for b in buttons), default=0)
+        room = max(240, view.viewport().width() - 8)
+        width = min(max(MIN_WIDTH, widest + m.left() + m.right()),
+                    MAX_WIDTH, room)
+        self.setFixedWidth(width)
+        lay.activate()
+        self.setFixedHeight(lay.totalHeightForWidth(width))
+        self._place(anchor)
+
+        self._effect = QGraphicsOpacityEffect(self)
+        self._effect.setOpacity(1.0)
+        self.setGraphicsEffect(self._effect)
+        self._fade = QPropertyAnimation(self._effect, b"opacity", self)
+        self._fade.setDuration(FADE_MS)
+        self._fade.setStartValue(1.0)
+        self._fade.setEndValue(0.0)
+        self._fade.setEasingCurve(QEasingCurve.Type.InQuad)
+        self._fade.finished.connect(self.dismiss)
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self._fade.start)
+        self._timer.start(LINGER_MS)
+        self.show()
+        self.raise_()
+
+    @property
+    def finding(self):
+        return self._finding
+
+    def _place(self, anchor) -> None:
+        """Beside the wire, where it covers the least of the drawing.
+
+        Tries spots around *anchor* (the middle of the new wire) — right,
+        left, above, below — keeps each inside the viewport, and picks the
+        one whose footprint touches the fewest parts and wires. Ties go to
+        the first, so with nothing nearby it sits to the right.
+        """
+        from PySide6.QtCore import QRect
+
+        from diagrammer.items.component_item import ComponentItem
+        from diagrammer.items.connection_item import ConnectionItem
+        vp = self._view.viewport()
+        a = self._view.mapFromScene(anchor)
+        w, h, gap = self.width(), self.height(), 28
+        spots = [
+            QPoint(a.x() + gap, a.y() - h // 2),          # right
+            QPoint(a.x() - w - gap, a.y() - h // 2),      # left
+            QPoint(a.x() - w // 2, a.y() - h - gap),      # above
+            QPoint(a.x() - w // 2, a.y() + gap),          # below
+            QPoint(a.x() + gap, a.y() + gap),             # below-right
+            QPoint(a.x() + gap, a.y() - h - gap),         # above-right
+            QPoint(a.x() - w - gap, a.y() + gap),         # below-left
+            QPoint(a.x() - w - gap, a.y() - h - gap),     # above-left
+        ]
+
+        def clamp(p: QPoint) -> QPoint:
+            return QPoint(max(4, min(p.x(), vp.width() - w - 4)),
+                          max(4, min(p.y(), vp.height() - h - 4)))
+
+        def cost(p: QPoint) -> int:
+            rect = QRect(p, self.size())
+            area = self._view.mapToScene(rect).boundingRect()
+            hits = self._scene.items(area, Qt.ItemSelectionMode.IntersectsItemShape)
+            return sum(isinstance(i, (ComponentItem, ConnectionItem))
+                       for i in hits)
+
+        candidates = [clamp(p) for p in spots]
+        self.move(min(candidates, key=cost))
+
+    def enterEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        self._timer.stop()
+        self._fade.stop()
+        self._effect.setOpacity(1.0)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        self._timer.start(LINGER_MS // 2)
+        super().leaveEvent(event)
+
+    def _apply(self, fix) -> None:
+        from diagrammer.wirecheck.scene import apply_fix
+        apply_fix(self._scene, fix, text=f"Regularize wiring: {fix.label}")
+        self.dismiss()
+
+    def dismiss(self) -> None:
+        WiringNotice._live.discard(self)
+        self._timer.stop()
+        self._fade.stop()
+        self.hide()
+        self.deleteLater()
+        if getattr(self._view, "_wiring_notice", None) is self:
+            self._view._wiring_notice = None
+
+
+def _plain(message: str) -> str:
+    """The engine's message, reworded for a person mid-gesture."""
+    return (message.replace("leads at this wire's ends differ in width: ",
+                            "This wire joins ")
+            .replace("leads at this wire's ends differ in colour: ",
+                     "Lead colours differ: "))
+
+
+def show_wiring_notice(view, findings, anchor) -> WiringNotice | None:
+    """Replace any notice on *view* with one for *findings*."""
+    old = getattr(view, "_wiring_notice", None)
+    if old is not None:
+        old.dismiss()
+    if not findings:
+        return None
+    view._wiring_notice = WiringNotice(view, findings, anchor)
+    return view._wiring_notice

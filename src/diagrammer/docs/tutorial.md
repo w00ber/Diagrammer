@@ -37,7 +37,26 @@ There are two ways to rotate components:
 You can flip components horizontally or vertically with the `F` key. Pressing `F` flips horizontally, while `Shift+F` flips vertically. This is useful for components that are symmetrical
 
 ### Wiring things together
-You can connect components together with wires. Toggle the wire tool with `W` (for wire). In this mode you can connect a port from one component directly to another. The wire width defaults can be set in Settings → Line Styles. The wires will automatically route orthogonally and shorten leads to meet the component boundaries with nice rounded corners. You can also add manual waypoints by clicking while drawing a wire, and you can drag existing waypoints to adjust the routing. To create a T-junction between two wires, just draw a new wire that connects to the middle of an existing wire.
+You can connect components together with wires. Toggle the wire tool with `W` (for wire). In this mode you can connect a port from one component directly to another. A new wire takes the width and colour of the lead it continues (see *Line weights* below); a wire that touches no part at all uses the defaults in Settings → Line Styles. The wires will automatically route orthogonally and shorten leads to meet the component boundaries with nice rounded corners. You can also add manual waypoints by clicking while drawing a wire, and you can drag existing waypoints to adjust the routing. To create a T-junction between two wires, just draw a new wire that connects to the middle of an existing wire.
+
+### Line weights: paper vs. slides
+The circuit parts come in two libraries that differ only in line weight: `PAPER_2pt` (2 pt leads, for figures in a paper) and `SLIDES_3pt` (3 pt, which reads better projected). Most parts exist in both with the same name, ports and footprint; these pairs are called **twins**. A wire continues the lead of the part it is attached to, so a diagram reads cleanly when its parts all come from one library.
+
+With **Regularize Wiring** on (the default; toggle with `Shift+W`), a new wire simply takes its lead's width and colour. If you wire a 2 pt lead to a 3 pt one, the wire is still made, and a notice appears beside it. It says which library most of the diagram uses and offers, best choice first:
+
+- **Swap** the odd part to its twin in the other library, so both leads match;
+- **Set … lead to …**, which changes just that lead on that one placed part (the library file is never touched);
+- **Use 2 pt / Use 3 pt** for the wire alone, marking it as set on purpose;
+- **Ignore**.
+
+Some common workflows:
+
+- **Turning a paper figure into a slide:** *Routing → Convert Diagram to Library → SLIDES_3pt* swaps every part that has a twin, in one undo step, and restyles the wires that follow those leads. The status bar names any part that has no twin. If anything is left over, the Check Wiring panel opens with it.
+- **Tidying an older diagram:** *Routing → Check Wiring…* lists every wire that doesn't match its leads. Click a finding to zoom to it, then **Accept** the suggested fix or **Reject** to keep the wire as it is. **Accept all like this** fixes every finding of that kind in one step.
+- **One part from the wrong library:** right-click it and choose **Swap to … Twin**. It keeps its place, rotation, flip, stretch and wires.
+- **One lead that should look different:** select the part and change that port's lead under **Leads** in the Properties panel. **Reset** puts it back.
+
+Every one of these is undoable. The details are in the help (**F1**, under *Wiring*).
 
 
 

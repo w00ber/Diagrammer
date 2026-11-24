@@ -29,12 +29,16 @@ copy, and opening one opens the copy, which is what the canvas now uses.
 
 from __future__ import annotations
 
+import gc
 import logging
+import queue
+import threading
+import weakref
 from pathlib import Path
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QObject, Qt, QThreadPool, QRunnable, Signal
+from PySide6.QtCore import QObject, Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
@@ -100,29 +104,45 @@ def check_one(path: Path, overrides) -> tuple[svglint.FileReport,
                               read_error=read_error), stamp
 
 
-class _SweepSignals(QObject):
-    progress = Signal(int, int)
-    # ``object``, not list/dict: those convert through QVariant, which would
-    # not keep Path keys.
-    done = Signal(int, object, object)
+# -- The sweep thread touches no Qt --------------------------------------------
+#
+# A sweep (a second or two for the shipped tree) runs on a plain Python
+# thread that does nothing but run the Qt-free svglint engine and put its
+# results on a queue. The main thread drains the queue on a timer and does
+# every Qt thing itself.
+#
+# It used to be a QRunnable on QThreadPool emitting Qt signals, and the
+# single-process test suite crashed in this file in several ways, each far
+# from its cause: the pool deleted finished tasks (and with them a
+# main-thread QObject) on the worker thread; Python's garbage collector,
+# which runs on whichever thread is allocating, freed main-thread QObjects
+# kept alive by reference cycles from the worker ("QObject::~QObject:
+# Timers cannot be stopped from another thread", then a timer fired on
+# freed memory); and PySide aborted with a Python thread state left
+# attached ("_PyThreadState_Attach: non-NULL old thread state"). With no
+# Qt object on the worker, nothing can be created, deleted or signalled
+# across threads.
+#
+# The collector is still paused while any sweep runs, because the worker
+# allocates Python objects and a collection triggered there would free Qt
+# objects on it. Pending garbage is collected on the main thread before the
+# first sweep starts, and collection resumes, on the main thread, when the
+# last one has been drained. Reference counting still frees everything not
+# in a cycle, so the pause costs nothing.
 
+class _Sweep:
+    """One sweep: a Python thread and the queue it reports on."""
 
-class _SweepTask(QRunnable):
-    """Run the checks off the GUI thread.
-
-    229 files is a second or two — enough that the window would look hung, not
-    enough to be worth cancelling mid-file. The engine touches no Qt, so it is
-    safe to run here; only the signals cross back.
-    """
-
-    def __init__(self, generation: int, root: Path, overrides):
-        super().__init__()
+    def __init__(self, view, generation: int, root: Path, overrides):
+        self.view = weakref.ref(view)
         self.generation = generation
         self.root = root
         self.overrides = overrides
-        self.signals = _SweepSignals()
+        self.queue: queue.SimpleQueue = queue.SimpleQueue()
+        self.thread = threading.Thread(target=self._run, daemon=True,
+                                       name="validation-sweep")
 
-    def run(self) -> None:
+    def _run(self) -> None:            # the worker thread: no Qt here
         reports, stamps = [], {}
         try:
             files = svglint.iter_svgs([self.root])
@@ -132,11 +152,78 @@ class _SweepTask(QRunnable):
                 reports.append(report)
                 stamps[_key(path)] = stamp
                 if i % 10 == 0 or i == total:
-                    self.signals.progress.emit(i, total)
+                    self.queue.put(("progress", i, total))
         except Exception:
             logger.exception("validation sweep failed")
             reports, stamps = [], {}
-        self.signals.done.emit(self.generation, reports, stamps)
+        self.queue.put(("done", reports, stamps))
+
+
+class _Pump(QObject):
+    """Main-thread owner of running sweeps: starts them, drains their
+    queues into their views, and pauses collection while any runs."""
+
+    POLL_MS = 30
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.sweeps: list[_Sweep] = []
+        self.timer = QTimer(self)
+        self.timer.setInterval(self.POLL_MS)
+        self.timer.timeout.connect(self.drain)
+
+    def start(self, sweep: _Sweep) -> None:
+        if not self.sweeps:
+            gc.collect()               # pending garbage, on this thread
+            gc.disable()
+        self.sweeps.append(sweep)
+        sweep.thread.start()
+        self.timer.start()
+
+    def drain(self) -> None:
+        for sweep in list(self.sweeps):
+            while True:
+                try:
+                    msg = sweep.queue.get_nowait()
+                except queue.Empty:
+                    break
+                view = sweep.view()
+                if msg[0] == "progress":
+                    if view is not None:
+                        view._on_progress(msg[1], msg[2])
+                    continue
+                self.sweeps.remove(sweep)
+                if view is not None:
+                    view._on_done(sweep.generation, msg[1], msg[2])
+                break
+        if not self.sweeps:
+            self.timer.stop()
+            if not gc.isenabled():
+                gc.enable()
+
+
+_pump: _Pump | None = None
+
+
+def _start_sweep(sweep: _Sweep) -> None:
+    """Run *sweep* on its thread. Call on the main thread."""
+    global _pump
+    if _pump is None:
+        _pump = _Pump()
+    _pump.start(sweep)
+
+
+def wait_for_sweeps(timeout: float = 30.0) -> bool:
+    """Block until every running sweep has finished, then deliver its
+    results. For tests and scripts; the app never blocks on a sweep."""
+    if _pump is None:
+        return True
+    for sweep in list(_pump.sweeps):
+        sweep.thread.join(timeout)
+        if sweep.thread.is_alive():
+            return False
+    _pump.drain()
+    return True
 
 
 class ValidationReportView(QWidget):
@@ -254,10 +341,8 @@ class ValidationReportView(QWidget):
         self._progress.setVisible(True)
         self._progress.setRange(0, 0)
         self._summary.setText(f"Validating {root}…")
-        task = _SweepTask(self._generation, Path(root), self._overrides)
-        task.signals.progress.connect(self._on_progress)
-        task.signals.done.connect(self._on_done)
-        QThreadPool.globalInstance().start(task)
+        _start_sweep(_Sweep(self, self._generation, Path(root),
+                            self._overrides))
 
     def _on_progress(self, done: int, total: int) -> None:
         self._progress.setRange(0, total)

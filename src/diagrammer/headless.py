@@ -661,6 +661,15 @@ class Diagram:
 
     def _item(self, id: str):
         item = self._items.get(id)
+        if item is not None and item.scene() is not self.scene:
+            # Swapped for its twin (Convert to Library): the new item keeps
+            # the instance id, so follow it there.
+            iid = getattr(item, "instance_id", None)
+            now = next((i for i in self.scene.items()
+                        if getattr(i, "instance_id", None) == iid
+                        and i is not item), None) if iid else None
+            if now is not None:
+                self._items[id] = item = now
         if item is None or item.scene() is not self.scene:
             raise DiagramError(f"no item {id!r}; ids are {sorted(self._items)}")
         return item
@@ -685,11 +694,10 @@ class Diagram:
         """Lead width at either end, else the library's house weight."""
         import re
 
-        from diagrammer.commands.connect_command import _get_lead_stroke_width
-        for port in ports:
-            w = _get_lead_stroke_width(port)
-            if w:
-                return w
+        from diagrammer.commands.connect_command import wire_width_for
+        w = wire_width_for(*ports)
+        if w:
+            return w
         keys = [getattr(p.component, "library_key", "") for p in ports]
         keys += [getattr(i, "library_key", "") for i in self._items.values()]
         for key in keys:

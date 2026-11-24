@@ -600,6 +600,22 @@ def _fix_set_artwork_linecap(text: str, ctx: FixContext) -> FixResult:
     return FixResult(text=new, changed=new != text, notes=tuple(notes))
 
 
+def _fix_use_pure_black(text: str, ctx: FixContext) -> FixResult:
+    """Replace near-black paints with #000, leaving every other byte alone."""
+    hits = T.near_black_paints(text)
+    if not hits:
+        return _nop(text)
+    out, last = [], 0
+    for m in hits:
+        out.append(text[last:m.start(3)])
+        out.append("#000")
+        last = m.end(3)
+    out.append(text[last:])
+    values = sorted({m.group(3).lower() for m in hits})
+    return FixResult(text="".join(out), changed=True,
+                     notes=(f"{len(hits)} paint(s) {', '.join(values)} -> #000",))
+
+
 # --------------------------------------------------------------------------
 # geometry-moving
 # --------------------------------------------------------------------------
@@ -1066,6 +1082,14 @@ ALL_FIXES: tuple[Fix, ...] = (
                      "consistent in one step when that is what you want."),
         order=ORDER_STYLE, scope="file",
         apply=_fix_set_artwork_linecap, default_on=False, bulk_safe=True),
+
+    Fix(fix_id="use-pure-black",
+        title="Use pure black (#000)",
+        description=("Replaces Illustrator's near-black #231f20 (and any other "
+                     "near-black) with #000, the black the rest of the library "
+                     "and every wire use. Colour only; nothing moves."),
+        order=ORDER_STYLE, scope="file",
+        apply=_fix_use_pure_black, default_on=True, bulk_safe=True),
 
     Fix(fix_id="rebase-viewbox-to-origin",
         title="Move the viewBox origin to (0,0)",

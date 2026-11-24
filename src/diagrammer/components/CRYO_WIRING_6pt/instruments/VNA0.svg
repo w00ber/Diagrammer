@@ -22,11 +22,11 @@
       }
 
       .st1, .st2, .st3 {
-        stroke: #231f20;
+        stroke: #000;
       }
 
       .st4 {
-        fill: #231f20;
+        fill: #000;
       }
 
       .st5 {

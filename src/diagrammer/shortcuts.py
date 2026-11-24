@@ -218,6 +218,7 @@ _reg("view.invert_polarity", _ks("Ctrl+Alt+I"),             description="Invert 
 
 # ----- Routing -----
 _reg("routing.trace",  _ks("W"),                           description="Trace Routing Mode", category="Routing")
+_reg("routing.regularize", _ks("Shift+W"),                  description="Regularize Wiring", category="Routing")
 
 # ----- Draw -----
 _reg("draw.text",      _ks("Ctrl+Shift+T"),                 description="Add Text",          category="Draw")

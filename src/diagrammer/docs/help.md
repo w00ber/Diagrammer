@@ -327,6 +327,86 @@ New arrows use the default style from **Settings → Line Styles** (filled or ho
 | Snap to Angle | Waypoints snap to angle increments |
 | Discrete Angle Routing | Route with configurable angle steps (default 15°) |
 | Show Junctions | Toggle junction dot visibility |
+| Regularize Wiring | New wires match the leads they connect (Shift+W; also a toolbar checkbox) |
+| Check Wiring… | List wires that don't match their leads, and fix or keep each one |
+| Convert Diagram to Library | Swap every part with a twin to `PAPER_2pt` or `SLIDES_3pt` |
+
+### Regularize Wiring (Shift+W)
+
+On by default; toggle it with the **Regularize wiring** checkbox in the
+toolbar, **Routing → Regularize Wiring**, or **Shift+W**. A wire continues a
+part's lead, so in this mode:
+
+- **A new wire takes the width and color of the lead it starts from** (or ends
+  on, when it starts at a junction). A wire between two junctions takes the
+  style of the wires already on them.
+- **Wiring leads that don't match** — a 2 pt `PAPER_2pt` part to a 3 pt
+  `SLIDES_3pt` one — still makes the wire, and a notice appears beside it.
+  It offers, in this order: **Swap** the part to its twin in the other
+  library (see *Swap to Twin* below); **Set … lead to …**, which changes the
+  lead on that one placed part (see *Lead overrides*); **Use 2 pt** /
+  **Use 3 pt** for the wire, which marks it as set on purpose; or
+  **Ignore**. The choice that matches the library most of the diagram uses
+  comes first, in bold.
+- **Setting a wire's width or color by hand** in the Properties panel shows a
+  note under the fields when it no longer matches its leads. Keeping it marks
+  the wire as set on purpose, so it is not flagged; **Match Leads** puts it
+  back.
+
+With the mode off, wires keep the default color and nothing is reported.
+
+### Swap to Twin
+
+Most `PAPER_2pt` parts have a **twin** in `SLIDES_3pt`: the same drawing at
+the other line weight, with the same ports in the same places. Right-click a
+placed part and choose **Swap to SLIDES_3pt Twin** (or **PAPER_2pt**) to
+replace it. It keeps its position, rotation, flip, stretch, layer and groups,
+and each wire stays on the port of the same name. Wires that followed the old
+lead follow the new one where the leads at their ends now agree; wires set on
+purpose are left alone. It is one undo step. A part with no twin shows the
+entry greyed out.
+
+**Routing → Convert Diagram to Library** does the same for every part at
+once: pick `PAPER_2pt` or `SLIDES_3pt` and each part from the other library
+that has a twin is swapped, in one undo step. The status bar says how many
+were converted and names any part left as it was for want of a twin; if any
+wiring findings remain, the Check Wiring panel opens with them.
+
+### Lead overrides
+
+Select a part and the Properties panel lists its **Leads**: one row per port,
+with the lead's width and colour on *this* placed part. Changing one
+overrides that lead here only; the component file in the library is never
+changed. An overridden port is shown in bold with a dot, and **Reset** puts
+it back to the library's lead. Overrides are saved with the diagram and
+travel with copy, paste and duplicate. New wires and the wiring checks see
+the lead as overridden, so a wire on it is expected to match it.
+
+### Check Wiring…
+
+Regularize Wiring only sees a wire as it is drawn. **Routing → Check
+Wiring…** audits the wires a diagram already has, which is what you want for
+an older diagram or one built with the mode off. It opens a panel beside the
+canvas listing every wire whose width or color differs from its leads,
+grouped by kind:
+
+- **Wire width / colour differs from its lead** — the fix takes the lead's.
+  Making the lead match the wire instead (a swap, or a lead override) is
+  offered after it.
+- **Leads at the ends differ** — a 2 pt lead wired to a 3 pt one. Swapping a
+  part to its twin is offered first, then both widths for the wires, the
+  choice matching most of the diagram first within each; choosing a width
+  marks the wires as set on purpose.
+- **Joined wires differ** — wires meeting at junctions, with no part lead to
+  say which is right. One option per width or color present.
+
+Selecting a finding selects its wires and frames them on the canvas.
+**Accept** applies the chosen fix as one undo step; **Accept all like this**
+applies the same fix to every finding of that kind, also as one undo step.
+**Reject** keeps the wires as they are and marks them as set on purpose, which
+is saved with the diagram, so they are not flagged again. Tick **Show
+rejected** to list those too, greyed; **Restore** clears the mark. The list
+follows the diagram in front and updates as you edit, including on undo.
 
 ### Wire properties
 

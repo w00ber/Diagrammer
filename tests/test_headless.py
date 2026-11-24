@@ -23,7 +23,7 @@ JJ = P + "quantum/JJ1"         # ports "top" (points up), "bottom" (down)
 GND = P + "gnds/GND1"          # port "top" (points up)
 TERM = P + "terminals/terminal_open"  # port at its centre: no direction
 COAX = P + "µwave/coax and twp/COAX1_MED"  # 40 wide, gap stretch along dx
-TOTAL_PARTS = 238   # shipped tree, decorative parts included
+TOTAL_PARTS = 237   # shipped tree, decorative parts included
 
 
 @pytest.fixture(scope="module")

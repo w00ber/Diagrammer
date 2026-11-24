@@ -220,16 +220,50 @@ def _port_aliases(def_key: str, comp_def, embedded_b64: str | None) -> dict[str,
     return _match_saved_ports(def_key, comp_def, embedded_b64)[0]
 
 
+#: Ports renamed in a shipped part, by library key: ``{old: new}``. The
+#: position match above already rebinds these for any file that embeds its
+#: SVG; this table covers files that don't (format 1.0, or an embed that
+#: can't be read). Issue #47: the PAPER_2pt bias tees took their SLIDES_3pt
+#: twins' names so Convert to Library can move wires across by name.
+RENAMED_PORTS: dict[str, dict[str, str]] = {
+    "PAPER_2pt/circuits/µwave/PASSIVE/BIAS_TEE0":
+        {"top": "RF", "bottom": "COM", "dc": "DC"},
+    "PAPER_2pt/circuits/µwave/PASSIVE/BIAS_TEE1":
+        {"top": "RF", "bottom": "COM", "left": "DC"},
+}
+_RENAMED_PORTS_FOLDED = {k.casefold(): v for k, v in RENAMED_PORTS.items()}
+
+
+def _renamed_ports(def_key: str, comp_def) -> dict[str, str]:
+    """The :data:`RENAMED_PORTS` entries that apply to *comp_def*.
+
+    Only where the part really has the new name and no longer the old one:
+    a part loaded from its own embed (the library lacks it) or a user's
+    fork that kept the old names keeps them, and its wires with them.
+    """
+    table = _RENAMED_PORTS_FOLDED.get(def_key.casefold())
+    if not table or getattr(comp_def, "is_embedded", False):
+        return {}
+    names = {p.name for p in comp_def.ports}
+    return {old: new for old, new in table.items()
+            if new in names and old not in names}
+
+
 def _bind_saved_ports(item, cd: dict) -> dict[str, str]:
     """Reconcile a just-placed component with the ports it was saved with.
 
     Call once *item* has its saved position, rotation, flip and stretch.
     Moves the item back by any whole-symbol repair (see
     :func:`_match_saved_ports`) and returns the port-name aliases its wires
-    must be looked up through. Shared by ``.dgm`` and ``.dgmcomp`` loading.
+    must be looked up through: the position match first, then
+    :data:`RENAMED_PORTS` for names it left alone. Shared by ``.dgm`` and
+    ``.dgmcomp`` loading.
     """
     aliases, shift = _match_saved_ports(
         cd["def_key"], item.component_def, cd.get("embedded_svg"))
+    renamed = _renamed_ports(cd["def_key"], item.component_def)
+    if renamed:
+        aliases = {**renamed, **aliases}
     if shift is not None:
         # In the item's own frame, so rotation, flip and stretch all apply.
         d = item.mapToScene(QPointF(*shift)) - item.mapToScene(QPointF(0, 0))
@@ -463,6 +497,7 @@ class DiagramSerializer:
                 conn.line_width = cd["line_width"]
             if "line_color" in cd:
                 conn.line_color = QColor(cd["line_color"])
+            conn.style_deliberate = bool(cd.get("style_deliberate", False))
             if "corner_radius" in cd:
                 conn.corner_radius = cd["corner_radius"]
             if "routing_mode" in cd:
@@ -754,6 +789,9 @@ def _serialize_connection(item) -> dict:
         "z": item.zValue(),
         "group": getattr(item, '_group_ids', []) or [],
     }
+    # Wiring checks (#47): additive optional field, only when set
+    if item.style_deliberate:
+        data["style_deliberate"] = True
     # Direction arrows (2.4+) — additive optional field, only when present
     if item._arrows:
         data["arrows"] = [_serialize_arrow(a) for a in item._arrows]

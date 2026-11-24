@@ -894,7 +894,7 @@ class ComponentInspectorDialog(QDialog):
             self._view.set_grid_spacing(value)
 
     def _fit_soon(self) -> None:
-        QTimer.singleShot(0, self._view.fit_all)
+        QTimer.singleShot(0, self._view, self._view.fit_all)
 
     # -- the recompute loop ----------------------------------------------
 
@@ -919,7 +919,7 @@ class ComponentInspectorDialog(QDialog):
         if self._recompute_pending:
             return
         self._recompute_pending = True
-        QTimer.singleShot(0, self._recompute)
+        QTimer.singleShot(0, self, self._recompute)
 
     def _recompute(self) -> None:
         self._recompute_pending = False

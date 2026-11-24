@@ -172,6 +172,14 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
             Qt.Orientation.Vertical,
         )
 
+        # Routing ▸ Check Wiring… (#47 stage 3). Hidden until asked for; a
+        # dock so the canvas stays visible while it zooms to each finding.
+        from diagrammer.panels.wiring_check import WiringCheckPanel
+        self._wiring_panel = WiringCheckPanel(self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self._wiring_panel)
+        self._wiring_panel.hide()
+
         # Restore saved dock layout (overrides defaults if previously saved)
         self._restore_dock_state()
 
@@ -186,7 +194,7 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
 
         # Deferred so the window is up first: this is information, not a
         # decision that has to be made before the app is usable.
-        QTimer.singleShot(0, self._report_fork_drift)
+        QTimer.singleShot(0, self, self._report_fork_drift)
 
     def _populate_panels_menu(self) -> None:
         """Fill View > Panels with a show/hide toggle per dock.
@@ -204,6 +212,7 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
             self._annotations_panel,
             self._props_panel,
             self._layers_panel,
+            self._wiring_panel,
         ):
             act = panel.toggleViewAction()
             act.setText(panel.windowTitle() or act.text())
@@ -250,6 +259,48 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
         for doc in self._documents():
             doc.view.grid_visible = visible
 
+    def _set_regularize_wiring(self, on: bool) -> None:
+        """Routing ▸ Regularize Wiring / the toolbar checkbox / Shift+W."""
+        app_settings.regularize_wiring = bool(on)
+        cb = getattr(self, "_regularize_cb", None)
+        if cb is not None and cb.isChecked() != bool(on):
+            cb.blockSignals(True)
+            cb.setChecked(bool(on))
+            cb.blockSignals(False)
+        if not on:
+            for doc in self._documents():
+                notice = getattr(doc.view, "_wiring_notice", None)
+                if notice is not None:
+                    notice.dismiss()
+        app_settings.save()
+
+    def _show_wiring_check(self) -> None:
+        """Routing ▸ Check Wiring…: open the panel on the active diagram."""
+        panel = self._wiring_panel
+        panel.set_document(self._scene, self._view)
+        panel.show()
+        panel.raise_()
+
+    def _convert_diagram(self, library_name: str) -> None:
+        """Routing ▸ Convert Diagram to Library ▸ <library>: one undo step,
+        then the wiring is checked again and anything left is listed."""
+        from diagrammer import wirecheck
+        from diagrammer.wirecheck.scene import convert_diagram, snapshot
+        scene = self._scene
+        n, left = convert_diagram(scene, library_name)
+        remaining = wirecheck.check(snapshot(scene))
+        parts = f"{n} part{'s' if n != 1 else ''}"
+        msg = (f"Converted {parts} to {library_name}." if n
+               else f"Nothing to convert to {library_name}.")
+        if left:
+            msg += (f" No twin for {len(left)}: "
+                    + ", ".join(sorted(set(left))) + ".")
+        if remaining:
+            msg += f" {len(remaining)} wiring finding(s) remain."
+            self._show_wiring_check()
+            self._wiring_panel.recheck()
+        self.statusBar().showMessage(msg, 10000)
+
     def _set_polarity(self, inverted: bool) -> None:
         """View ▸ Invert Polarity. Window-wide, like the grid: every open
         diagram repaints, and exports follow. Not an undo step — nothing in
@@ -284,6 +335,10 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
             except Exception:
                 logger.debug("Failed to refresh library for polarity", exc_info=True)
         self._reassert_light_surfaces()
+        for doc in self._documents():
+            overlay = getattr(doc, "shortcut_overlay", None)
+            if overlay is not None:
+                overlay.apply_polarity()
         self._sync_appearance_actions()
 
     def _sync_appearance_actions(self) -> None:
@@ -946,6 +1001,7 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
             cmd.connection.vertices = merged_wps
             cmd.connection.line_width = wire_a.line_width
             cmd.connection.line_color = wire_a.line_color
+            cmd.connection.style_deliberate = wire_a.style_deliberate
         self._scene.undo_stack.endMacro()
         self._scene.update_connections()
 

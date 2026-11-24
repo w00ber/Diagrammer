@@ -40,10 +40,21 @@ ships once per library so a figure reads correctly at its final size:
 | `SLIDES_3pt` | 3 px |
 | `CRYO_WIRING_6pt` | 6 px |
 
-`ConnectCommand._get_lead_stroke_width` reads this out of the component's CSS
-and gives the attached wire the same width, which is why a mismatch is visible.
+Each port's lead width and colour are read from the component's CSS when it
+loads (`lead_style_at` in `commands/connect_command.py`), and the attached wire
+takes them, which is why a mismatch is visible.
 **A new part belongs in every library it is relevant to**, drawn at that
 library's weight — not in one library only.
+
+**`PAPER_2pt` and `SLIDES_3pt` parts come in twins.** Convert to Library swaps
+a placed part for its twin and re-attaches wires *by port name*, so the two
+files must have the same file name and relative path, the same port names, and
+the same port positions; only the weights differ. Author both in the same
+change (a generator makes this automatic), and when renaming or adding a port in
+one, do it in the other. The per-file checks cannot see a pair drift apart: the
+bias tees did (`top`/`bottom`/`dc` vs `RF`/`COM`/`DC`). Renaming a port on a
+shipped part also needs a `RENAMED_PORTS` entry in `io/serializer.py`. See "Twins across
+PAPER_2pt and SLIDES_3pt" in the spec.
 
 Body weight is *not* standardised (bodies range 1.6–3.2 px, and `SP6T` uses
 2.7 px while `SPDT` uses 2 px). Open the specific neighbour the new part will

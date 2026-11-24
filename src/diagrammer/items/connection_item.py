@@ -183,6 +183,10 @@ class ConnectionItem(QGraphicsPathItem):
         # Style ----------------------------------------------------------
         self._line_color = QColor(DEFAULT_LINE_COLOR)
         self._line_width = DEFAULT_LINE_WIDTH
+        # The user chose this wire's width/colour on purpose (kept a hand-set
+        # width, or settled a lead disagreement): the wiring checks neither
+        # flag nor change it. Saved in the .dgm only when True. Issue #47.
+        self.style_deliberate = False
         self._corner_radius = DEFAULT_CORNER_RADIUS
         self._routing_mode: str = ROUTE_ORTHO  # default; scene can override
         self._closed: bool = False  # True for closed polygon (source == target)

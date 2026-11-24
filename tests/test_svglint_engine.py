@@ -347,6 +347,40 @@ def test_metadata_stretch_with_its_break_line_passes(tmp_path: Path) -> None:
         svglint.check_file(write(tmp_path, body), profile=PAPER))
 
 
+def test_near_black_is_a_warning_with_a_safe_fix(tmp_path: Path) -> None:
+    style = ("    <style>\n"
+             "      .st0 { fill: #c66; }\n"
+             "      .st1 { fill: none; stroke: #231f20; stroke-width: 2px; }\n"
+             "    </style>\n")
+    path = write(tmp_path, SOUND_BODY, style=style)
+    findings = svglint.check_file(path, profile=PAPER)
+    f = next(x for x in findings if x.check_id == "near-black")
+    assert f.severity == "warning" and "#231f20" in f.message
+    fix = svglint.FIXES_BY_ID["use-pure-black"]
+    assert fix.default_on and fix.bulk_safe
+    text = path.read_text()
+    new, _ = svglint.apply_fixes(text, [fix], findings, profile=PAPER, path=path)
+    # Exactly the colour changes; every other byte survives.
+    assert new == text.replace("stroke: #231f20", "stroke: #000")
+    path.write_text(new)
+    assert "near-black" not in ids(svglint.check_file(path, profile=PAPER))
+
+
+def test_dark_greys_and_black_are_not_near_black(tmp_path: Path) -> None:
+    from diagrammer.svglint import text_svg as T
+    assert T.is_near_black("#231f20") and T.is_near_black("#111")
+    for c in ("#000", "#000000", "#333", "#333333", "#0d72ba", "#2a0000"):
+        assert not T.is_near_black(c), c
+
+
+def test_shipped_library_has_no_near_black() -> None:
+    """All 28 files that used Illustrator's #231f20 were fixed on 2026-11-23."""
+    from diagrammer.svglint import text_svg as T
+    offenders = [p.relative_to(COMPONENTS) for p in COMPONENTS.rglob("*.svg")
+                 if T.near_black_paints(p.read_text(encoding="utf-8"))]
+    assert offenders == []
+
+
 def test_profile_can_opt_out_of_a_check(tmp_path: Path) -> None:
     """circuits/ parts centre their common port off the edge by design."""
     body = (

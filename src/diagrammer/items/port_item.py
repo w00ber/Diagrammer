@@ -73,6 +73,10 @@ class PortItem(QGraphicsEllipseItem):
         return self._port_def.name
 
     @property
+    def port_def(self) -> PortDef:
+        return self._port_def
+
+    @property
     def component(self) -> ComponentItem:
         return self._component
 

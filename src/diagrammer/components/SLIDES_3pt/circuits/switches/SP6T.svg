@@ -12,7 +12,7 @@
       }
 
       .st1, .st2, .st3, .st4, .st5 {
-        stroke: #231f20;
+        stroke: #000;
         stroke-linejoin: round;
       }
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from enum import Enum, auto
 
 from PySide6.QtCore import QObject, QPointF, QRectF, Qt, Signal
@@ -10,6 +11,8 @@ from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsPathItem, QGraphics
 
 from diagrammer.models.component_def import ComponentDef
 from diagrammer.models.library import ComponentLibrary
+
+logger = logging.getLogger(__name__)
 
 
 class InteractionMode(Enum):
@@ -76,6 +79,9 @@ class DiagramScene(QGraphicsScene):
 
     mode_changed = Signal(InteractionMode)
     cursor_scene_pos_changed = Signal(float, float)  # x, y in scene coords
+    # Regularize Wiring (#47): a wire just drawn joins leads that disagree.
+    # (list of wirecheck Findings with verified fixes, QPointF near the wire)
+    wiring_disagreement = Signal(object, object)
 
     def __init__(self, library: ComponentLibrary | None = None, parent: QObject | None = None):
         super().__init__(parent)
@@ -558,7 +564,7 @@ class DiagramScene(QGraphicsScene):
                 if item.scene() is self:
                     item.setSelected(True)
 
-        QTimer.singleShot(400, restore)
+        QTimer.singleShot(400, self, restore)
 
     @property
     def default_routing_mode(self) -> str:
@@ -955,8 +961,14 @@ class DiagramScene(QGraphicsScene):
         # T-junction: split the host wire at the junction (real topology)
         self._split_pending_host_wire()
 
-        # Create the connection
-        cmd = CreateConnectionCommand(self, source, target)
+        # Create the connection. In Regularize Wiring mode it takes the
+        # leads' width and colour (or, from a junction, its net's).
+        from diagrammer.panels.settings_dialog import app_settings
+        style = None
+        if app_settings.regularize_wiring:
+            from diagrammer.wirecheck.scene import regularized_style
+            style = regularized_style(self, source, target)
+        cmd = CreateConnectionCommand(self, source, target, style=style)
         self._undo_stack.push(cmd)
 
         # Closed polygon: source and target are the same port
@@ -1000,8 +1012,33 @@ class DiagramScene(QGraphicsScene):
         if pending:
             self._undo_stack.endMacro()
 
+        if app_settings.regularize_wiring and source is not target:
+            self._report_wiring_disagreement(source, target)
+
         self._cleanup_connection_state()
         return True
+
+    def _report_wiring_disagreement(self, source, target) -> None:
+        """Tell the view when the wire just drawn joins disagreeing leads.
+
+        Checked on the nets at the two ports rather than on the new wire
+        object, which a merge at the source may already have replaced.
+        """
+        try:
+            from diagrammer.wirecheck.scene import disagreements_at
+            findings = disagreements_at(self, (source, target))
+        except Exception:
+            logger.debug("Wiring check after connect failed", exc_info=True)
+            return
+        if findings:
+            # The notice is about a wire, so place it by the wire's middle.
+            anchor = target.scene_center()
+            ids = set(findings[0].wire_ids)
+            for conn in self.connections_on_port(target):
+                if conn.instance_id in ids:
+                    anchor = conn.mapToScene(conn.path().pointAtPercent(0.5))
+                    break
+            self.wiring_disagreement.emit(findings, anchor)
 
     def _try_join_wire_endpoint(
         self, cursor_pos: QPointF, source_port, trace_vertices: list[QPointF],
@@ -1256,6 +1293,7 @@ class DiagramScene(QGraphicsScene):
             cmd.connection.vertices = merged_wps
             cmd.connection.line_width = conn.line_width
             cmd.connection.line_color = conn.line_color
+            cmd.connection.style_deliberate = conn.style_deliberate
         self._undo_stack.endMacro()
         self._cleanup_connection_state()
 
@@ -1395,6 +1433,7 @@ class DiagramScene(QGraphicsScene):
             half.corner_radius = host.corner_radius
             half.line_width = host.line_width
             half.line_color = host.line_color
+            half.style_deliberate = host.style_deliberate
             half._layer_index = getattr(host, '_layer_index', 0)
             if group_stack:
                 set_group_ids(half, list(group_stack))
@@ -1775,6 +1814,7 @@ class DiagramScene(QGraphicsScene):
                     connector.corner_radius = host.corner_radius
                     connector.line_width = host.line_width
                     connector.line_color = host.line_color
+                    connector.style_deliberate = host.style_deliberate
                     connector._layer_index = getattr(host, '_layer_index', 0)
         finally:
             self._undo_stack.endMacro()

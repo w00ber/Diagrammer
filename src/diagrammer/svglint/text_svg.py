@@ -565,3 +565,36 @@ def line_attr(attrs: str, name: str) -> float:
 def lead_endpoints(text: str) -> list[tuple[float, float, float, float]]:
     """``(x1, y1, x2, y2)`` for every lead whose ends we can read exactly."""
     return [e.ends for e in lead_elements(text)]
+
+
+# --------------------------------------------------------------------------
+# near-black paint
+# --------------------------------------------------------------------------
+
+#: A paint value in a CSS declaration or a presentation attribute:
+#: group 1 the property, group 2 the hex colour.
+_PAINT = re.compile(
+    r"(?<![\w-])(fill|stroke|stop-color|color)(\s*[:=]\s*[\"']?\s*)"
+    r"(#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b)")
+
+
+def is_near_black(hex_color: str) -> bool:
+    """Dark, neutral, and not black: Illustrator's #231f20 "rich black".
+
+    Every channel at most 0x2f, spread at most 16. #333 (0x33) is a
+    deliberate dark grey in the shipped libraries and stays out.
+    """
+    h = hex_color.lstrip("#").lower()
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    try:
+        rgb = [int(h[i:i + 2], 16) for i in (0, 2, 4)]
+    except ValueError:
+        return False
+    return (max(rgb) <= 0x2F and max(rgb) - min(rgb) <= 16
+            and any(rgb))
+
+
+def near_black_paints(text: str) -> list[re.Match]:
+    """Every fill/stroke/stop-color/color set to a near-black, in order."""
+    return [m for m in _PAINT.finditer(text) if is_near_black(m.group(3))]
