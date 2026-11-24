@@ -59,7 +59,7 @@ conda env, and run headless:
 QT_QPA_PLATFORM=offscreen ~/miniforge3/envs/CMT/bin/python -m pytest tests -q
 ```
 
-As of 2026-11-23 the suite is **fully green on macOS — 972 passed, 2 skipped,
+As of 2026-11-24 the suite is **fully green on macOS — 1053 passed, 2 skipped,
 0 failed** (one skip is a test that needs a case-sensitive filesystem). Any
 failure you see is yours. Earlier notes here claimed 6 then 11 permanent
 failures; both were measurement artifacts, from the traps below.
