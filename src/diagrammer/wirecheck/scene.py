@@ -6,6 +6,7 @@ checks themselves never see them.
 
 from __future__ import annotations
 
+from diagrammer.svglint.twins import TWIN_LIBRARIES
 from diagrammer.wirecheck.model import End, Snapshot, Wire
 
 
@@ -145,17 +146,19 @@ def disagreements_at(scene, ports) -> list:
 
 
 #: Libraries a part can be swapped between, and their lead weight.
-WEIGHT_LIBRARIES = {"PAPER_2pt": 2.0, "SLIDES_3pt": 3.0}
+WEIGHT_LIBRARIES = TWIN_LIBRARIES
 
 
 def twin_key(library, key: str) -> str | None:
     """The same part in the other weight library, if a safe swap exists.
 
-    Same relative path, else a unique file name in the other library (the
-    libraries' folders have drifted); port names must match, or the swap
-    would orphan wires. Convert to Library (#47 stage 4) will act on this;
-    for now the notice only names it.
+    Matched by :func:`diagrammer.svglint.twins.find_twin` — the same
+    relative path, else a unique file name (the libraries' folders have
+    drifted) — and only when the port names agree, or the swap would orphan
+    wires. The cross-library twin check (``python -m diagrammer.svglint
+    --twins``) keeps the shipped pairs that way.
     """
+    from diagrammer.svglint.twins import find_twin
     top, _, rel = key.partition("/")
     if top not in WEIGHT_LIBRARIES or not rel:
         return None
@@ -163,15 +166,13 @@ def twin_key(library, key: str) -> str | None:
     if src is None:
         return None
     names = {p.name for p in src.ports}
-    stem = rel.rsplit("/", 1)[-1]
     for other in WEIGHT_LIBRARIES:
         if other == top:
             continue
-        cand = f"{other}/{rel}"
-        if library.get(cand) is None:
-            same = [k for k in library._by_key
-                    if k.startswith(other + "/") and k.rsplit("/", 1)[-1] == stem]
-            cand = same[0] if len(same) == 1 else None
+        rels = {k.partition("/")[2]: k for k in library._by_key
+                if k.partition("/")[0].casefold() == other.casefold()}
+        match = find_twin(rel, rels)
+        cand = rels[match] if match is not None else None
         if cand and {p.name for p in library.get(cand).ports} == names:
             return cand
     return None

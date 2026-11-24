@@ -36,6 +36,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="only print components that have problems")
     ap.add_argument("--errors-only", action="store_true",
                     help="exit non-zero on errors but say nothing about warnings")
+    ap.add_argument("--twins", action="store_true",
+                    help=("treat each path as a components folder and check "
+                          "the PAPER_2pt / SLIDES_3pt twins in it against "
+                          "each other"))
     args = ap.parse_args(argv)
 
     repo = find_repo_root(Path.cwd())
@@ -49,6 +53,9 @@ def main(argv: list[str] | None = None) -> int:
             return str(f.resolve().relative_to(repo))
         except ValueError:
             return str(f)
+
+    if args.twins:
+        return _twins(args.paths, rel, quiet=args.quiet or args.errors_only)
 
     bad = warned = total = 0
     for report in scan_paths(args.paths):
@@ -76,6 +83,23 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\n{ok} sound, {warned} with warnings, {bad} failing "
           f"(of {total} components)")
     return 1 if bad else 0
+
+
+def _twins(roots: list[Path], rel, *, quiet: bool) -> int:
+    from diagrammer.svglint.twins import check_twins
+    errors = infos = 0
+    for root in roots:
+        for t in check_twins(root):
+            f = t.finding
+            if f.severity == "error":
+                errors += 1
+                print(f"FAIL {rel(t.path)}\n       error: {f.message}")
+            else:
+                infos += 1
+                if not quiet:
+                    print(f"info {rel(t.path)}\n       {f.message}")
+    print(f"\n{errors} twin error(s), {infos} part(s) without a twin")
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":

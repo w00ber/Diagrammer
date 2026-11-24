@@ -118,3 +118,20 @@ pre-commit: a staged component SVG does not parse as a usable part.
 MSG
     exit 1
 fi
+
+# 3. Twins. A PAPER_2pt part and its SLIDES_3pt twin must keep the same port
+#    names and positions, or Convert to Library cannot swap them. Each file can
+#    be valid and the pair still drift, so this reads both libraries whole.
+if [ -z "$VALIDATOR" ] && printf '%s\n' "$STAGED" | \
+        grep -qE '^src/diagrammer/components/(PAPER_2pt|SLIDES_3pt)/'; then
+    if ! PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" -m diagrammer.svglint \
+            --twins --quiet src/diagrammer/components; then
+        cat >&2 <<'MSG'
+
+pre-commit: a PAPER_2pt / SLIDES_3pt twin pair has drifted apart.
+  Change the port in both libraries in the same commit; see "Twins across
+  PAPER_2pt and SLIDES_3pt" in src/diagrammer/docs/svg-component-spec.md.
+MSG
+        exit 1
+    fi
+fi

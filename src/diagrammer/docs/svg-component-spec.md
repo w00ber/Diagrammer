@@ -604,7 +604,10 @@ a wire attaches to:
   differ.
 
 Each twin is still valid on its own, so the per-file checks cannot catch a
-twin that drifts; checking the pair is a cross-library job. When adding or
+twin that drifts; checking the pair is a cross-library job:
+`python -m diagrammer.svglint --twins src/diagrammer/components` reports
+differing port names or positions as errors and a part with no twin as info,
+and the pre-commit hook runs it whenever a file in either library is staged. When adding or
 renaming a port in one library, do the same in the other in the same change.
 Renaming a port on a shipped part also needs an entry in `RENAMED_PORTS`
 (`io/serializer.py`): a saved diagram that embeds the part's SVG is rebound by

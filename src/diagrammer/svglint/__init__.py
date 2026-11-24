@@ -6,6 +6,9 @@ here rather than in a script is what lets the app check a *user's* library
 folder — the tree an editing feature creates, and the one the old script could
 never see.
 
+Twin pairs across PAPER_2pt and SLIDES_3pt are checked together, not per
+file: :func:`diagrammer.svglint.twins.check_twins` (``--twins`` on the CLI).
+
 **This package must not import PySide6.** The pre-commit hook may run under a
 bare ``python3``, and ``tests/test_svglint_engine.py`` enforces the invariant.
 
