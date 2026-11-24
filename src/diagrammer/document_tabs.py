@@ -337,6 +337,9 @@ class DocumentTabsMixin:
         props = getattr(self, "_props_panel", None)
         if props is not None:
             props.update_for_selection(scene)
+        wiring = getattr(self, "_wiring_panel", None)
+        if wiring is not None:
+            wiring.set_document(scene, self._active_doc.view)
         if hasattr(self, "_layer_warning_label"):
             self._refresh_layer_warning()
 

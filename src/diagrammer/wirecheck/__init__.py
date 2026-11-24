@@ -28,7 +28,7 @@ Typical use::
 
 from __future__ import annotations
 
-from diagrammer.wirecheck.checks import check, verified
+from diagrammer.wirecheck.checks import check, combine, rejected, verified
 from diagrammer.wirecheck.model import (
     COLOR_TOL,
     WIDTH_TOL,
@@ -42,5 +42,5 @@ from diagrammer.wirecheck.model import (
 
 __all__ = [
     "COLOR_TOL", "WIDTH_TOL", "End", "Finding", "Fix", "Snapshot", "Wire",
-    "check", "colors_match", "verified",
+    "check", "colors_match", "combine", "rejected", "verified",
 ]

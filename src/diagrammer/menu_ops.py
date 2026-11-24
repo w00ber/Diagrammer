@@ -451,6 +451,15 @@ class MenuMixin:
         self._regularize_act.toggled.connect(self._set_regularize_wiring)
         routing_menu.addAction(self._regularize_act)
 
+        # The auditor for wires that already exist (#47 stage 3).
+        self._check_wiring_act = check_wiring_act = QAction(
+            "&Check Wiring…", self)
+        check_wiring_act.setStatusTip(
+            "List wires whose width or colour does not match their leads, "
+            "and accept or reject each fix")
+        check_wiring_act.triggered.connect(self._show_wiring_check)
+        routing_menu.addAction(check_wiring_act)
+
         routing_menu.addSeparator()
 
         hv_info_act = QAction("Hold Shift for &H/V Constraint", self)

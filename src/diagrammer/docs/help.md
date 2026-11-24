@@ -328,6 +328,7 @@ New arrows use the default style from **Settings → Line Styles** (filled or ho
 | Discrete Angle Routing | Route with configurable angle steps (default 15°) |
 | Show Junctions | Toggle junction dot visibility |
 | Regularize Wiring | New wires match the leads they connect (Shift+W; also a toolbar checkbox) |
+| Check Wiring… | List wires that don't match their leads, and fix or keep each one |
 
 ### Regularize Wiring (Shift+W)
 
@@ -349,6 +350,29 @@ part's lead, so in this mode:
   back.
 
 With the mode off, wires keep the default color and nothing is reported.
+
+### Check Wiring…
+
+Regularize Wiring only sees a wire as it is drawn. **Routing → Check
+Wiring…** audits the wires a diagram already has, which is what you want for
+an older diagram or one built with the mode off. It opens a panel beside the
+canvas listing every wire whose width or color differs from its leads,
+grouped by kind:
+
+- **Wire width / colour differs from its lead** — the fix takes the lead's.
+- **Leads at the ends differ** — a 2 pt lead wired to a 3 pt one. Both widths
+  are offered, the one most of the diagram uses first; choosing one marks the
+  wires as set on purpose.
+- **Joined wires differ** — wires meeting at junctions, with no part lead to
+  say which is right. One option per width or color present.
+
+Selecting a finding selects its wires and frames them on the canvas.
+**Accept** applies the chosen fix as one undo step; **Accept all like this**
+applies the same fix to every finding of that kind, also as one undo step.
+**Reject** keeps the wires as they are and marks them as set on purpose, which
+is saved with the diagram, so they are not flagged again. Tick **Show
+rejected** to list those too, greyed; **Restore** clears the mark. The list
+follows the diagram in front and updates as you edit, including on undo.
 
 ### Wire properties
 

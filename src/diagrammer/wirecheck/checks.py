@@ -163,3 +163,43 @@ def verified(snap: Snapshot, finding: Finding, fix: Fix) -> bool:
     before = {f.key for f in check(snap)}
     after = {f.key for f in check(snap.apply(fix))}
     return finding.key not in after and after <= before
+
+
+def rejected(snap: Snapshot) -> list[Finding]:
+    """Findings that are hidden only because their wires are deliberate.
+
+    The check is run again as if no wire were deliberate; what that finds
+    and the real check does not is what a "kept on purpose" mark is
+    suppressing — a rejected suggestion, or a decision already taken on
+    disagreeing leads. The Check Wiring panel lists these under
+    *Show rejected* so a mark can be found and undone.
+    """
+    from dataclasses import replace
+    live = {f.key for f in check(snap)}
+    bare = Snapshot({wid: replace(w, deliberate=False)
+                     for wid, w in snap.wires.items()})
+    return [f for f in check(bare) if f.key not in live]
+
+
+def combine(snap: Snapshot, picks: list[tuple[Finding, Fix]],
+            label: str) -> tuple[Fix, int]:
+    """Fold several (finding, fix) choices into one :class:`Fix`.
+
+    Each is verified against the snapshot as the earlier ones leave it, so
+    two fixes that are each fine alone but fight over a shared net cannot
+    both go in. Returns the combined fix and how many picks it took.
+    """
+    changes: dict[str, dict] = {}
+    cur = snap
+    taken = 0
+    for finding, fix in picks:
+        if finding.key not in {f.key for f in check(cur)}:
+            taken += 1          # an earlier pick already cleared it
+            continue
+        if not verified(cur, finding, fix):
+            continue
+        for wid, attrs in fix.changes.items():
+            changes.setdefault(wid, {}).update(attrs)
+        cur = cur.apply(fix)
+        taken += 1
+    return Fix(label, changes), taken

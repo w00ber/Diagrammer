@@ -172,6 +172,14 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
             Qt.Orientation.Vertical,
         )
 
+        # Routing ▸ Check Wiring… (#47 stage 3). Hidden until asked for; a
+        # dock so the canvas stays visible while it zooms to each finding.
+        from diagrammer.panels.wiring_check import WiringCheckPanel
+        self._wiring_panel = WiringCheckPanel(self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self._wiring_panel)
+        self._wiring_panel.hide()
+
         # Restore saved dock layout (overrides defaults if previously saved)
         self._restore_dock_state()
 
@@ -204,6 +212,7 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
             self._annotations_panel,
             self._props_panel,
             self._layers_panel,
+            self._wiring_panel,
         ):
             act = panel.toggleViewAction()
             act.setText(panel.windowTitle() or act.text())
@@ -264,6 +273,13 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
                 if notice is not None:
                     notice.dismiss()
         app_settings.save()
+
+    def _show_wiring_check(self) -> None:
+        """Routing ▸ Check Wiring…: open the panel on the active diagram."""
+        panel = self._wiring_panel
+        panel.set_document(self._scene, self._view)
+        panel.show()
+        panel.raise_()
 
     def _set_polarity(self, inverted: bool) -> None:
         """View ▸ Invert Polarity. Window-wide, like the grid: every open
