@@ -363,10 +363,164 @@ def test_check_wiring_panel_offers_and_accepts_swap(d):
     p.set_document(d.scene, view)
     p.recheck()
     ((f, _rej),) = p.findings()
-    assert [fx.kind for fx in f.fixes] == ["swap", "swap", "wire", "wire"]
+    assert [fx.kind for fx in f.fixes] == ["swap", "swap", "lead", "lead",
+                                          "wire", "wire"]
     assert f.fixes[0].label == "Swap IND1 to PAPER_2pt"
     p._apply(f.fixes[0], "Wiring: " + f.fixes[0].label)
     p.recheck()
     assert p.findings() == []
     assert _part(d, "B").library_key == PAPER_IND
     p.deleteLater()
+
+
+# ==========================================================================
+# 4. per-instance lead override
+# ==========================================================================
+
+def test_lead_paths_are_read_per_port(d):
+    cap = d.library.get(PAPER_CAP)
+    assert {p.name: p.lead_paths for p in cap.ports} == {
+        "top": ("leads/0",), "bottom": ("leads/1",)}
+    tee = d.library.get(TEE0)                 # Illustrator's nested sub-group
+    assert dict((p.name, p.lead_paths) for p in tee.ports)["DC"] == ("leads/2/0",)
+
+
+def test_override_changes_one_port_and_never_the_file(d):
+    from diagrammer.commands.connect_command import lead_style_at
+    from diagrammer.commands.lead_override import (
+        clear_lead_override,
+        lead_override_at,
+        set_lead_override,
+    )
+    d.add(PAPER_CAP, (0, 0), anchor="top", id="A")
+    a = _part(d, "A")
+    path = a.component_def.svg_path
+    before_file = path.read_bytes()
+    n = d.undo_stack.count()
+    assert set_lead_override(d.undo_stack, a, "bottom", width=3.0,
+                             color="#cc3333")
+    assert d.undo_stack.count() == n + 1                       # one step
+    assert lead_override_at(a, "bottom") == {"width": 3.0, "color": "#cc3333"}
+    style = lead_style_at(a.port_by_name("bottom"))
+    assert (style.width, style.color) == (3.0, "#cc3333")
+    other = lead_style_at(a.port_by_name("top"))
+    assert (other.width, other.color) == (2.0, "#000000")
+    # Drawn that way, too.
+    svg = a._prepare_svg_bytes(path, style_overrides=a.style_overrides).decode()
+    assert "stroke-width:3.0px" in svg and "#cc3333" in svg
+    assert path.read_bytes() == before_file
+    # A new wire from that port takes the overridden lead.
+    d.add(PAPER_IND, (0, 200), anchor="top", id="B")
+    w = d._items[d.connect("A", "bottom", "B", "top")]
+    assert w.line_width == 3.0
+    clear_lead_override(d.undo_stack, a, "bottom")
+    assert lead_override_at(a, "bottom") == {}
+    d.undo_stack.undo()
+    assert lead_override_at(a, "bottom")["width"] == 3.0
+
+
+def test_override_survives_save_load_paste_and_duplicate(d, tmp_path):
+    from diagrammer.canvas.view import DiagramView
+    from diagrammer.clipboard_ops import ClipboardMixin
+    from diagrammer.commands.lead_override import (
+        lead_override_at,
+        set_lead_override,
+    )
+    from diagrammer.headless import Diagram
+    from diagrammer.items.component_item import ComponentItem
+    d.add(PAPER_CAP, (0, 0), anchor="top", id="A")
+    a = _part(d, "A")
+    set_lead_override(d.undo_stack, a, "top", width=4.0)
+
+    d.save(tmp_path / "o.dgm")
+    fresh = Diagram(library=d.library)
+    fresh.load(tmp_path / "o.dgm")
+    (b,) = [i for i in fresh.scene.items() if isinstance(i, ComponentItem)]
+    assert lead_override_at(b, "top") == {"width": 4.0}
+
+    class Host(ClipboardMixin):
+        def __init__(self, scene, library):
+            self._scene, self._view, self._library = scene, None, library
+            self._clipboard = []
+
+        def _try_paste_external_svg(self):
+            return False
+
+    host = Host(d.scene, d.library)
+    a.setSelected(True)
+    host._copy()
+    d.scene.clearSelection()
+    host._paste()
+    pasted = [i for i in d.scene.items()
+              if isinstance(i, ComponentItem) and i is not a]
+    assert [lead_override_at(p, "top") for p in pasted] == [{"width": 4.0}]
+
+    view = DiagramView(d.scene)
+    clone = view._duplicate_item(a)
+    assert lead_override_at(clone, "top") == {"width": 4.0}
+
+
+def test_properties_shows_and_reverses_the_override(d):
+    from PySide6.QtWidgets import QDoubleSpinBox, QLabel, QPushButton
+
+    from diagrammer.commands.lead_override import (
+        lead_override_at,
+        set_lead_override,
+    )
+    from diagrammer.panels.properties_panel import PropertiesPanel
+    d.add(PAPER_CAP, (0, 0), anchor="top", id="A")
+    a = _part(d, "A")
+    set_lead_override(d.undo_stack, a, "bottom", width=3.0)
+    a.setSelected(True)
+    panel = PropertiesPanel()
+    panel.update_for_selection(d.scene)
+    labels = [lb.text() for lb in panel.findChildren(QLabel)]
+    assert "<b>Leads</b>" in labels
+    assert "top" in labels and any(t.startswith("<b>bottom</b>") for t in labels)
+    spins = [s.value() for s in panel.findChildren(QDoubleSpinBox)]
+    assert 3.0 in spins and 2.0 in spins
+    resets = [b for b in panel.findChildren(QPushButton) if b.text() == "Reset"]
+    assert [b.isEnabled() for b in resets] == [False, True]
+    resets[1].click()
+    assert lead_override_at(a, "bottom") == {}
+    panel.deleteLater()
+
+
+def test_match_this_parts_lead_is_offered_between_swap_and_wire(d):
+    from diagrammer import wirecheck
+    from diagrammer.commands.lead_override import lead_override_at
+    from diagrammer.wirecheck.scene import apply_fix, ordered_fixes, snapshot
+    w = _disagreement(d)
+    snap = snapshot(d.scene)
+    (f,) = wirecheck.check(snap)
+    fixes = ordered_fixes(d.scene, f, [fx for fx in f.fixes
+                                       if wirecheck.verified(snap, f, fx)])
+    assert [fx.label for fx in fixes] == [
+        "Swap IND1 to PAPER_2pt", "Swap CAP1 to SLIDES_3pt",
+        "Set IND1:bottom lead to 2 pt", "Set CAP1:top lead to 3 pt",
+        "Use 2 pt", "Use 3 pt"]
+    lead = fixes[2]
+    apply_fix(d.scene, lead)
+    assert lead_override_at(_part(d, "B"), "bottom") == {"width": 2.0}
+    assert _part(d, "B").library_key == SLIDES_IND             # not swapped
+    assert w.line_width == 2.0 and not w.style_deliberate
+    assert wirecheck.check(snapshot(d.scene)) == []
+
+
+def test_a_wire_set_by_hand_can_take_the_lead_with_it(d):
+    from diagrammer import wirecheck
+    from diagrammer.commands.style_command import ChangeStyleCommand
+    from diagrammer.wirecheck.scene import apply_fix, snapshot
+    d.add(PAPER_CAP, (0, 0), anchor="top", id="A")
+    d.add(PAPER_IND, (0, 200), anchor="top", id="B")
+    w = d._items[d.connect("A", "bottom", "B", "top")]
+    d.undo_stack.push(ChangeStyleCommand(w, "line_width", 2.0, 3.0))
+    snap = snapshot(d.scene)
+    (f,) = wirecheck.check(snap)
+    assert f.check_id == "wire-width"
+    kinds = {fx.kind: fx for fx in f.fixes if wirecheck.verified(snap, f, fx)}
+    assert set(kinds) == {"swap", "lead", "wire"}
+    assert kinds["swap"].label == "Swap CAP1, IND1 to SLIDES_3pt"
+    apply_fix(d.scene, kinds["lead"])
+    assert wirecheck.check(snapshot(d.scene)) == []
+    assert w.line_width == 3.0

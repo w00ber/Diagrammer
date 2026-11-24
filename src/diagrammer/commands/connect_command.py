@@ -32,12 +32,24 @@ def lead_style_at(port: PortItem):
     The lead that ends at this very port when there is one; otherwise the
     part's first lead (``ComponentDef.default_lead``), which is what every
     port used to get. A junction has no lead of its own: None.
+
+    A per-instance lead override on this part at this port (Properties, or
+    the *match this part's lead* fix) wins over the library file; see
+    :mod:`diagrammer.commands.lead_override`.
     """
     comp = getattr(port, "component", None)
     cdef = getattr(comp, "component_def", None)
     if cdef is None:
         return None
-    return lead_style_of(cdef, getattr(port, "port_def", None))
+    pdef = getattr(port, "port_def", None)
+    base = lead_style_of(cdef, pdef)
+    from diagrammer.commands.lead_override import lead_override_at
+    ovr = lead_override_at(comp, port.port_name)
+    if not ovr:
+        return base
+    from diagrammer.models.lead_style import LeadStyle
+    return LeadStyle(ovr.get("width", getattr(base, "width", None)),
+                     ovr.get("color", getattr(base, "color", None)))
 
 
 def _get_lead_stroke_width(port: PortItem) -> float | None:

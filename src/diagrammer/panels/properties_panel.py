@@ -364,6 +364,87 @@ class PropertiesPanel(QDockWidget):
         if item.component_def.stretch_h or item.component_def.stretch_v:
             self._form.addRow("Stretch:", QLabel(f"dx={item.stretch_dx:.0f}, dy={item.stretch_dy:.0f}"))
 
+        self._build_lead_rows(item)
+
+    # -- Per-instance lead override (#47 stage 4) --
+
+    def _build_lead_rows(self, item) -> None:
+        """One row per port with a lead: its width and colour on this placed
+        part, and Reset back to the library's. The library file is never
+        touched; see commands/lead_override.py."""
+        from diagrammer.commands.connect_command import lead_style_of
+        from diagrammer.commands.lead_override import (
+            can_override,
+            lead_override_at,
+        )
+        ports = [p for p in item.ports if can_override(item, p.port_name)]
+        if not ports:
+            return
+        title = QLabel("<b>Leads</b>")
+        title.setToolTip("Override a lead on this part only. The library "
+                         "file is not changed.")
+        self._form.addRow(title)
+        cdef = item.component_def
+        for port in ports:
+            name = port.port_name
+            lib = lead_style_of(cdef, port.port_def)
+            lib_w = getattr(lib, "width", None)
+            lib_c = getattr(lib, "color", None) or "#000000"
+            ovr = lead_override_at(item, name)
+            w = ovr.get("width", lib_w if lib_w is not None else 1.0)
+            c = ovr.get("color", lib_c)
+
+            row = QWidget()
+            lay = QHBoxLayout(row)
+            lay.setContentsMargins(0, 0, 0, 0)
+            lay.setSpacing(4)
+            spin = QDoubleSpinBox()
+            spin.setRange(0.25, 20.0)
+            spin.setSingleStep(0.5)
+            spin.setSuffix(" pt")
+            spin.setValue(float(w))
+            lay.addWidget(spin)
+            label = QLabel()
+            reset = QPushButton("Reset")
+            reset.setToolTip(
+                f"Back to the library's lead: {lib_w:g} pt, {lib_c}"
+                if lib_w is not None else "Back to the library's lead")
+            color_btn = self._make_color_button(
+                QColor(c),
+                lambda col, it=item, n=name, lb=label, rb=reset:
+                self._set_lead(it, n, lb, rb, color=col.name()))
+            lay.addWidget(color_btn)
+            lay.addWidget(reset)
+            spin.valueChanged.connect(
+                lambda v, it=item, n=name, lb=label, rb=reset:
+                self._set_lead(it, n, lb, rb, width=v))
+            reset.clicked.connect(
+                lambda _c=False, it=item, n=name: self._reset_lead(it, n))
+            self._mark_lead(item, name, label, reset)
+            self._form.addRow(label, row)
+
+    def _mark_lead(self, item, name, label, reset) -> None:
+        from diagrammer.commands.lead_override import lead_override_at
+        changed = bool(lead_override_at(item, name))
+        label.setText(f"<b>{name}</b> \u2022" if changed else name)
+        label.setToolTip("Overridden on this part" if changed
+                         else "As drawn in the library")
+        reset.setEnabled(changed)
+
+    def _set_lead(self, item, name, label, reset, **attrs) -> None:
+        from diagrammer.commands.lead_override import set_lead_override
+        if self._scene is None or not hasattr(self._scene, "undo_stack"):
+            return
+        set_lead_override(self._scene.undo_stack, item, name, **attrs)
+        self._mark_lead(item, name, label, reset)
+
+    def _reset_lead(self, item, name) -> None:
+        from diagrammer.commands.lead_override import clear_lead_override
+        if self._scene is None or not hasattr(self._scene, "undo_stack"):
+            return
+        clear_lead_override(self._scene.undo_stack, item, name)
+        self.update_for_selection(self._scene)
+
     # -- Shape form --
 
     def _build_shape_form(self, item) -> None:

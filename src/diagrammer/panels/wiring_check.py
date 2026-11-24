@@ -188,9 +188,9 @@ class WiringCheckPanel(QDockWidget):
 
     def _verified(self, snap, finding):
         """*finding* with only its verified fixes, in the order offered:
-        swap, lead, wire; the one matching the diagram first in each."""
+        the recommended one, then swap, lead, wire."""
         from diagrammer.wirecheck.scene import ordered_fixes
-        good = ordered_fixes(self._scene, [
+        good = ordered_fixes(self._scene, finding, [
             fx for fx in finding.fixes if wirecheck.verified(snap, finding, fx)])
         return wirecheck.Finding(finding.check_id, finding.message,
                                  finding.wire_ids, tuple(good), finding.data)

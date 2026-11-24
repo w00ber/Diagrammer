@@ -342,9 +342,11 @@ part's lead, so in this mode:
 - **Wiring leads that don't match** — a 2 pt `PAPER_2pt` part to a 3 pt
   `SLIDES_3pt` one — still makes the wire, and a notice appears beside it.
   It offers, in this order: **Swap** the part to its twin in the other
-  library (see *Swap to Twin* below); **Use 2 pt** / **Use 3 pt** for the
-  wire, which marks it as set on purpose; or **Ignore**. The choice that
-  matches the library most of the diagram uses is in bold.
+  library (see *Swap to Twin* below); **Set … lead to …**, which changes the
+  lead on that one placed part (see *Lead overrides*); **Use 2 pt** /
+  **Use 3 pt** for the wire, which marks it as set on purpose; or
+  **Ignore**. The choice that matches the library most of the diagram uses
+  comes first, in bold.
 - **Setting a wire's width or color by hand** in the Properties panel shows a
   note under the fields when it no longer matches its leads. Keeping it marks
   the wire as set on purpose, so it is not flagged; **Match Leads** puts it
@@ -363,6 +365,16 @@ lead follow the new one where the leads at their ends now agree; wires set on
 purpose are left alone. It is one undo step. A part with no twin shows the
 entry greyed out.
 
+### Lead overrides
+
+Select a part and the Properties panel lists its **Leads**: one row per port,
+with the lead's width and colour on *this* placed part. Changing one
+overrides that lead here only; the component file in the library is never
+changed. An overridden port is shown in bold with a dot, and **Reset** puts
+it back to the library's lead. Overrides are saved with the diagram and
+travel with copy, paste and duplicate. New wires and the wiring checks see
+the lead as overridden, so a wire on it is expected to match it.
+
 ### Check Wiring…
 
 Regularize Wiring only sees a wire as it is drawn. **Routing → Check
@@ -372,6 +384,8 @@ canvas listing every wire whose width or color differs from its leads,
 grouped by kind:
 
 - **Wire width / colour differs from its lead** — the fix takes the lead's.
+  Making the lead match the wire instead (a swap, or a lead override) is
+  offered after it.
 - **Leads at the ends differ** — a 2 pt lead wired to a 3 pt one. Swapping a
   part to its twin is offered first, then both widths for the wires, the
   choice matching most of the diagram first within each; choosing a width

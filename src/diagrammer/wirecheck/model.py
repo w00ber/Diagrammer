@@ -45,6 +45,9 @@ class End:
     port: str = ""
     lead: LeadStyle | None = None
     label: str = ""          # human name for messages, e.g. "CAP1:top"
+    #: a lead element ends at this port, so a per-instance lead override
+    #: can be set on it (the *match this part's lead* fix)
+    restylable: bool = False
 
 
 @dataclass(frozen=True)

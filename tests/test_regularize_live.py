@@ -82,6 +82,7 @@ def test_disagreeing_leads_are_reported_not_blocked(d):
     assert [f.check_id for f in findings] == ["leads-disagree"]
     assert {fx.label for fx in findings[0].fixes} == {
         "Swap CAP1 to SLIDES_3pt", "Swap IND1 to PAPER_2pt",
+        "Set CAP1:bottom lead to 3 pt", "Set IND1:top lead to 2 pt",
         "Use 2 pt", "Use 3 pt"}
 
 
@@ -146,8 +147,9 @@ def test_the_notice_recommends_what_the_diagram_mostly_uses(d):
     assert "IND1 comes in PAPER_2pt too" in text
     assert "CAP1" not in text.split("Most of")[1]          # not the 2 pt part
     labels = [b.text() for b in notice.findChildren(QPushButton)]
-    assert labels[:4] == ["Swap IND1 to PAPER_2pt", "Swap CAP1 to SLIDES_3pt",
-                          "Use 2 pt", "Use 3 pt"]
+    assert labels[:6] == ["Swap IND1 to PAPER_2pt", "Swap CAP1 to SLIDES_3pt",
+                          "Set IND1:bottom lead to 2 pt",
+                          "Set CAP1:top lead to 3 pt", "Use 2 pt", "Use 3 pt"]
 
 
 def test_twins_across_the_weight_libraries(d):

@@ -19,7 +19,8 @@ offered ahead of the wire fixes, in this order (issue #47 stage 4):
 
 * **swap** a part for its twin in the other weight library, when the
   snapshot knows one (``Snapshot.twins``) and its lead gives the value;
-* **lead**: override that one part's lead at that port (stage 4, step 4).
+* **lead**: override that one placed part's lead at that port to match —
+  the library file is never touched (``commands/lead_override.py``).
 
 Each is checked like any other fix: the candidate snapshot is re-checked and
 the fix is offered only if it clears the finding and raises nothing new. A
@@ -169,15 +170,40 @@ def _swap_fix(snap: Snapshot, net: list[Wire], attr: str, v) -> Fix | None:
                kind="swap", target=v)
 
 
+def _lead_fix(snap: Snapshot, net: list[Wire], attr: str, v) -> Fix | None:
+    """Override the lead of every part end in *net* that is not *v*, on
+    that placed part only, and bring the net's wires to *v*. Refused when
+    one of those ends has no lead element to override."""
+    spec = _ATTRS[attr]
+    leads: dict[tuple[str, str], dict] = {}
+    names: set[str] = set()
+    for w in net:
+        for e in w.ends():
+            if e.kind != "part" or e.lead is None:
+                continue
+            have = spec["lead"](e.lead)
+            if have is None or spec["same"](have, v):
+                continue
+            if not e.restylable:
+                return None
+            leads[(e.ref, e.port)] = {attr: v}
+            names.add(e.label or f"{e.ref}:{e.port}")
+    if not leads:
+        return None
+    changes = {w.id: {attr: v} for w in net
+               if not w.deliberate and not spec["same"](spec["wire"](w), v)}
+    what = ", ".join(sorted(names))
+    noun = "lead" if len(names) == 1 else "leads"
+    return Fix(f"Set {what} {noun} to {spec['fmt'](v)}", changes,
+               leads=leads, kind="lead", target=v)
+
+
 def _part_fixes(snap: Snapshot, net: list[Wire], attr: str,
                 values: list) -> list[Fix]:
-    """Swap fixes toward each of *values*, then lead fixes (step 4)."""
-    out: list[Fix] = []
-    for v in values:
-        fx = _swap_fix(snap, net, attr, v)
-        if fx is not None:
-            out.append(fx)
-    return out
+    """Swap fixes toward each of *values*, then lead fixes."""
+    swaps = [_swap_fix(snap, net, attr, v) for v in values]
+    leads = [_lead_fix(snap, net, attr, v) for v in values]
+    return [fx for fx in (*swaps, *leads) if fx is not None]
 
 
 def _check_attr(net: list[Wire], attr: str,

@@ -154,8 +154,41 @@ def lead_elements(root: ET.Element) -> list[tuple[ET.Element, LeadStyle]]:
     return out
 
 
+#: Leaf tags that carry an element path. Same set as
+#: ``svg_element_info._LEAF_TAGS`` (which imports Qt, so is not reused).
+_LEAF_TAGS = {"line", "path", "rect", "circle", "ellipse", "polyline",
+              "polygon", "text", "use"}
+
+
+def lead_element_paths(root: ET.Element) -> dict[int, str]:
+    """``{id(element): path}`` for the leaves of the lead layers, in the
+    scheme per-instance style overrides use (``svg_element_info``,
+    ``ComponentItem._apply_style_overrides``): the layer id, then the child
+    index at each level. The first lead layer to reach an element names it.
+    """
+    out: dict[int, str] = {}
+
+    def walk(node: ET.Element, prefix: str) -> None:
+        for i, child in enumerate(node):
+            tag = _strip_ns(child.tag)
+            path = f"{prefix}/{i}"
+            if tag == "g":
+                walk(child, path)
+            elif tag in _LEAF_TAGS:
+                out.setdefault(id(child), path)
+
+    for layer_id in LEAD_LAYER_IDS:
+        group = next((e for e in root.iter()
+                      if _strip_ns(e.tag) == "g" and e.get("id") == layer_id),
+                     None)
+        if group is not None:
+            walk(group, layer_id)
+    return out
+
+
 def assign_lead_styles(root: ET.Element, ports) -> LeadStyle | None:
-    """Set ``lead_width``/``lead_color`` on each port whose lead ends on it.
+    """Set ``lead_width``/``lead_color`` on each port whose lead ends on it,
+    and ``lead_paths`` to the element paths of every lead ending there.
 
     Returns the part-wide fallback: the first lead's style, which is what
     wire creation used for every port before this existed. A port with no
@@ -163,6 +196,16 @@ def assign_lead_styles(root: ET.Element, ports) -> LeadStyle | None:
     and callers fall back to that.
     """
     leads = lead_elements(root)
+    paths = lead_element_paths(root)
+    for elem, _style in leads:
+        ends = _ends(elem)
+        path = paths.get(id(elem))
+        if ends is None or path is None:
+            continue
+        for port in ports:
+            if any((ex - port.x) ** 2 + (ey - port.y) ** 2 <= ENDPOINT_TOL ** 2
+                   for ex, ey in ends) and path not in port.lead_paths:
+                port.lead_paths = (*port.lead_paths, path)
     for elem, style in leads:
         ends = _ends(elem)
         if ends is None:

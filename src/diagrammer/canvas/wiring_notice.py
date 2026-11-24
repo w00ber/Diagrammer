@@ -74,7 +74,7 @@ class WiringNotice(QFrame):
         # so the reason in the hint and the button order agree.
         # Swap to twin, match this part's lead, set the wire: in that order.
         best = recommended_fix(self._scene, finding)
-        fixes = ordered_fixes(self._scene, finding.fixes)
+        fixes = ordered_fixes(self._scene, finding)
         row = QHBoxLayout()
         row.setSpacing(6)
         for fix in fixes:

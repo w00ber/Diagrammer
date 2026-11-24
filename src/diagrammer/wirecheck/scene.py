@@ -15,8 +15,10 @@ def _end(port) -> End:
     comp = port.component
     cdef = getattr(comp, "component_def", None)
     if cdef is not None:
+        from diagrammer.commands.lead_override import can_override
         return End("part", comp.instance_id, port.port_name,
-                   lead_style_at(port), f"{cdef.name}:{port.port_name}")
+                   lead_style_at(port), f"{cdef.name}:{port.port_name}",
+                   restylable=can_override(comp, port.port_name))
     return End("node", getattr(comp, "instance_id", str(id(comp))))
 
 
@@ -131,6 +133,10 @@ def apply_fix(scene, fix, text: str | None = None) -> None:
     try:
         if fix.swaps:
             _apply_swaps(scene, fix.swaps)
+        overrides = {k: v for k, v in fix.leads.items()
+                     if k[0] not in fix.swaps}
+        if overrides:
+            _apply_lead_overrides(scene, overrides)
         conns = {i.instance_id: i for i in scene.items()
                  if isinstance(i, ConnectionItem)}
         for wid, attrs in fix.changes.items():
@@ -172,6 +178,18 @@ def _apply_swaps(scene, swaps: dict[str, str]) -> list:
             scene.undo_stack.push(cmd)
             out.append(cmd.new_item)
     return out
+
+
+def _apply_lead_overrides(scene, leads: dict) -> None:
+    """Per-instance lead overrides, ``{(part id, port): {attr: value}}``."""
+    from diagrammer.commands.lead_override import set_lead_override
+    from diagrammer.items.component_item import ComponentItem
+    by_id = {i.instance_id: i for i in scene.items()
+             if isinstance(i, ComponentItem)}
+    for (ref, port), attrs in leads.items():
+        item = by_id.get(ref)
+        if item is not None and attrs:
+            set_lead_override(scene.undo_stack, item, port, **attrs)
 
 
 def swap_fix_for(scene, item):
@@ -293,30 +311,42 @@ def _matches_diagram(fix, weight: float) -> bool:
     return isinstance(t, (int, float)) and abs(float(t) - weight) <= 0.01
 
 
-def recommended_fix(scene, finding):
-    """The fix that matches the rest of the diagram, or None: the first,
-    in :data:`FIX_KIND_ORDER`, whose result is the width most of the
-    diagram's library uses."""
+def recommended_fix(scene, finding, fixes=None):
+    """The fix to offer first, or None.
+
+    The first, in :data:`FIX_KIND_ORDER`, whose result is the width most of
+    the diagram's library uses. With no such fix, a ``wire-<attr>`` finding
+    recommends its wire fix — take the lead's value — since the wire is
+    the odd one out; a finding about disagreeing leads recommends nothing.
+    """
+    fixes = list(finding.fixes if fixes is None else fixes)
+    by_kind = sorted(fixes, key=lambda fx: FIX_KIND_ORDER.get(fx.kind, 9))
     lib = diagram_library(scene)
-    if lib is None:
-        return None
-    weight = WEIGHT_LIBRARIES[lib]
-    return next((fx for fx in ordered_fixes(scene, finding.fixes,
-                                            recommend=False)
-                 if _matches_diagram(fx, weight)), None)
+    if lib is not None:
+        weight = WEIGHT_LIBRARIES[lib]
+        best = next((fx for fx in by_kind if _matches_diagram(fx, weight)),
+                    None)
+        if best is not None:
+            return best
+    if finding.check_id in ("wire-width", "wire-color"):
+        return next((fx for fx in fixes if fx.kind == "wire"), None)
+    return None
 
 
-def ordered_fixes(scene, fixes, *, recommend: bool = True) -> list:
-    """*fixes* in the order the notice and the Check Wiring panel offer
-    them: swap to twin, then match this part's lead, then set the wire.
-    Within a kind the one matching the rest of the diagram comes first."""
-    lib = diagram_library(scene) if recommend else None
+def ordered_fixes(scene, finding, fixes=None) -> list:
+    """*finding*'s fixes (or the subset *fixes*) in the order the notice
+    and the Check Wiring panel offer them: the recommended one first
+    (:func:`recommended_fix`), then swap to twin, match this part's lead,
+    set the wire; within a kind, the one matching the diagram first."""
+    fixes = list(finding.fixes if fixes is None else fixes)
+    best = recommended_fix(scene, finding, fixes)
+    lib = diagram_library(scene)
     weight = WEIGHT_LIBRARIES[lib] if lib is not None else None
 
     def rank(ix):
         i, fx = ix
         near = weight is not None and _matches_diagram(fx, weight)
-        return (FIX_KIND_ORDER.get(fx.kind, 9), not near, i)
+        return (fx is not best, FIX_KIND_ORDER.get(fx.kind, 9), not near, i)
 
     return [fx for _i, fx in sorted(enumerate(fixes), key=rank)]
 

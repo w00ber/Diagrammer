@@ -104,7 +104,10 @@ def test_lists_findings_grouped_by_check(d, panel):
     head = panel._tree.topLevelItem(0)
     assert head.text(0).startswith("Wire width differs from its lead — 1")
     assert "CAP1:bottom" in head.child(0).text(0)
-    assert [fx.label for fx in f.fixes] == ["Use 2 pt"]
+    # Take the lead's first; making the leads match the wire is offered too
+    # (stage 4), after it.
+    assert [fx.label for fx in f.fixes] == [
+        "Use 2 pt", "Set CAP1:bottom, IND1:top leads to 5 pt"]
 
 
 def test_a_clean_diagram_says_so(d, panel):
@@ -196,8 +199,9 @@ def test_disagreeing_leads_offer_both_widths_recommended_first(d, panel):
               for i in range(panel._fix_combo.count())]
     # Swaps first (stage 4), the one matching the diagram leading.
     assert labels == ["Swap IND1 to PAPER_2pt", "Swap CAP1 to SLIDES_3pt",
-                      "Use 2 pt", "Use 3 pt"]
-    panel._fix_combo.setCurrentIndex(3)
+                      "Set IND1:bottom lead to 2 pt",
+                      "Set CAP1:top lead to 3 pt", "Use 2 pt", "Use 3 pt"]
+    panel._fix_combo.setCurrentIndex(5)
     panel._accept_btn.click()
     assert wire(d, w).line_width == 3.0 and wire(d, w).style_deliberate
     assert panel.findings() == []

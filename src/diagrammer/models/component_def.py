@@ -34,6 +34,10 @@ class PortDef:
     # None when no lead ends here or the SVG does not say.
     lead_width: float | None = None
     lead_color: str | None = None
+    # Element paths (``leads/0``, ``leads/2/0``) of the lead elements that
+    # end here, in the scheme per-instance style overrides are keyed by. A
+    # per-port lead override is an override on these (issue #47 stage 4).
+    lead_paths: tuple[str, ...] = ()
 
 
 @dataclass
