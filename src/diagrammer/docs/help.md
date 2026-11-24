@@ -456,6 +456,16 @@ Double-click a component to enter **isolation mode** for editing individual SVG 
 - Modify stroke color, fill, width, opacity, and line cap per element
 - Changes are per-instance — other copies of the same component are unaffected
 
+An element style is saved with the diagram by the element's *position* in the
+component's SVG file (the second shape in the artwork layer, say), not by
+what it looks like. Editing the component file afterwards so that elements
+are added, removed or reordered (in Illustrator, or with a validator fix
+such as *Remove stray anchor points*) can move a saved style onto a
+neighbouring element. After editing a part, open diagrams that restyle it,
+check the styled elements, and use **Reset to Default** and reapply any that
+moved. Lead
+overrides are stored the same way.
+
 ---
 
 ## Saving and Exporting
