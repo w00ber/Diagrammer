@@ -2,9 +2,10 @@
 
 Regularize Wiring mode never blocks a connection: wiring a 2 px lead to a
 3 px lead still makes the wire, and this notice appears beside it with the
-choices — one button per verified fix, in the order swap the part to its
-twin, match the part's lead, set the wire (*Use 2 pt*, *Use 3 pt*), then
-*Ignore* — plus a line saying which library most of the diagram uses.
+choices — one button per verified fix, stacked: the recommended one first,
+then swap the part to its twin, match the part's lead, set the wire (*Use 2
+pt*, *Use 3 pt*), then *Ignore* — plus a line saying which library most of
+the diagram uses.
 
 It sits on the view's viewport, not in the scene: it is UI, so it is never
 exported, never selected, and never on the undo stack (the fix it applies
@@ -23,6 +24,10 @@ from PySide6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
 )
+
+#: The notice's width range in pixels; it grows to fit its longest button.
+MIN_WIDTH = 360
+MAX_WIDTH = 520
 
 #: How long the notice stays before fading, unless hovered.
 LINGER_MS = 8000
@@ -70,30 +75,45 @@ class WiringNotice(QFrame):
             tip.setWordWrap(True)
             lay.addWidget(tip)
 
-        # The fix that matches the rest of the diagram goes first, in bold,
-        # so the reason in the hint and the button order agree.
-        # Swap to twin, match this part's lead, set the wire: in that order.
+        # One button per fix, stacked: the recommended one first, in bold,
+        # so the reason in the hint and the button order agree; then swap
+        # to twin, match this part's lead, set the wire. Stacked, not in a
+        # row: with swap and lead fixes there are up to six, and a row
+        # squeezed every label to a few clipped letters.
         best = recommended_fix(self._scene, finding)
         fixes = ordered_fixes(self._scene, finding)
-        row = QHBoxLayout()
-        row.setSpacing(6)
+        buttons = []
         for fix in fixes:
             btn = QPushButton(fix.label)
             btn.setAutoDefault(False)
+            btn.setStyleSheet("text-align: left; padding: 2px 8px;"
+                              + (" font-weight: bold;" if fix is best else ""))
             if fix is best:
-                btn.setStyleSheet("font-weight: bold;")
                 btn.setToolTip("Recommended: matches the rest of the diagram")
             btn.clicked.connect(lambda _=False, f=fix: self._apply(f))
-            row.addWidget(btn)
+            lay.addWidget(btn)
+            buttons.append(btn)
+        row = QHBoxLayout()
+        row.addStretch()
         ignore = QPushButton("Ignore")
         ignore.setAutoDefault(False)
         ignore.clicked.connect(self.dismiss)
         row.addWidget(ignore)
-        row.addStretch()
         lay.addLayout(row)
 
-        self.setMaximumWidth(360)
-        self.adjustSize()
+        # Size explicitly. adjustSize() does not run height-for-width on a
+        # child widget, so the word-wrapped labels were given their one-line
+        # height and clipped. Fix the width first (wide enough for the
+        # longest button, within reason), then ask the layout how tall it
+        # is at that width.
+        m = lay.contentsMargins()
+        widest = max((b.sizeHint().width() for b in buttons), default=0)
+        room = max(240, view.viewport().width() - 8)
+        width = min(max(MIN_WIDTH, widest + m.left() + m.right()),
+                    MAX_WIDTH, room)
+        self.setFixedWidth(width)
+        lay.activate()
+        self.setFixedHeight(lay.totalHeightForWidth(width))
         self._place(anchor)
 
         self._effect = QGraphicsOpacityEffect(self)

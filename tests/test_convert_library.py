@@ -600,3 +600,51 @@ def test_convert_menu_converts_and_rechecks(isolate_component_overlay,
         for doc in w._documents():
             doc.scene.undo_stack.clear()
         w.hide()
+
+
+# ==========================================================================
+# the notice has room for six fixes
+# ==========================================================================
+
+def _coax_notice(d, w=1000, h=700):
+    from diagrammer.canvas.view import DiagramView
+    from diagrammer.canvas.wiring_notice import show_wiring_notice
+    from diagrammer.wirecheck.scene import disagreements_at
+    d.add("SLIDES_3pt/circuits/µwave/coax and twp/COAX1_MED", (0, 0), id="X")
+    d.add("PAPER_2pt/circuits/LCR/CAP1_SHORT", (400, 200), anchor="top",
+          id="C")
+    d.add(PAPER_IND, (800, 0), anchor="top", id="L")
+    d.add(PAPER_CAP, (800, 300), anchor="top", id="K")
+    wire = d._items[d.connect("X", "right", "C", "top")]
+    view = DiagramView(d.scene)
+    view.resize(w, h)
+    view.show()                                  # laid out only when shown
+    found = disagreements_at(d.scene, [wire.source_port])
+    notice = show_wiring_notice(view, found, QPointF_(400, 100))
+    from PySide6.QtWidgets import QApplication
+    QApplication.processEvents()                 # let the layout place them
+    return view, notice
+
+
+def test_notice_shows_every_label_whole(d):
+    from PySide6.QtWidgets import QLabel, QPushButton
+    _view, notice = _coax_notice(d)
+    buttons = [b for b in notice.findChildren(QPushButton)]
+    assert [b.text() for b in buttons] == [
+        "Swap COAX1_MED to PAPER_2pt", "Swap CAP1_SHORT to SLIDES_3pt",
+        "Set COAX1_MED:right lead to 2 pt", "Set CAP1_SHORT:top lead to 3 pt",
+        "Use 2 pt", "Use 3 pt", "Ignore"]
+    for b in buttons:
+        assert b.width() >= b.sizeHint().width(), b.text()
+    for lbl in notice.findChildren(QLabel):
+        assert lbl.height() >= lbl.heightForWidth(lbl.width()), lbl.text()
+        assert notice.rect().contains(lbl.geometry())
+    assert notice.rect().contains(buttons[-1].geometry())
+
+
+def test_notice_fits_a_narrow_view(d):
+    from PySide6.QtWidgets import QLabel
+    view, notice = _coax_notice(d, w=300, h=700)
+    assert notice.width() <= view.viewport().width()
+    for lbl in notice.findChildren(QLabel):
+        assert lbl.height() >= lbl.heightForWidth(lbl.width()), lbl.text()
