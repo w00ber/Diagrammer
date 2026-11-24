@@ -52,7 +52,8 @@ files must have the same file name and relative path, the same port names, and
 the same port positions; only the weights differ. Author both in the same
 change (a generator makes this automatic), and when renaming or adding a port in
 one, do it in the other. The per-file checks cannot see a pair drift apart: the
-bias tees did (`top`/`bottom`/`dc` vs `RF`/`COM`/`DC`). See "Twins across
+bias tees did (`top`/`bottom`/`dc` vs `RF`/`COM`/`DC`). Renaming a port on a
+shipped part also needs a `RENAMED_PORTS` entry in `io/serializer.py`. See "Twins across
 PAPER_2pt and SLIDES_3pt" in the spec.
 
 Body weight is *not* standardised (bodies range 1.6–3.2 px, and `SP6T` uses

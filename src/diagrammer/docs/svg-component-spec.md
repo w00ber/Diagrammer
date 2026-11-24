@@ -606,6 +606,10 @@ a wire attaches to:
 Each twin is still valid on its own, so the per-file checks cannot catch a
 twin that drifts; checking the pair is a cross-library job. When adding or
 renaming a port in one library, do the same in the other in the same change.
+Renaming a port on a shipped part also needs an entry in `RENAMED_PORTS`
+(`io/serializer.py`): a saved diagram that embeds the part's SVG is rebound by
+position anyway, but one without the embed reconnects by name and would lose
+its wires.
 `CRYO_WIRING_6pt` shares no parts with the other two and has no twins.
 
 ### Body weight is per-family

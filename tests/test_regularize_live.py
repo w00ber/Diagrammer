@@ -154,8 +154,9 @@ def test_twins_across_the_weight_libraries(d):
     # Folder drift: splitters sit in different folders in the two libraries.
     assert twin_key(lib, "PAPER_2pt/circuits/µwave/splitters/SPLITTER1x2") == \
         "SLIDES_3pt/circuits/splitters/SPLITTER1x2"
-    # Port names differ, so no safe swap.
-    assert twin_key(lib, "PAPER_2pt/circuits/µwave/PASSIVE/BIAS_TEE0") is None
+    # The bias tees took their twins' port names (#47 stage 4).
+    assert twin_key(lib, "PAPER_2pt/circuits/µwave/PASSIVE/BIAS_TEE0") == \
+        "SLIDES_3pt/circuits/µwave/PASSIVE/BIAS_TEE0"
 
 
 # ==========================================================================
