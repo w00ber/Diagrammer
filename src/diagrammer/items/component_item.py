@@ -63,6 +63,13 @@ def prepare_svg_bytes_from_root(
     """
     import xml.etree.ElementTree as ET
 
+    # Name the override targets while the tree still matches the file.
+    # Everything below may remove or insert elements, which would shift a
+    # positional lookup onto the wrong sibling (issue #49).
+    has_overrides = style_overrides is not None and not style_overrides.is_empty()
+    if has_overrides:
+        ComponentItem._stamp_element_paths(root)
+
     if hide_layers:
         for elem in root.iter():
             tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
@@ -87,7 +94,7 @@ def prepare_svg_bytes_from_root(
     ComponentItem._inline_css_url_refs(root)
 
     # Apply per-instance style overrides
-    if style_overrides is not None and not style_overrides.is_empty():
+    if has_overrides:
         ComponentItem._apply_style_overrides(root, style_overrides)
 
     return ET.tostring(root, encoding="unicode").encode("utf-8")
@@ -672,6 +679,58 @@ class ComponentItem(QGraphicsItem):
                     if elem.get(prop) is None:
                         elem.set(prop, value)
 
+    #: Attribute naming an element's override path, set on the pristine tree
+    #: by ``_stamp_element_paths`` and consumed by ``_apply_style_overrides``.
+    _PATH_ATTR = "data-dgm-element-path"
+
+    @staticmethod
+    def _iter_layer_leaves(root):
+        """Yield ``(element, path)`` for every leaf of the override layers.
+
+        The one definition of the element-path scheme on the render side; it
+        matches ``svg_element_info.enumerate_svg_elements`` and
+        ``lead_style.lead_element_paths``: the layer id, then the index among
+        *all* children at each level.
+        """
+        from diagrammer.models.svg_element_info import _LEAF_TAGS
+
+        def _strip_ns(tag: str) -> str:
+            return tag.split("}", 1)[1] if "}" in tag else tag
+
+        def _walk(elem, prefix):
+            for i, child in enumerate(elem):
+                tag = _strip_ns(child.tag)
+                path = f"{prefix}/{i}"
+                if tag == "g":
+                    yield from _walk(child, path)
+                elif tag in _LEAF_TAGS:
+                    yield child, path
+
+        for layer_id in ("artwork",) + LEAD_LAYER_IDS:
+            for elem in root.iter():
+                if _strip_ns(elem.tag) == "g" and elem.get("id") == layer_id:
+                    yield from _walk(elem, layer_id)
+                    break
+
+    @staticmethod
+    def _stamp_element_paths(root) -> None:
+        """Record each override target's path on the element itself.
+
+        Call on the tree exactly as parsed from the file, before
+        ``_strip_degenerate_paths`` or stretch tiling: both change the child
+        indices that a path is made of, and a positional lookup afterwards
+        lands an override on the next sibling (issue #49). A tiled clone
+        inherits the stamp, so an override follows the element into every tile.
+
+        An element reached through two layers (a lead group nested inside
+        ``artwork``) has two paths; the stamp keeps both, space-separated, as
+        the positional walk applied overrides under either.
+        """
+        attr = ComponentItem._PATH_ATTR
+        for elem, path in ComponentItem._iter_layer_leaves(root):
+            prev = elem.get(attr)
+            elem.set(attr, path if prev is None else f"{prev} {path}")
+
     @staticmethod
     def _apply_style_overrides(root, style_overrides) -> None:
         """Apply per-element inline style overrides to the SVG tree.
@@ -682,7 +741,6 @@ class ComponentItem(QGraphicsItem):
         class fallback (which Qt's SVG renderer may not handle correctly).
         """
         import re
-        from diagrammer.models.svg_element_info import _LEAF_TAGS
 
         def _strip_ns(tag: str) -> str:
             return tag.split("}", 1)[1] if "}" in tag else tag
@@ -739,46 +797,46 @@ class ComponentItem(QGraphicsItem):
             'opacity': 'opacity',
         }
 
-        def _walk(elem, path_prefix, overrides_dict):
-            child_idx = 0
-            for child in elem:
-                tag = _strip_ns(child.tag)
-                child_path = f"{path_prefix}/{child_idx}"
-                if tag == "g":
-                    _walk(child, child_path, overrides_dict)
-                elif tag in _LEAF_TAGS:
-                    ovr = overrides_dict.get(child_path)
-                    if ovr is not None and not ovr.is_empty():
-                        # Start with original class-based styles
-                        merged = _get_original_styles(child)
-                        # Apply overrides on top
-                        if ovr.stroke_color is not None:
-                            merged['stroke'] = ovr.stroke_color
-                        if ovr.fill_color is not None:
-                            merged['fill'] = ovr.fill_color
-                        if ovr.stroke_width is not None:
-                            merged['stroke-width'] = f"{ovr.stroke_width}px"
-                        if ovr.stroke_dasharray is not None:
-                            merged['stroke-dasharray'] = ovr.stroke_dasharray
-                        if ovr.stroke_linecap is not None:
-                            merged['stroke-linecap'] = ovr.stroke_linecap
-                        if ovr.opacity is not None:
-                            merged['opacity'] = str(ovr.opacity)
-                        # Build complete inline style
-                        inline = ";".join(f"{k}:{v}" for k, v in merged.items())
-                        child.set("style", inline)
-                child_idx += 1
+        def _apply(child, ovr) -> None:
+            # Start with original class-based styles
+            merged = _get_original_styles(child)
+            # Apply overrides on top
+            if ovr.stroke_color is not None:
+                merged['stroke'] = ovr.stroke_color
+            if ovr.fill_color is not None:
+                merged['fill'] = ovr.fill_color
+            if ovr.stroke_width is not None:
+                merged['stroke-width'] = f"{ovr.stroke_width}px"
+            if ovr.stroke_dasharray is not None:
+                merged['stroke-dasharray'] = ovr.stroke_dasharray
+            if ovr.stroke_linecap is not None:
+                merged['stroke-linecap'] = ovr.stroke_linecap
+            if ovr.opacity is not None:
+                merged['opacity'] = str(ovr.opacity)
+            # Build complete inline style
+            inline = ";".join(f"{k}:{v}" for k, v in merged.items())
+            child.set("style", inline)
 
+        attr = ComponentItem._PATH_ATTR
+        stamped = [e for e in root.iter() if e.get(attr) is not None]
         ovr_dict = style_overrides.overrides
+        if stamped:
+            # Paths recorded before the tree was edited (see
+            # _stamp_element_paths). Consume the stamps either way so they
+            # never reach an export.
+            for child in stamped:
+                for path in child.attrib.pop(attr).split():
+                    ovr = ovr_dict.get(path)
+                    if ovr is not None and not ovr.is_empty():
+                        _apply(child, ovr)
+            return
         if not ovr_dict:
             return
-
-        for layer_id in ("artwork",) + LEAD_LAYER_IDS:
-            for elem in root.iter():
-                tag = _strip_ns(elem.tag)
-                if tag == "g" and elem.get("id") == layer_id:
-                    _walk(elem, layer_id, ovr_dict)
-                    break
+        # Unstamped tree: the caller vouches it still matches the file.
+        for child, path in ComponentItem._iter_layer_leaves(root):
+            ovr = ovr_dict.get(path)
+            if ovr is not None and not ovr.is_empty():
+                _apply(child, ovr)
 
     @staticmethod
     def _shorten_leads_in_svg(root, lead_shortening: dict[str, float],
@@ -1186,6 +1244,9 @@ class ComponentItem(QGraphicsItem):
         cdef = self._def
         tree = parse_svg(cdef.svg_path)
         root = tree.getroot()
+        # Before the strip, shift and tiling below move siblings (#49).
+        if not self._style_overrides.is_empty():
+            self._stamp_element_paths(root)
 
         # Update the viewBox to the stretched size
         vb = root.get("viewBox", "")
