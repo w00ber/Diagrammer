@@ -463,8 +463,7 @@ are added, removed or reordered (in Illustrator, or with a validator fix
 such as *Remove stray anchor points*) can move a saved style onto a
 neighbouring element. After editing a part, open diagrams that restyle it,
 check the styled elements, and use **Reset to Default** and reapply any that
-moved. Lead
-overrides are stored the same way.
+moved. Lead overrides are stored the same way.
 
 ---
 
