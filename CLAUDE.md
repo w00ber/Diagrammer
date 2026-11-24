@@ -168,7 +168,7 @@ platform-specific while the app is correct on both.
   consistency (House Conventions makes it inconsistent *per family* on purpose,
   so any threshold is wrong). Linecap is a warning, not an error, because 74
   shipped files still declare `round` mid-migration. There are tests asserting
-  the shipped tree stays at one failing file and under 15% warnings, not
+  the shipped tree stays at zero failing files and under 15% warnings, not
   counting linecap and grid drift (both known library-wide debts).
 - **Never save a component through `io/compound_export.py`.** It emits only
   `artwork` + `ports` and exists to flatten a canvas selection; using it to save

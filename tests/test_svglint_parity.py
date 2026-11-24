@@ -98,21 +98,20 @@ def test_errors_match_the_legacy_validator() -> None:
 
 
 @needs_components
-def test_shipped_library_has_no_errors_except_the_known_temp_file() -> None:
+def test_shipped_library_has_no_errors() -> None:
     """A guard against a check that cries wolf.
 
     The shipped tree is the artwork the conventions were derived from, so a new
     check that flags a lot of it is wrong about the convention, not about the
-    files. The one exception is a stray ``_tmp`` export that really is mangled.
+    files. (The one file that used to fail, a stray ``COAX1_FAT_LCUT_tmp``
+    export, has been deleted.)
     """
     failing = {}
     for report in svglint.scan_paths([COMPONENTS]):
         if report.errors:
             failing[str(report.path.relative_to(COMPONENTS))] = [
                 f.check_id for f in report.errors]
-    assert list(failing) == [
-        "PAPER_2pt/circuits/µwave/coax and twp/COAX1_FAT_LCUT_tmp.svg"
-    ], json.dumps(failing, indent=2)
+    assert failing == {}, json.dumps(failing, indent=2)
 
 
 @needs_components
