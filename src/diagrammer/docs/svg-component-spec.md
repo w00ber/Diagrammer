@@ -580,9 +580,33 @@ relevant to, drawn at that library's weight** — not in one library only.
 | `FLAIR` | n/a | illustrative/decorative parts, no fixed weight |
 | `flowchart` | n/a | flowchart shapes, no leads |
 
-The lead weight is the one that must be exact. `ConnectCommand._get_lead_stroke_width`
-parses it out of the component's CSS and gives the attached wire the same width,
-so a mismatch shows up as a visible step in thickness at the port.
+The lead weight is the one that must be exact. Each port's lead width and
+colour are read from the CSS when the part loads (`PortDef.lead_width` /
+`lead_color`, served by `lead_style_at` in `commands/connect_command.py`), and
+a new wire takes them, so a mismatch shows up as a visible step in thickness at
+the port. Regularize Wiring and Routing ▸ Check Wiring report the steps that
+remain.
+
+### Twins across PAPER_2pt and SLIDES_3pt
+
+A part in `PAPER_2pt` and the same part in `SLIDES_3pt` are **twins**: the
+same drawing at the other weight. Convert to Library (issue #47) swaps a placed
+part for its twin and moves its wires across, so twins must agree on everything
+a wire attaches to:
+
+- **The same file name**, at the same path under the library root. A name that
+  is unique in the other library is still found when folders have drifted, but
+  do not add new drift.
+- **The same port names.** A wire is re-attached by port name; a port that is
+  `top` in one twin and `RF` in the other leaves the wire with nowhere to go,
+  and the swap is refused for that part.
+- **The same port positions**, so a swap moves no wire. Only the line weights
+  differ.
+
+Each twin is still valid on its own, so the per-file checks cannot catch a
+twin that drifts; checking the pair is a cross-library job. When adding or
+renaming a port in one library, do the same in the other in the same change.
+`CRYO_WIRING_6pt` shares no parts with the other two and has no twins.
 
 ### Body weight is per-family
 
