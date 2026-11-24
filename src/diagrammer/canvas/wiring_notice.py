@@ -2,9 +2,9 @@
 
 Regularize Wiring mode never blocks a connection: wiring a 2 px lead to a
 3 px lead still makes the wire, and this notice appears beside it with the
-choices — one button per verified fix (*Use 2 pt*, *Use 3 pt*) and *Ignore*
-— plus a line naming the part that has a twin in the other library, the real
-fix once Convert to Library exists.
+choices — one button per verified fix, in the order swap the part to its
+twin, match the part's lead, set the wire (*Use 2 pt*, *Use 3 pt*), then
+*Ignore* — plus a line saying which library most of the diagram uses.
 
 It sits on the view's viewport, not in the scene: it is UI, so it is never
 exported, never selected, and never on the undo stack (the fix it applies
@@ -49,7 +49,11 @@ class WiringNotice(QFrame):
             f" border: 1px solid {border}; border-radius: 6px; }}"
             f"#WiringNotice QLabel {{ background: transparent; color: {fg}; }}")
 
-        from diagrammer.wirecheck.scene import recommended_fix, swap_hint
+        from diagrammer.wirecheck.scene import (
+            ordered_fixes,
+            recommended_fix,
+            swap_hint,
+        )
         lay = QVBoxLayout(self)
         lay.setContentsMargins(10, 8, 10, 8)
         lay.setSpacing(4)
@@ -68,11 +72,9 @@ class WiringNotice(QFrame):
 
         # The fix that matches the rest of the diagram goes first, in bold,
         # so the reason in the hint and the button order agree.
+        # Swap to twin, match this part's lead, set the wire: in that order.
         best = recommended_fix(self._scene, finding)
-        fixes = list(finding.fixes)
-        if best is not None:
-            fixes.remove(best)
-            fixes.insert(0, best)
+        fixes = ordered_fixes(self._scene, finding.fixes)
         row = QHBoxLayout()
         row.setSpacing(6)
         for fix in fixes:

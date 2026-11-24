@@ -64,11 +64,40 @@ class Wire:
 
 @dataclass(frozen=True)
 class Fix:
-    """Set attributes on wires: ``changes`` maps wire id -> {attr: value},
-    attrs being ``width``, ``color`` or ``deliberate``."""
+    """A proposed correction.
+
+    ``changes`` maps wire id -> {attr: value}, attrs being ``width``,
+    ``color`` or ``deliberate``. A fix can also act on parts:
+
+    * ``swaps`` maps a part's instance id -> the library key of its twin
+      (Convert to Library: the same drawing at the other weight);
+    * ``leads`` maps ``(part id, port)`` -> {"width"/"color": value}: what
+      the lead at that port becomes. For a swap it is the twin's lead there,
+      recorded so the candidate can be re-checked without a library; on its
+      own it is a per-instance lead override.
+
+    ``kind`` is ``"swap"``, ``"lead"`` or ``"wire"`` (the order the notice
+    and the Check Wiring panel offer them in) and ``target`` the value the
+    fix makes the net agree on, which is how a fix is matched to the rest of
+    the diagram.
+    """
 
     label: str
     changes: dict[str, dict] = field(default_factory=dict)
+    swaps: dict[str, str] = field(default_factory=dict)
+    leads: dict[tuple[str, str], dict] = field(default_factory=dict)
+    kind: str = "wire"
+    target: object = None
+
+
+@dataclass(frozen=True)
+class Twin:
+    """A part's twin in the other weight library: its key, that library's
+    name, and the lead the twin draws at each port."""
+
+    key: str
+    library: str
+    leads: dict[str, LeadStyle | None] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -88,11 +117,33 @@ class Finding:
 @dataclass(frozen=True)
 class Snapshot:
     wires: dict[str, Wire]
+    #: part instance id -> its twin, for parts that have one. Filled by
+    #: ``wirecheck.scene.snapshot`` from the library; empty means no swap
+    #: fixes are offered.
+    twins: dict[str, Twin] = field(default_factory=dict)
 
     def apply(self, fix: Fix) -> Snapshot:
         """A new snapshot with *fix* applied; this one is untouched."""
         wires = dict(self.wires)
+        if fix.leads:
+            for wid, w in wires.items():
+                wires[wid] = replace(w, a=_relead(w.a, fix.leads),
+                                     b=_relead(w.b, fix.leads))
         for wid, attrs in fix.changes.items():
             if wid in wires:
                 wires[wid] = replace(wires[wid], **attrs)
-        return Snapshot(wires)
+        twins = self.twins
+        if fix.swaps:
+            # A swapped part's twin is the part it came from; leave it out
+            # rather than guess the way back.
+            twins = {r: t for r, t in twins.items() if r not in fix.swaps}
+        return Snapshot(wires, twins)
+
+
+def _relead(end: End, leads: dict[tuple[str, str], dict]) -> End:
+    attrs = leads.get((end.ref, end.port)) if end.kind == "part" else None
+    if attrs is None:
+        return end
+    base = end.lead or LeadStyle(None, None)
+    return replace(end, lead=LeadStyle(attrs.get("width", base.width),
+                                       attrs.get("color", base.color)))

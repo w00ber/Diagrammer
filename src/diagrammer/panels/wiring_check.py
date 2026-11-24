@@ -178,22 +178,20 @@ class WiringCheckPanel(QDockWidget):
         if self._scene is None:
             self._snap, self._findings, self._rejected = None, [], []
         else:
-            from diagrammer.wirecheck.scene import recommended_fix, snapshot
+            from diagrammer.wirecheck.scene import snapshot
             snap = snapshot(self._scene)
             self._snap = snap
-            self._findings = [self._verified(snap, f, recommended_fix)
+            self._findings = [self._verified(snap, f)
                               for f in wirecheck.check(snap)]
             self._rejected = wirecheck.rejected(snap)
         self._refresh_tree()
 
-    def _verified(self, snap, finding, recommended_fix):
-        """*finding* with only its verified fixes, the recommended one first."""
-        good = [fx for fx in finding.fixes
-                if wirecheck.verified(snap, finding, fx)]
-        best = recommended_fix(self._scene, finding)
-        if best in good:
-            good.remove(best)
-            good.insert(0, best)
+    def _verified(self, snap, finding):
+        """*finding* with only its verified fixes, in the order offered:
+        swap, lead, wire; the one matching the diagram first in each."""
+        from diagrammer.wirecheck.scene import ordered_fixes
+        good = ordered_fixes(self._scene, [
+            fx for fx in finding.fixes if wirecheck.verified(snap, finding, fx)])
         return wirecheck.Finding(finding.check_id, finding.message,
                                  finding.wire_ids, tuple(good), finding.data)
 
@@ -384,10 +382,8 @@ class WiringCheckPanel(QDockWidget):
                 continue
             if f.key == finding.key:
                 choice = fix
-            elif len(f.fixes) == 1:
-                choice = f.fixes[0]
             else:
-                choice = next((fx for fx in f.fixes if fx.label == fix.label),
+                choice = next((fx for fx in f.fixes if _alike(fx, fix, f)),
                               None)
             if choice is not None:
                 picks.append((f, choice))
@@ -426,3 +422,22 @@ class WiringCheckPanel(QDockWidget):
                     self._tree.setCurrentItem(child)
                     return True
         return False
+
+
+def _alike(fx, fix, finding) -> bool:
+    """Whether *fx* is "the same fix" as *fix*, for Accept all like this.
+
+    The same kind (swap, lead, wire) toward the same value. The one
+    exception is a wire fix on a ``wire-<attr>`` finding: that is "take
+    the lead's value", the same fix whatever the value, so every such
+    finding takes its own lead's.
+    """
+    if fx.kind != fix.kind:
+        return False
+    if fx.kind == "wire" and finding.check_id in ("wire-width", "wire-color"):
+        return True
+    a, b = fx.target, fix.target
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return abs(float(a) - float(b)) <= wirecheck.WIDTH_TOL
+    return a == b or fx.label == fix.label
+

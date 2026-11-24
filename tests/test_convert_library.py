@@ -184,3 +184,189 @@ def test_twin_check_runs_without_pyside6():
                          capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "5"
+
+
+# ==========================================================================
+# 3. single-part swap
+# ==========================================================================
+
+SLIDES_IND = "SLIDES_3pt/circuits/LCR/IND1"
+PAPER_IND = "PAPER_2pt/circuits/LCR/IND1"
+
+
+def _part(diagram, cid):
+    return diagram._item(cid)
+
+
+def _ends(conn):
+    return (conn.source_port.scene_center().toTuple(),
+            conn.target_port.scene_center().toTuple())
+
+
+def test_swap_keeps_the_instance_and_moves_each_wire(d):
+    from diagrammer.wirecheck.scene import swap_to_twin
+    d.add(PAPER_CAP, (0, 0), anchor="top", id="A")
+    d.add(SLIDES_IND, (0, 200), anchor="top", id="B")
+    d.add(PAPER_IND, (300, 0), anchor="top", id="C")
+    w1 = d._items[d.connect("A", "bottom", "B", "top")]
+    w2 = d._items[d.connect("B", "bottom", "C", "top")]
+    b = _part(d, "B")
+    b.rotate_by(90)
+    b.set_flip_h(True)
+    b._layer_index = 0
+    b._group_ids, b._group_id = ["g1"], "g1"
+    d.scene.update_connections()
+    before = {"pos": b.pos().toTuple(), "rot": b.rotation_angle,
+              "flip": (b.flip_h, b.flip_v), "id": b.instance_id,
+              "stretch": (b.stretch_dx, b.stretch_dy), "z": b.zValue(),
+              "w1": _ends(w1), "w2": _ends(w2)}
+    n = d.undo_stack.count()
+
+    assert swap_to_twin(d.scene, b)
+    assert d.undo_stack.count() == n + 1                 # one undo step
+    new = _part(d, "B")
+    assert new is not b and b.scene() is None
+    assert new.library_key == PAPER_IND
+    assert {"pos": new.pos().toTuple(), "rot": new.rotation_angle,
+            "flip": (new.flip_h, new.flip_v), "id": new.instance_id,
+            "stretch": (new.stretch_dx, new.stretch_dy), "z": new.zValue(),
+            "w1": _ends(w1), "w2": _ends(w2)} == before
+    assert new._group_ids == ["g1"]
+    assert w1.target_port.component is new and w1.target_port.port_name == "top"
+    assert w2.source_port.component is new and w2.source_port.port_name == "bottom"
+    assert d.scene.connections_on_port(new.port_by_name("top")) == [w1]
+    assert d.scene.connections_on_port(b.port_by_name("top")) == []
+    assert w1.line_width == 2.0 and w2.line_width == 2.0
+
+    d.undo_stack.undo()
+    assert b.scene() is d.scene and new.scene() is None
+    assert w1.target_port.component is b
+    assert d.scene.connections_on_port(b.port_by_name("top")) == [w1]
+    assert _ends(w1) == before["w1"]
+    d.undo_stack.redo()
+    assert w1.target_port.component is new
+
+
+def test_swap_restyles_the_wires_that_follow_its_leads(d):
+    from diagrammer.commands.style_command import ChangeStyleCommand
+    from diagrammer.wirecheck.scene import swap_to_twin
+    d.add(PAPER_CAP, (0, 0), anchor="top", id="A")
+    d.add(PAPER_IND, (0, 200), anchor="top", id="B")
+    w = d._items[d.connect("A", "bottom", "B", "top")]
+    keep = d._items[d.connect("A", "top", "B", "bottom")]
+    d.undo_stack.push(ChangeStyleCommand(keep, "style_deliberate", False, True))
+    assert w.line_width == 2.0
+    swap_to_twin(d.scene, _part(d, "A"))
+    # A 3 pt lead now meets a 2 pt one: the wire is left for the user.
+    assert w.line_width == 2.0
+    swap_to_twin(d.scene, _part(d, "B"))
+    assert w.line_width == 3.0                           # both 3 pt: follows
+    assert keep.line_width == 2.0                        # kept on purpose
+
+
+def test_swap_survives_save_and_load(d, tmp_path):
+    from diagrammer.headless import Diagram
+    from diagrammer.wirecheck.scene import swap_to_twin
+    d.add(PAPER_CAP, (0, 0), anchor="top", id="A")
+    d.add(SLIDES_IND, (0, 200), anchor="top", id="B")
+    d.connect("A", "bottom", "B", "top")
+    swap_to_twin(d.scene, _part(d, "B"))
+    d.save(tmp_path / "s.dgm")
+    fresh = Diagram(library=d.library)
+    fresh.load(tmp_path / "s.dgm")
+    assert _wired_ports(fresh) == {PAPER_CAP: ["bottom"], PAPER_IND: ["top"]}
+
+
+def test_swap_is_refused_when_a_wired_port_is_missing(d):
+    from diagrammer.commands.swap_command import SwapComponentCommand
+    d.add(PAPER_CAP, (0, 0), anchor="top", id="A")
+    d.add(PAPER_IND, (0, 200), anchor="top", id="B")
+    d.connect("A", "bottom", "B", "top")
+    a = _part(d, "A")
+    cmd = SwapComponentCommand(d.scene, a, d.library.get(TEE0))
+    assert not cmd.ok
+    d.undo_stack.push(cmd)
+    assert a.scene() is d.scene
+
+
+def test_a_part_without_a_twin_cannot_swap(d):
+    from diagrammer.wirecheck.scene import swap_to_twin
+    key = "PAPER_2pt/circuits/µwave/coax and twp/COAX1_FAT_LCUT"
+    d.add(key, (0, 0), id="X")
+    n = d.undo_stack.count()
+    assert not swap_to_twin(d.scene, _part(d, "X"))
+    assert d.undo_stack.count() == n
+
+
+def test_context_menu_offers_the_swap(d):
+    from PySide6.QtWidgets import QMenu
+
+    from diagrammer.canvas.view import DiagramView
+    d.add(PAPER_CAP, (0, 0), anchor="top", id="A")
+    d.add("PAPER_2pt/circuits/µwave/coax and twp/COAX1_FAT_LCUT", (300, 0),
+          id="X")
+    view = DiagramView(d.scene)
+    menu = QMenu()
+    view._add_swap_action(menu, _part(d, "A"))
+    (act,) = [a for a in menu.actions() if not a.isSeparator()]
+    assert act.text() == "Swap to SLIDES_3pt Twin" and act.isEnabled()
+    act.trigger()
+    assert _part(d, "A").library_key == "SLIDES_3pt/circuits/LCR/CAP1"
+    menu = QMenu()
+    view._add_swap_action(menu, _part(d, "X"))
+    (act,) = [a for a in menu.actions() if not a.isSeparator()]
+    assert not act.isEnabled()
+
+
+def _disagreement(d):
+    d.add(SLIDES_IND, (0, 0), anchor="top", id="B")          # the odd one
+    d.add(PAPER_CAP, (0, 200), anchor="top", id="A")
+    d.add(PAPER_IND, (300, 0), anchor="top", id="C")
+    return d._items[d.connect("B", "bottom", "A", "top")]
+
+
+def test_notice_offers_swap_first(d):
+    from PySide6.QtWidgets import QPushButton
+
+    from diagrammer.canvas.view import DiagramView
+    from diagrammer.canvas.wiring_notice import show_wiring_notice
+    from diagrammer.wirecheck.scene import disagreements_at
+    w = _disagreement(d)
+    view = DiagramView(d.scene)
+    view.resize(800, 600)
+    found = disagreements_at(d.scene, [w.source_port])
+    notice = show_wiring_notice(view, found, QPointF_(0, 100))
+    labels = [b.text() for b in notice.findChildren(QPushButton)]
+    assert labels[0] == "Swap IND1 to PAPER_2pt"       # matches the diagram
+    assert labels[1] == "Swap CAP1 to SLIDES_3pt"
+    assert labels[-3:] == ["Use 2 pt", "Use 3 pt", "Ignore"]
+    first = notice.findChildren(QPushButton)[0]
+    assert "bold" in first.styleSheet()
+    n = d.undo_stack.count()
+    first.click()
+    assert d.undo_stack.count() == n + 1
+    assert _part(d, "B").library_key == PAPER_IND
+    assert w.line_width == 2.0 and not w.style_deliberate
+
+
+def QPointF_(x, y):
+    from PySide6.QtCore import QPointF
+    return QPointF(x, y)
+
+
+def test_check_wiring_panel_offers_and_accepts_swap(d):
+    from diagrammer.canvas.view import DiagramView
+    from diagrammer.panels.wiring_check import WiringCheckPanel
+    _disagreement(d)
+    view = DiagramView(d.scene)
+    p = WiringCheckPanel()
+    p.set_document(d.scene, view)
+    p.recheck()
+    ((f, _rej),) = p.findings()
+    assert [fx.kind for fx in f.fixes] == ["swap", "swap", "wire", "wire"]
+    assert f.fixes[0].label == "Swap IND1 to PAPER_2pt"
+    p._apply(f.fixes[0], "Wiring: " + f.fixes[0].label)
+    p.recheck()
+    assert p.findings() == []
+    assert _part(d, "B").library_key == PAPER_IND
+    p.deleteLater()

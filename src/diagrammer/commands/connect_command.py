@@ -10,19 +10,11 @@ from diagrammer.items.connection_item import ConnectionItem
 from diagrammer.items.port_item import PortItem
 
 
-def lead_style_at(port: PortItem):
-    """The ``LeadStyle`` of the lead a wire on *port* continues, or None.
-
-    The lead that ends at this very port when there is one; otherwise the
-    part's first lead (``ComponentDef.default_lead``), which is what every
-    port used to get. A junction has no lead of its own: None.
-    """
+def lead_style_of(cdef, pdef):
+    """The ``LeadStyle`` a part definition draws at one of its ports, as
+    the library file has it: the lead that ends at that port, else the
+    part's first lead (``ComponentDef.default_lead``)."""
     from diagrammer.models.lead_style import LeadStyle
-    comp = getattr(port, "component", None)
-    cdef = getattr(comp, "component_def", None)
-    if cdef is None:
-        return None
-    pdef = getattr(port, "port_def", None)
     if pdef is not None and (pdef.lead_width is not None
                              or pdef.lead_color is not None):
         fallback = cdef.default_lead
@@ -32,6 +24,20 @@ def lead_style_at(port: PortItem):
             pdef.lead_color if pdef.lead_color is not None
             else getattr(fallback, "color", None))
     return cdef.default_lead
+
+
+def lead_style_at(port: PortItem):
+    """The ``LeadStyle`` of the lead a wire on *port* continues, or None.
+
+    The lead that ends at this very port when there is one; otherwise the
+    part's first lead (``ComponentDef.default_lead``), which is what every
+    port used to get. A junction has no lead of its own: None.
+    """
+    comp = getattr(port, "component", None)
+    cdef = getattr(comp, "component_def", None)
+    if cdef is None:
+        return None
+    return lead_style_of(cdef, getattr(port, "port_def", None))
 
 
 def _get_lead_stroke_width(port: PortItem) -> float | None:

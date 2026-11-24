@@ -194,8 +194,10 @@ def test_disagreeing_leads_offer_both_widths_recommended_first(d, panel):
     panel.select_finding(f)
     labels = [panel._fix_combo.itemText(i)
               for i in range(panel._fix_combo.count())]
-    assert labels == ["Use 2 pt", "Use 3 pt"]
-    panel._fix_combo.setCurrentIndex(1)
+    # Swaps first (stage 4), the one matching the diagram leading.
+    assert labels == ["Swap IND1 to PAPER_2pt", "Swap CAP1 to SLIDES_3pt",
+                      "Use 2 pt", "Use 3 pt"]
+    panel._fix_combo.setCurrentIndex(3)
     panel._accept_btn.click()
     assert wire(d, w).line_width == 3.0 and wire(d, w).style_deliberate
     assert panel.findings() == []

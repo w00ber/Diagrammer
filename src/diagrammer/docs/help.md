@@ -340,16 +340,28 @@ part's lead, so in this mode:
   on, when it starts at a junction). A wire between two junctions takes the
   style of the wires already on them.
 - **Wiring leads that don't match** — a 2 pt `PAPER_2pt` part to a 3 pt
-  `SLIDES_3pt` one — still makes the wire, and a notice appears beside it:
-  **Use 2 pt**, **Use 3 pt** or **Ignore**. Choosing one marks the wire as
-  set on purpose. The notice also names a part that comes in the other
-  library, since swapping it is the real fix.
+  `SLIDES_3pt` one — still makes the wire, and a notice appears beside it.
+  It offers, in this order: **Swap** the part to its twin in the other
+  library (see *Swap to Twin* below); **Use 2 pt** / **Use 3 pt** for the
+  wire, which marks it as set on purpose; or **Ignore**. The choice that
+  matches the library most of the diagram uses is in bold.
 - **Setting a wire's width or color by hand** in the Properties panel shows a
   note under the fields when it no longer matches its leads. Keeping it marks
   the wire as set on purpose, so it is not flagged; **Match Leads** puts it
   back.
 
 With the mode off, wires keep the default color and nothing is reported.
+
+### Swap to Twin
+
+Most `PAPER_2pt` parts have a **twin** in `SLIDES_3pt`: the same drawing at
+the other line weight, with the same ports in the same places. Right-click a
+placed part and choose **Swap to SLIDES_3pt Twin** (or **PAPER_2pt**) to
+replace it. It keeps its position, rotation, flip, stretch, layer and groups,
+and each wire stays on the port of the same name. Wires that followed the old
+lead follow the new one where the leads at their ends now agree; wires set on
+purpose are left alone. It is one undo step. A part with no twin shows the
+entry greyed out.
 
 ### Check Wiring…
 
@@ -360,9 +372,10 @@ canvas listing every wire whose width or color differs from its leads,
 grouped by kind:
 
 - **Wire width / colour differs from its lead** — the fix takes the lead's.
-- **Leads at the ends differ** — a 2 pt lead wired to a 3 pt one. Both widths
-  are offered, the one most of the diagram uses first; choosing one marks the
-  wires as set on purpose.
+- **Leads at the ends differ** — a 2 pt lead wired to a 3 pt one. Swapping a
+  part to its twin is offered first, then both widths for the wires, the
+  choice matching most of the diagram first within each; choosing a width
+  marks the wires as set on purpose.
 - **Joined wires differ** — wires meeting at junctions, with no part lead to
   say which is right. One option per width or color present.
 

@@ -661,6 +661,15 @@ class Diagram:
 
     def _item(self, id: str):
         item = self._items.get(id)
+        if item is not None and item.scene() is not self.scene:
+            # Swapped for its twin (Convert to Library): the new item keeps
+            # the instance id, so follow it there.
+            iid = getattr(item, "instance_id", None)
+            now = next((i for i in self.scene.items()
+                        if getattr(i, "instance_id", None) == iid
+                        and i is not item), None) if iid else None
+            if now is not None:
+                self._items[id] = item = now
         if item is None or item.scene() is not self.scene:
             raise DiagramError(f"no item {id!r}; ids are {sorted(self._items)}")
         return item

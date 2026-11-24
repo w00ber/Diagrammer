@@ -36,11 +36,12 @@ from diagrammer.wirecheck.model import (
     Finding,
     Fix,
     Snapshot,
+    Twin,
     Wire,
     colors_match,
 )
 
 __all__ = [
-    "COLOR_TOL", "WIDTH_TOL", "End", "Finding", "Fix", "Snapshot", "Wire",
+    "COLOR_TOL", "WIDTH_TOL", "End", "Finding", "Fix", "Snapshot", "Twin", "Wire",
     "check", "colors_match", "combine", "rejected", "verified",
 ]

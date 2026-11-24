@@ -7,7 +7,7 @@ checks themselves never see them.
 from __future__ import annotations
 
 from diagrammer.svglint.twins import TWIN_LIBRARIES
-from diagrammer.wirecheck.model import End, Snapshot, Wire
+from diagrammer.wirecheck.model import End, Snapshot, Twin, Wire
 
 
 def _end(port) -> End:
@@ -21,10 +21,18 @@ def _end(port) -> End:
 
 
 def snapshot(scene) -> Snapshot:
-    """Every wire in *scene*, with what each end is attached to."""
+    """Every wire in *scene*, with what each end is attached to, and the
+    twin of every part that has one (so swap fixes can be offered)."""
+    from diagrammer.items.component_item import ComponentItem
     from diagrammer.items.connection_item import ConnectionItem
     wires: dict[str, Wire] = {}
+    twins: dict[str, Twin] = {}
+    library = getattr(scene, "library", None)
     for item in scene.items():
+        if isinstance(item, ComponentItem) and library is not None:
+            twin = part_twin(library, item.library_key)
+            if twin is not None:
+                twins[item.instance_id] = twin
         if not isinstance(item, ConnectionItem):
             continue
         wires[item.instance_id] = Wire(
@@ -35,7 +43,18 @@ def snapshot(scene) -> Snapshot:
             color=item.line_color.name(),
             deliberate=bool(getattr(item, "style_deliberate", False)),
         )
-    return Snapshot(wires)
+    return Snapshot(wires, twins)
+
+
+def part_twin(library, key: str) -> Twin | None:
+    """:func:`twin_key` with the twin's lead at each port."""
+    from diagrammer.commands.connect_command import lead_style_of
+    tkey = twin_key(library, key)
+    if tkey is None:
+        return None
+    tdef = library.get(tkey)
+    return Twin(tkey, tkey.split("/", 1)[0],
+                {p.name: lead_style_of(tdef, p) for p in tdef.ports})
 
 
 # ---------------------------------------------------------------------------
@@ -98,16 +117,22 @@ def expected_style(scene, conn) -> tuple[float | None, str | None]:
 
 
 def apply_fix(scene, fix, text: str | None = None) -> None:
-    """Apply a wirecheck :class:`Fix` to the scene as one undo step."""
+    """Apply a wirecheck :class:`Fix` to the scene as one undo step.
+
+    Parts first (swaps), then wires, so a wire's new width lands on the
+    wire that is by then attached to the swapped-in part.
+    """
     from PySide6.QtGui import QColor
 
     from diagrammer.commands.style_command import ChangeStyleCommand
     from diagrammer.items.connection_item import ConnectionItem
-    conns = {i.instance_id: i for i in scene.items()
-             if isinstance(i, ConnectionItem)}
     stack = scene.undo_stack
     stack.beginMacro(text or fix.label)
     try:
+        if fix.swaps:
+            _apply_swaps(scene, fix.swaps)
+        conns = {i.instance_id: i for i in scene.items()
+                 if isinstance(i, ConnectionItem)}
         for wid, attrs in fix.changes.items():
             conn = conns.get(wid)
             if conn is None:
@@ -126,6 +151,69 @@ def apply_fix(scene, fix, text: str | None = None) -> None:
                                                   bool(value)))
     finally:
         stack.endMacro()
+
+
+def _apply_swaps(scene, swaps: dict[str, str]) -> list:
+    """Push a :class:`SwapComponentCommand` per ``{instance id: key}``.
+    Returns the swapped-in items."""
+    from diagrammer.commands.swap_command import SwapComponentCommand
+    from diagrammer.items.component_item import ComponentItem
+    library = getattr(scene, "library", None)
+    by_id = {i.instance_id: i for i in scene.items()
+             if isinstance(i, ComponentItem)}
+    out = []
+    for ref, key in swaps.items():
+        item = by_id.get(ref)
+        new_def = library.get(key) if library is not None else None
+        if item is None or new_def is None:
+            continue
+        cmd = SwapComponentCommand(scene, item, new_def)
+        if cmd.ok:
+            scene.undo_stack.push(cmd)
+            out.append(cmd.new_item)
+    return out
+
+
+def swap_fix_for(scene, item):
+    """The :class:`Fix` that swaps *item* for its twin, restyling the
+    wires that follow its leads; None when it has no twin.
+
+    What the part's context menu does. Unlike the swap fixes the checks
+    offer, it is not refused for disturbing another net: the user asked
+    for this part.
+    """
+    from diagrammer.wirecheck.checks import _follow_leads
+    from diagrammer.wirecheck.model import Fix
+    library = getattr(scene, "library", None)
+    if library is None:
+        return None
+    twin = part_twin(library, item.library_key)
+    if twin is None:
+        return None
+    snap = snapshot(scene)
+    leads: dict = {}
+    touched: set[str] = set()
+    for w in snap.wires.values():
+        for e in w.ends():
+            if e.kind == "part" and e.ref == item.instance_id:
+                tl = twin.leads.get(e.port)
+                if tl is not None:
+                    leads[(e.ref, e.port)] = {
+                        k: v for k, v in (("width", tl.width),
+                                          ("color", tl.color)) if v is not None}
+                touched.add(w.id)
+    changes = _follow_leads(snap.apply(Fix("", leads=leads)), touched)
+    return Fix(f"Swap {item.component_def.name} to {twin.library}", changes,
+               swaps={item.instance_id: twin.key}, leads=leads, kind="swap")
+
+
+def swap_to_twin(scene, item) -> bool:
+    """Swap *item* for its twin as one undo step; False when it has none."""
+    fix = swap_fix_for(scene, item)
+    if fix is None:
+        return False
+    apply_fix(scene, fix)
+    return True
 
 
 def disagreements_at(scene, ports) -> list:
@@ -156,7 +244,8 @@ def twin_key(library, key: str) -> str | None:
     relative path, else a unique file name (the libraries' folders have
     drifted) — and only when the port names agree, or the swap would orphan
     wires. The cross-library twin check (``python -m diagrammer.svglint
-    --twins``) keeps the shipped pairs that way.
+    --twins``) keeps the shipped pairs that way. Convert to Library swaps a
+    part for this key (:func:`swap_to_twin`).
     """
     from diagrammer.svglint.twins import find_twin
     top, _, rel = key.partition("/")
@@ -195,14 +284,41 @@ def diagram_library(scene) -> str | None:
     return ranked[0][0]
 
 
+#: The order fixes are offered in: the part's own fault first.
+FIX_KIND_ORDER = {"swap": 0, "lead": 1, "wire": 2}
+
+
+def _matches_diagram(fix, weight: float) -> bool:
+    t = fix.target
+    return isinstance(t, (int, float)) and abs(float(t) - weight) <= 0.01
+
+
 def recommended_fix(scene, finding):
-    """The fix that matches the rest of the diagram, or None."""
+    """The fix that matches the rest of the diagram, or None: the first,
+    in :data:`FIX_KIND_ORDER`, whose result is the width most of the
+    diagram's library uses."""
     lib = diagram_library(scene)
     if lib is None:
         return None
-    want = f"{WEIGHT_LIBRARIES[lib]:g} pt"
-    return next((fx for fx in finding.fixes if fx.label.endswith(" " + want)),
-                None)
+    weight = WEIGHT_LIBRARIES[lib]
+    return next((fx for fx in ordered_fixes(scene, finding.fixes,
+                                            recommend=False)
+                 if _matches_diagram(fx, weight)), None)
+
+
+def ordered_fixes(scene, fixes, *, recommend: bool = True) -> list:
+    """*fixes* in the order the notice and the Check Wiring panel offer
+    them: swap to twin, then match this part's lead, then set the wire.
+    Within a kind the one matching the rest of the diagram comes first."""
+    lib = diagram_library(scene) if recommend else None
+    weight = WEIGHT_LIBRARIES[lib] if lib is not None else None
+
+    def rank(ix):
+        i, fx = ix
+        near = weight is not None and _matches_diagram(fx, weight)
+        return (FIX_KIND_ORDER.get(fx.kind, 9), not near, i)
+
+    return [fx for _i, fx in sorted(enumerate(fixes), key=rank)]
 
 
 def swap_hint(scene, finding) -> str:
