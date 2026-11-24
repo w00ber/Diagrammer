@@ -1064,6 +1064,11 @@ class AnnotationItem(QGraphicsTextItem):
         self._group_id: str | None = None
         self._group_ids: list[str] = []
         self._editing = False
+        # While editing in inverted polarity the item shows the display
+        # colour (Qt's own painting draws the caret and selection, so the
+        # colour has to be set, not mapped at paint time); the real colour
+        # waits here until editing ends. See start_editing.
+        self._edit_color: QColor | None = None
         self._source_text: str = text  # plain-text source (with $..$ math)
         self._math_renderer: QSvgRenderer | None = None  # vector math renderer
         self._math_image = None  # pre-rasterized QImage of the math SVG
@@ -1181,11 +1186,19 @@ class AnnotationItem(QGraphicsTextItem):
 
     @property
     def text_color(self) -> QColor:
+        """The annotation's colour as saved: never the display colour that
+        stands in for it while editing in inverted polarity."""
+        if self._edit_color is not None:
+            return QColor(self._edit_color)
         return self.defaultTextColor()
 
     @text_color.setter
     def text_color(self, color: QColor) -> None:
-        self.setDefaultTextColor(color)
+        if self._edit_color is not None:
+            self._edit_color = QColor(color)
+            self.setDefaultTextColor(display_color(color))
+        else:
+            self.setDefaultTextColor(color)
         if _has_any_math(self._source_text):
             self._try_render_math()
 
@@ -1378,6 +1391,15 @@ class AnnotationItem(QGraphicsTextItem):
         self._math_rect = QRectF()
         self.setPlainText(self._source_text)
 
+        # Inverted polarity: paint() maps the colour itself, but while
+        # editing QGraphicsTextItem paints (caret, selection) with the
+        # default text colour, which showed black text on the black canvas.
+        # Show the display colour for the edit; text_color keeps the real one.
+        shown = display_color(self.defaultTextColor())
+        if shown != self.defaultTextColor():
+            self._edit_color = QColor(self.defaultTextColor())
+            self.setDefaultTextColor(shown)
+
         self.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextEditorInteraction
         )
@@ -1394,6 +1416,9 @@ class AnnotationItem(QGraphicsTextItem):
         if not self._editing:
             return
         self._editing = False
+        if self._edit_color is not None:
+            self.setDefaultTextColor(self._edit_color)
+            self._edit_color = None
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
 
         # Clear selection (UI cleanup, no data change)
@@ -1562,7 +1587,8 @@ class AnnotationItem(QGraphicsTextItem):
         # Inverted polarity: draw the document ourselves with the text colour
         # mapped. Swapping defaultTextColor here instead would schedule another
         # paint from inside this one. While editing, QGraphicsTextItem must
-        # paint (caret, selection), so the colour is canonical until done.
+        # paint (caret, selection), so start_editing swaps the colour once
+        # instead and finish_editing puts it back.
         # Inline colour spans in rich text keep their own colour either way.
         if not self._editing and display_color(self.defaultTextColor()) != self.defaultTextColor():
             from PySide6.QtGui import QAbstractTextDocumentLayout, QPalette

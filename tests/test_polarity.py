@@ -266,3 +266,35 @@ def test_stretched_component_rerenders_on_toggle(inverted) -> None:
     n_dark, _ = _luma_histogram(normal)
     _, f_light = _luma_histogram(d.render_png())
     assert f_light == pytest.approx(n_dark, rel=0.25)
+
+
+def test_editing_text_in_inverted_polarity_shows_the_display_colour(
+        isolate_app_settings):
+    """While editing, Qt's text item paints with the default text colour,
+    so inverted polarity showed black text on the black canvas. The edit
+    shows the display colour; the saved colour never changes."""
+    from PySide6.QtGui import QColor
+
+    from diagrammer.canvas.scene import DiagramScene
+    from diagrammer.items.annotation_item import AnnotationItem
+    scene = DiagramScene()
+    note = AnnotationItem("label")
+    scene.addItem(note)
+    note.text_color = QColor("#000000")
+    P.set_inverted(True)
+    try:
+        note.start_editing()
+        assert note.defaultTextColor() == P.display_color(QColor("#000000"))
+        assert note.defaultTextColor().lightness() > 200       # readable
+        assert note.text_color.name() == "#000000"              # as saved
+        note.text_color = QColor("#cc3333")                     # Properties
+        assert note.text_color.name() == "#cc3333"
+        assert note.defaultTextColor() == P.display_color(QColor("#cc3333"))
+        note.finish_editing()
+        assert note.defaultTextColor().name() == "#cc3333"
+        assert note.text_color.name() == "#cc3333"
+    finally:
+        P.set_inverted(False)
+    note.start_editing()                      # normal polarity: untouched
+    assert note.defaultTextColor().name() == "#cc3333"
+    note.finish_editing()
