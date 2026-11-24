@@ -281,6 +281,26 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
         panel.show()
         panel.raise_()
 
+    def _convert_diagram(self, library_name: str) -> None:
+        """Routing ▸ Convert Diagram to Library ▸ <library>: one undo step,
+        then the wiring is checked again and anything left is listed."""
+        from diagrammer import wirecheck
+        from diagrammer.wirecheck.scene import convert_diagram, snapshot
+        scene = self._scene
+        n, left = convert_diagram(scene, library_name)
+        remaining = wirecheck.check(snapshot(scene))
+        parts = f"{n} part{'s' if n != 1 else ''}"
+        msg = (f"Converted {parts} to {library_name}." if n
+               else f"Nothing to convert to {library_name}.")
+        if left:
+            msg += (f" No twin for {len(left)}: "
+                    + ", ".join(sorted(set(left))) + ".")
+        if remaining:
+            msg += f" {len(remaining)} wiring finding(s) remain."
+            self._show_wiring_check()
+            self._wiring_panel.recheck()
+        self.statusBar().showMessage(msg, 10000)
+
     def _set_polarity(self, inverted: bool) -> None:
         """View ▸ Invert Polarity. Window-wide, like the grid: every open
         diagram repaints, and exports follow. Not an undo step — nothing in

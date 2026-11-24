@@ -225,6 +225,60 @@ def swap_fix_for(scene, item):
                swaps={item.instance_id: twin.key}, leads=leads, kind="swap")
 
 
+def convert_diagram(scene, library_name: str) -> tuple[int, list[str]]:
+    """Convert to Library for the whole diagram, as one undo step.
+
+    Every part from the other weight library that has a twin in
+    *library_name* is swapped for it, and wires that follow the swapped
+    leads are restyled with them (deliberate wires are left alone). Parts
+    already in *library_name*, or in neither, are untouched.
+
+    Returns ``(parts swapped, names of parts left behind for want of a
+    twin)``. Nothing is pushed when nothing would change.
+    """
+    from diagrammer.items.component_item import ComponentItem
+    from diagrammer.wirecheck.checks import _follow_leads
+    from diagrammer.wirecheck.model import Fix
+    if library_name not in WEIGHT_LIBRARIES:
+        raise ValueError(f"not a weight library: {library_name!r}")
+    library = getattr(scene, "library", None)
+    if library is None:
+        return 0, []
+    snap = snapshot(scene)
+    swaps: dict[str, str] = {}
+    left: list[str] = []
+    for item in scene.items():
+        if not isinstance(item, ComponentItem):
+            continue
+        lib = item.library_key.split("/", 1)[0]
+        if lib == library_name or lib not in WEIGHT_LIBRARIES:
+            continue
+        twin = snap.twins.get(item.instance_id)
+        if twin is None or twin.library != library_name:
+            left.append(item.component_def.name)
+            continue
+        swaps[item.instance_id] = twin.key
+    if not swaps:
+        return 0, sorted(left)
+    leads: dict = {}
+    touched: set[str] = set()
+    for w in snap.wires.values():
+        for e in w.ends():
+            if e.kind == "part" and e.ref in swaps:
+                tl = snap.twins[e.ref].leads.get(e.port)
+                if tl is not None:
+                    leads[(e.ref, e.port)] = {
+                        k: v for k, v in (("width", tl.width),
+                                          ("color", tl.color)) if v is not None}
+                touched.add(w.id)
+    changes = _follow_leads(snap.apply(Fix("", leads=leads)), touched)
+    n = len(swaps)
+    apply_fix(scene, Fix(f"Convert {n} part{'s' if n != 1 else ''} to "
+                         f"{library_name}", changes, swaps=swaps,
+                         leads=leads, kind="swap"))
+    return n, sorted(left)
+
+
 def swap_to_twin(scene, item) -> bool:
     """Swap *item* for its twin as one undo step; False when it has none."""
     fix = swap_fix_for(scene, item)

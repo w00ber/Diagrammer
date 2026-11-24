@@ -329,6 +329,7 @@ New arrows use the default style from **Settings → Line Styles** (filled or ho
 | Show Junctions | Toggle junction dot visibility |
 | Regularize Wiring | New wires match the leads they connect (Shift+W; also a toolbar checkbox) |
 | Check Wiring… | List wires that don't match their leads, and fix or keep each one |
+| Convert Diagram to Library | Swap every part with a twin to `PAPER_2pt` or `SLIDES_3pt` |
 
 ### Regularize Wiring (Shift+W)
 
@@ -364,6 +365,12 @@ and each wire stays on the port of the same name. Wires that followed the old
 lead follow the new one where the leads at their ends now agree; wires set on
 purpose are left alone. It is one undo step. A part with no twin shows the
 entry greyed out.
+
+**Routing → Convert Diagram to Library** does the same for every part at
+once: pick `PAPER_2pt` or `SLIDES_3pt` and each part from the other library
+that has a twin is swapped, in one undo step. The status bar says how many
+were converted and names any part left as it was for want of a twin; if any
+wiring findings remain, the Check Wiring panel opens with them.
 
 ### Lead overrides
 

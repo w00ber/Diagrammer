@@ -524,3 +524,79 @@ def test_a_wire_set_by_hand_can_take_the_lead_with_it(d):
     apply_fix(d.scene, kinds["lead"])
     assert wirecheck.check(snapshot(d.scene)) == []
     assert w.line_width == 3.0
+
+
+# ==========================================================================
+# 5. whole-diagram conversion
+# ==========================================================================
+
+ELBOW = "SLIDES_3pt/circuits/µwave/coax and twp/COAX_ELBOW1_MED"
+
+
+def _mixed(d):
+    d.add(PAPER_CAP, (0, 0), anchor="top", id="A")
+    d.add(SLIDES_IND, (0, 200), anchor="top", id="B")
+    d.add(PAPER_IND, (300, 0), anchor="top", id="C")
+    d.add(ELBOW, (600, 0), id="E")                       # no PAPER twin
+    w1 = d._items[d.connect("A", "bottom", "B", "top")]
+    w2 = d._items[d.connect("B", "bottom", "C", "top")]
+    return w1, w2
+
+
+def test_convert_diagram_is_one_undo_step(d):
+    from diagrammer import wirecheck
+    from diagrammer.wirecheck.scene import convert_diagram, snapshot
+    w1, w2 = _mixed(d)
+    assert len(wirecheck.check(snapshot(d.scene))) == 2
+    n = d.undo_stack.count()
+    swapped, left = convert_diagram(d.scene, "SLIDES_3pt")
+    assert (swapped, left) == (2, [])
+    assert d.undo_stack.count() == n + 1
+    assert {_part(d, c).library_key.split("/")[0] for c in "ABCE"} == \
+        {"SLIDES_3pt"}
+    assert (w1.line_width, w2.line_width) == (3.0, 3.0)
+    assert wirecheck.check(snapshot(d.scene)) == []
+    d.undo_stack.undo()
+    assert _part(d, "A").library_key == PAPER_CAP
+    assert len(wirecheck.check(snapshot(d.scene))) == 2
+
+
+def test_convert_diagram_reports_parts_without_a_twin(d):
+    from diagrammer.wirecheck.scene import convert_diagram
+    w1, _w2 = _mixed(d)
+    swapped, left = convert_diagram(d.scene, "PAPER_2pt")
+    assert (swapped, left) == (1, ["COAX_ELBOW1_MED"])
+    assert _part(d, "B").library_key == PAPER_IND
+    assert _part(d, "E").library_key == ELBOW
+    assert w1.line_width == 2.0
+    n = d.undo_stack.count()
+    assert convert_diagram(d.scene, "PAPER_2pt") == (0, ["COAX_ELBOW1_MED"])
+    assert d.undo_stack.count() == n                     # nothing to do
+
+
+def test_convert_menu_converts_and_rechecks(isolate_component_overlay,
+                                            _ensure_qapp):
+    from diagrammer.main_window import MainWindow
+    w = MainWindow()
+    try:
+        scene = w._scene
+        lib = scene.library
+        from diagrammer.commands.add_command import AddComponentCommand
+        from PySide6.QtCore import QPointF
+        for key, y in ((PAPER_CAP, 0), (SLIDES_IND, 200)):
+            scene.undo_stack.push(AddComponentCommand(scene, lib.get(key),
+                                                      QPointF(0, y)))
+        from PySide6.QtWidgets import QMenu
+        (menu,) = [m for m in w.findChildren(QMenu)
+                   if m.title() == "Con&vert Diagram to Library"]
+        acts = {a.text(): a for a in menu.actions()}
+        assert set(acts) == {"PAPER_2pt (2 pt)", "SLIDES_3pt (3 pt)"}
+        acts["PAPER_2pt (2 pt)"].trigger()
+        keys = sorted(i.library_key for i in scene.items()
+                      if hasattr(i, "library_key"))
+        assert keys == [PAPER_CAP, PAPER_IND]
+        assert "Converted 1 part to PAPER_2pt" in w.statusBar().currentMessage()
+    finally:
+        for doc in w._documents():
+            doc.scene.undo_stack.clear()
+        w.hide()

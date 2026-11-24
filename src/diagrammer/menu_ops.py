@@ -460,6 +460,18 @@ class MenuMixin:
         check_wiring_act.triggered.connect(self._show_wiring_check)
         routing_menu.addAction(check_wiring_act)
 
+        # Convert to Library, whole diagram (#47 stage 4): swap every part
+        # with a twin to one weight library, as one undo step.
+        convert_menu = routing_menu.addMenu("Con&vert Diagram to Library")
+        from diagrammer.wirecheck.scene import WEIGHT_LIBRARIES
+        for lib_name, weight in WEIGHT_LIBRARIES.items():
+            act = QAction(f"{lib_name} ({weight:g} pt)", self)
+            act.setStatusTip(f"Swap every part that has a twin in {lib_name} "
+                             "for it, then check the wiring")
+            act.triggered.connect(
+                lambda _c=False, n=lib_name: self._convert_diagram(n))
+            convert_menu.addAction(act)
+
         routing_menu.addSeparator()
 
         hv_info_act = QAction("Hold Shift for &H/V Constraint", self)
