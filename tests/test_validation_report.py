@@ -11,11 +11,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Qt, QThreadPool
+from PySide6.QtCore import Qt
 
 from diagrammer.models.overrides import OverrideIndex
 from diagrammer.panels.library_overrides import LibraryOverridesDialog
-from diagrammer.panels.validation_report import ValidationReportView
+from diagrammer.panels.validation_report import ValidationReportView, wait_for_sweeps
 
 # The leads carry their own class. That matters: the lead-cap fix refuses to
 # touch a class the artwork also uses, since butt-capping it would restyle the
@@ -53,10 +53,40 @@ def library(tmp_path: Path) -> Path:
 
 def run_report(root: Path, **kw) -> ValidationReportView:
     dlg = ValidationReportView(roots=[(root.name, root)], **kw)
-    assert QThreadPool.globalInstance().waitForDone(30000)
+    assert wait_for_sweeps()
     from PySide6.QtWidgets import QApplication
     QApplication.processEvents()
     return dlg
+
+
+def test_the_sweep_thread_never_collects_garbage(library) -> None:
+    """Python's cyclic collector runs on whichever thread is allocating. On
+    the sweep thread it could free a main-thread QObject kept alive only by
+    a cycle (an old scene); Qt can't stop its timers from there, and the
+    main thread later fired one on freed memory and segfaulted. With the
+    threshold at 1 a collection is due on nearly every allocation, so any
+    left enabled on the sweep thread shows up here."""
+    import gc
+    import threading
+    main = threading.get_ident()
+    seen: list[int] = []
+
+    def watch(phase, _info):
+        if phase == "start":
+            seen.append(threading.get_ident())
+
+    old = gc.get_threshold()
+    gc.callbacks.append(watch)
+    gc.set_threshold(1)
+    try:
+        dlg = run_report(library)
+    finally:
+        gc.set_threshold(*old)
+        gc.callbacks.remove(watch)
+    assert dlg._reports                        # the sweep did run
+    assert seen and set(seen) == {main}
+    assert gc.isenabled()
+    dlg.deleteLater()
 
 
 def rows(dlg: ValidationReportView) -> list[str]:
@@ -97,7 +127,7 @@ def test_picking_a_scope_validates_it(library, tmp_path: Path) -> None:
     dlg = ValidationReportView(roots=[(library.name, library),
                                       (other.name, other)])
     try:
-        assert QThreadPool.globalInstance().waitForDone(30000)
+        assert wait_for_sweeps()
         from PySide6.QtWidgets import QApplication
         QApplication.processEvents()
         assert len(dlg._reports) == 6
@@ -105,7 +135,7 @@ def test_picking_a_scope_validates_it(library, tmp_path: Path) -> None:
         # does not emit ``activated``.
         dlg._scope.setCurrentIndex(1)
         dlg._scope.activated.emit(1)
-        assert QThreadPool.globalInstance().waitForDone(30000)
+        assert wait_for_sweeps()
         QApplication.processEvents()
         assert [r.path.name for r in dlg._reports] == ["only.svg"]
     finally:
@@ -477,7 +507,7 @@ def test_a_save_during_a_sweep_is_applied_when_it_lands(library) -> None:
         dlg._start()
         (library / "broken.svg").write_text(SOUND, encoding="utf-8")
         dlg.file_saved(library / "broken.svg")
-        assert QThreadPool.globalInstance().waitForDone(30000)
+        assert wait_for_sweeps()
         from PySide6.QtWidgets import QApplication
         QApplication.processEvents()
         assert row_for(dlg, "no-ports") is None
@@ -501,7 +531,7 @@ def win(isolate_component_overlay, _ensure_qapp):
 
 def _settle():
     from PySide6.QtWidgets import QApplication
-    assert QThreadPool.globalInstance().waitForDone(30000)
+    assert wait_for_sweeps()
     QApplication.processEvents()
 
 

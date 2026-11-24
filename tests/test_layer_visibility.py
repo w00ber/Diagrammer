@@ -38,11 +38,14 @@ def main_window(tmp_path):
 
 def _add_shape(scene):
     """Put one real item on the active layer and return it."""
-    from PySide6.QtCore import QRectF
-
     from diagrammer.items.shape_item import RectangleItem
 
-    item = RectangleItem(QRectF(0, 0, 40, 20))
+    # Width and height, not a QRectF: given a rect, _width became a QRectF,
+    # boundingRect() raised on every later call, and once that happened
+    # inside a C++ virtual during another test's processEvents(), PySide
+    # 6.8 on Python 3.13 aborted the whole run ("_PyThreadState_Attach:
+    # non-NULL old thread state"), blamed on test_validation_report.py.
+    item = RectangleItem(40, 20)
     scene.addItem(item)
     scene.assign_active_layer(item)
     scene.apply_layer_state()

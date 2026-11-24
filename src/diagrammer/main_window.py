@@ -194,7 +194,7 @@ class MainWindow(DocumentTabsMixin, MenuMixin, ClipboardMixin, TransformMixin,
 
         # Deferred so the window is up first: this is information, not a
         # decision that has to be made before the app is usable.
-        QTimer.singleShot(0, self._report_fork_drift)
+        QTimer.singleShot(0, self, self._report_fork_drift)
 
     def _populate_panels_menu(self) -> None:
         """Fill View > Panels with a show/hide toggle per dock.

@@ -564,7 +564,7 @@ class DiagramScene(QGraphicsScene):
                 if item.scene() is self:
                     item.setSelected(True)
 
-        QTimer.singleShot(400, restore)
+        QTimer.singleShot(400, self, restore)
 
     @property
     def default_routing_mode(self) -> str:

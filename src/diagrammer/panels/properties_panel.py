@@ -974,7 +974,7 @@ class PropertiesPanel(QDockWidget):
 
             item._invalidate_renderers()
             count[0] += 1
-            QTimer.singleShot(200, _do_flash)
+            QTimer.singleShot(200, self, _do_flash)
 
         _do_flash()
 

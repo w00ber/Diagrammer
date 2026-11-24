@@ -47,8 +47,21 @@ FADE_MS = 600
 
 
 class WiringNotice(QFrame):
+    #: Notices that have not been dismissed. A notice runs its own timers
+    #: (linger, fade), so one left behind fires later into whatever is
+    #: running then; :meth:`dismiss_all` is the way to be sure none is.
+    _live: set = set()
+
+    @classmethod
+    def dismiss_all(cls) -> None:
+        """Dismiss every live notice now (closing a document, test
+        teardown)."""
+        for notice in list(cls._live):
+            notice.dismiss()
+
     def __init__(self, view, findings, anchor) -> None:
         super().__init__(view.viewport())
+        WiringNotice._live.add(self)
         self.setObjectName("WiringNotice")
         self._view = view
         self._scene = view.scene()
@@ -221,7 +234,9 @@ class WiringNotice(QFrame):
         self.dismiss()
 
     def dismiss(self) -> None:
+        WiringNotice._live.discard(self)
         self._timer.stop()
+        self._fade.stop()
         self.hide()
         self.deleteLater()
         if getattr(self._view, "_wiring_notice", None) is self:

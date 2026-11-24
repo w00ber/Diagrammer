@@ -490,7 +490,7 @@ class DocumentTabsMixin:
         self._tab_widget.setCurrentIndex(index)
         self._update_tab_bar_visibility()
         # Deferred so the view has its final geometry.
-        QTimer.singleShot(0, view.fit_all)
+        QTimer.singleShot(0, view, view.fit_all)
 
     def _validation_report_tab(self):
         """The validation report tab, if one is open (there is at most one)."""

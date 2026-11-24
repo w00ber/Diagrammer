@@ -156,15 +156,18 @@ class DiagramView(QGraphicsView):
         By the time the deferred call executes the scene is either
         alive or fully gone (``self.scene()`` is None).
         """
+        # With the view as context, Qt drops the call if the view is
+        # destroyed first. Without it the timer fired into a deleted view
+        # (``Internal C++ object (DiagramView) already deleted``).
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, self._prune_stale_waypoint_selection)
+        QTimer.singleShot(0, self, self._prune_stale_waypoint_selection)
 
     def _prune_stale_waypoint_selection(self) -> None:
-        if self.scene() is None:
-            return
         try:
+            if self.scene() is None:
+                return
             scene_items = self._diagram_scene.selectedItems()
-        except RuntimeError:
+        except RuntimeError:            # view or scene already deleted
             return
         selected_conn_ids = set()
         for item in scene_items:

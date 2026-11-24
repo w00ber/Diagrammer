@@ -105,6 +105,32 @@ def isolate_app_settings(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def dismiss_wiring_notices():
+    """No wiring notice outlives the test that raised it.
+
+    A notice runs its own linger and fade timers. One a test left on screen
+    fired eight seconds later into whatever test was running then, and its
+    deferred delete segfaulted inside ~QWidget there — far from the test
+    that caused it (it showed up in test_validation_report.py). Dismissed
+    here, and its delete flushed, while the test's own objects still exist.
+
+    Only if the module is already loaded: importing it from an autouse
+    fixture would pull Qt widgets in ahead of every test (see
+    ``isolate_component_overlay`` on why import order matters here).
+    """
+    yield
+    import sys
+    mod = sys.modules.get("diagrammer.canvas.wiring_notice")
+    if mod is None or not mod.WiringNotice._live:
+        return
+    from PySide6.QtCore import QCoreApplication, QEvent
+    notices = list(mod.WiringNotice._live)
+    mod.WiringNotice.dismiss_all()
+    for n in notices:
+        QCoreApplication.sendPostedEvents(n, QEvent.Type.DeferredDelete)
+
+
+@pytest.fixture(autouse=True)
 def isolate_component_overlay(tmp_path, monkeypatch):
     """Keep tests out of the real ``~/.diagrammer/components/`` overlay.
 
