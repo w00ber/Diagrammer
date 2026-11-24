@@ -177,34 +177,73 @@ def twin_key(library, key: str) -> str | None:
     return None
 
 
-def swap_hint(scene, finding) -> str:
-    """One sentence naming the part whose swap would settle *finding*: a part
-    from the library the rest of the diagram uses least."""
+def diagram_library(scene) -> str | None:
+    """The weight library most of the diagram's parts come from, when one
+    holds a strict majority over the others; None for a tie or no parts."""
     from collections import Counter
 
+    from diagrammer.items.component_item import ComponentItem
+    usage = Counter(i.library_key.split("/", 1)[0] for i in scene.items()
+                    if isinstance(i, ComponentItem)
+                    and i.library_key.split("/", 1)[0] in WEIGHT_LIBRARIES)
+    if not usage:
+        return None
+    ranked = usage.most_common(2)
+    if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
+        return None
+    return ranked[0][0]
+
+
+def recommended_fix(scene, finding):
+    """The fix that matches the rest of the diagram, or None."""
+    lib = diagram_library(scene)
+    if lib is None:
+        return None
+    want = f"{WEIGHT_LIBRARIES[lib]:g} pt"
+    return next((fx for fx in finding.fixes if fx.label.endswith(" " + want)),
+                None)
+
+
+def swap_hint(scene, finding) -> str:
+    """Say which way the diagram leans, and which part would swap to match.
+
+    A recommendation the user can't see the reason for reads as arbitrary,
+    so the sentence leads with the reason (what most of the diagram uses).
+    With no clear majority it says so and names every part that has a
+    version in the other library, rather than guessing.
+    """
     from diagrammer.items.component_item import ComponentItem
     library = getattr(scene, "library", None)
     if library is None:
         return ""
-    parts = [i for i in scene.items() if isinstance(i, ComponentItem)]
-    usage = Counter(i.library_key.split("/", 1)[0] for i in parts
-                    if i.library_key.split("/", 1)[0] in WEIGHT_LIBRARIES)
-    by_id = {i.instance_id: i for i in parts}
+    by_id = {i.instance_id: i for i in scene.items()
+             if isinstance(i, ComponentItem)}
     snap = snapshot(scene)
     # A wire can be gone by the time the notice asks (deleted, merged).
-    ends = {(e.ref, e.port) for wid in finding.wire_ids if wid in snap.wires
-            for e in snap.wires[wid].ends() if e.kind == "part"}
-    candidates = []
-    for ref, _port in sorted(ends):
+    refs = sorted({e.ref for wid in finding.wire_ids if wid in snap.wires
+                   for e in snap.wires[wid].ends() if e.kind == "part"})
+    twins = []                       # (item, its library, twin's library)
+    for ref in refs:
         item = by_id.get(ref)
         if item is None:
             continue
-        lib = item.library_key.split("/", 1)[0]
         twin = twin_key(library, item.library_key)
         if twin:
-            candidates.append((usage.get(lib, 0), item, twin))
-    if not candidates:
+            twins.append((item, item.library_key.split("/", 1)[0],
+                          twin.split("/", 1)[0]))
+    lead = diagram_library(scene)
+    if lead is not None:
+        reason = (f"Most of this diagram is {lead} "
+                  f"({WEIGHT_LIBRARIES[lead]:g} pt).")
+        movers = [it.component_def.name for it, src, dst in twins
+                  if src != lead and dst == lead]
+        if movers:
+            verb = "comes" if len(movers) == 1 else "come"
+            return (f"{reason} {', '.join(movers)} {verb} in {lead} too; "
+                    "swapping would match.")
+        return reason
+    if not twins:
         return ""
-    _, item, twin = min(candidates, key=lambda c: c[0])
-    return (f"{item.component_def.name} also comes in "
-            f"{twin.split('/', 1)[0]}; swapping it would match.")
+    return ("No library dominates this diagram. "
+            + "; ".join(f"{it.component_def.name} also comes in {dst}"
+                        for it, _src, dst in twins) + ".")

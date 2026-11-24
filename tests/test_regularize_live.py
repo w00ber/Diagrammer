@@ -106,7 +106,10 @@ def test_the_notice_applies_a_choice_as_one_undo_step(d):
     from PySide6.QtWidgets import QLabel
     text = " ".join(lbl.text() for lbl in notice.findChildren(QLabel))
     assert "CAP1:bottom 2 pt" in text and "IND1:top 3 pt" in text
-    assert "swapping it would match" in text
+    # One part from each library: no majority, so no guess — both named.
+    assert "No library dominates" in text
+    assert "CAP1 also comes in SLIDES_3pt" in text
+    assert "IND1 also comes in PAPER_2pt" in text
     n = d.undo_stack.count()
 
     from PySide6.QtWidgets import QPushButton
@@ -118,6 +121,30 @@ def test_the_notice_applies_a_choice_as_one_undo_step(d):
     assert view._wiring_notice is None
     d.undo_stack.undo()
     assert (wire.line_width, wire.style_deliberate) == before
+
+
+def test_the_notice_recommends_what_the_diagram_mostly_uses(d):
+    """Your coax case: a mostly-2 pt diagram, one 3 pt part. The reason is
+    stated, the 3 pt part is the one to swap, and Use 2 pt comes first."""
+    from diagrammer.canvas.view import DiagramView
+    from diagrammer.canvas.wiring_notice import show_wiring_notice
+    from PySide6.QtWidgets import QLabel, QPushButton
+    d.add(SLIDES_IND, (0, 0), anchor="top", id="B")          # the odd one
+    d.add(PAPER_CAP, (0, 200), anchor="top", id="A")
+    d.add(PAPER_IND, (300, 0), anchor="top", id="C")
+    d.add("PAPER_2pt/circuits/LCR/RES1", (300, 200), anchor="top", id="R")
+    view = DiagramView(d.scene)
+    view.resize(800, 600)
+    got = []
+    d.scene.wiring_disagreement.connect(lambda f, at: got.append((f, at)))
+    draw(d, "B", "bottom", "A", "top")
+    notice = show_wiring_notice(view, *got[0])
+    text = " ".join(lbl.text() for lbl in notice.findChildren(QLabel))
+    assert "Most of this diagram is PAPER_2pt (2 pt)" in text
+    assert "IND1 comes in PAPER_2pt too" in text
+    assert "CAP1" not in text.split("Most of")[1]          # not the 2 pt part
+    labels = [b.text() for b in notice.findChildren(QPushButton)]
+    assert labels[:2] == ["Use 2 pt", "Use 3 pt"]
 
 
 def test_twins_across_the_weight_libraries(d):

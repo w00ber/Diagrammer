@@ -49,7 +49,7 @@ class WiringNotice(QFrame):
             f" border: 1px solid {border}; border-radius: 6px; }}"
             f"#WiringNotice QLabel {{ background: transparent; color: {fg}; }}")
 
-        from diagrammer.wirecheck.scene import swap_hint
+        from diagrammer.wirecheck.scene import recommended_fix, swap_hint
         lay = QVBoxLayout(self)
         lay.setContentsMargins(10, 8, 10, 8)
         lay.setSpacing(4)
@@ -66,11 +66,21 @@ class WiringNotice(QFrame):
             tip.setWordWrap(True)
             lay.addWidget(tip)
 
+        # The fix that matches the rest of the diagram goes first, in bold,
+        # so the reason in the hint and the button order agree.
+        best = recommended_fix(self._scene, finding)
+        fixes = list(finding.fixes)
+        if best is not None:
+            fixes.remove(best)
+            fixes.insert(0, best)
         row = QHBoxLayout()
         row.setSpacing(6)
-        for fix in finding.fixes:
+        for fix in fixes:
             btn = QPushButton(fix.label)
             btn.setAutoDefault(False)
+            if fix is best:
+                btn.setStyleSheet("font-weight: bold;")
+                btn.setToolTip("Recommended: matches the rest of the diagram")
             btn.clicked.connect(lambda _=False, f=fix: self._apply(f))
             row.addWidget(btn)
         ignore = QPushButton("Ignore")
