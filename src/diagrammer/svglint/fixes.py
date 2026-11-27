@@ -1004,8 +1004,14 @@ def _fix_strip_stray_anchors(text: str, ctx: FixContext) -> FixResult:
     new = re.sub(r"[ \t]*<path\b[^>]*/>\n?", sub, text)
     if not count:
         return _nop(text)
+    # Removing an element renumbers its later siblings, and a diagram stores
+    # each per-element style (isolation mode, lead overrides) by that number.
+    # No diagram is opened here to renumber, so say so (issue #49).
     return FixResult(text=new, changed=True,
-                     notes=(f"removed {count} stray anchor point(s)",))
+                     notes=(f"removed {count} stray anchor point(s)",
+                            "element styles set on this part in saved diagrams "
+                            "may now apply to a neighbouring element; "
+                            "re-check them after this fix"))
 
 
 # --------------------------------------------------------------------------

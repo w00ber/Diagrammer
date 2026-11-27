@@ -187,6 +187,9 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
         # Re-parse the SVG with the same stretch logic
         tree = parse_svg(cdef.svg_path)
         root = tree.getroot()
+        # Before the strip, shift and tiling below move siblings (#49).
+        if not comp.style_overrides.is_empty():
+            ComponentItem._stamp_element_paths(root)
         # Apply the same viewBox update
         vb = root.get("viewBox", "")
         if vb:
@@ -266,6 +269,9 @@ def _render_component(parent: ET.Element, comp, ox: float, oy: float,
     else:
         tree = parse_svg(cdef.svg_path)
         root = tree.getroot()
+        # Before the strip, shift and tiling below move siblings (#49).
+        if not comp.style_overrides.is_empty():
+            ComponentItem._stamp_element_paths(root)
         # Hide non-rendered layers for non-stretched too
         for elem in root.iter():
             tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag

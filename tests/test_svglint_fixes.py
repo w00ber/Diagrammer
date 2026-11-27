@@ -323,7 +323,8 @@ def test_strip_stray_anchors_spares_anything_with_an_id(tmp_path: Path) -> None:
     out, notes = run(text, ["strip-stray-anchors"], tmp_path / "a.svg")
     assert 'd="M40.1,24.1"' not in out
     assert 'id="port:x"' in out, "an id-bearing path is addressed by id"
-    assert notes == ["removed 1 stray anchor point(s)"]
+    assert notes[0] == "removed 1 stray anchor point(s)"
+    assert "re-check" in notes[1], "warns that saved element styles may shift"
 
 
 def test_strip_editor_metadata_drops_the_blob_and_its_namespace(tmp_path: Path) -> None:

@@ -82,6 +82,11 @@ def _walk_layer(
         if tag == "g":
             # Recurse into sub-groups
             _walk_layer(child, layer, child_path, results)
+        elif tag == "path" and not _draws(child):
+            # A bare anchor (``d="M10,10"``) is never rendered, so it is not
+            # offered for picking. It still takes up its index: the paths
+            # here must match the file as written (issue #49).
+            pass
         elif tag in _LEAF_TAGS:
             classes = child.get("class", "").split()
             bbox = _compute_bbox(child, tag)
@@ -97,6 +102,15 @@ def _walk_layer(
             ))
 
         child_idx += 1
+
+
+# Same test as ComponentItem._strip_degenerate_paths: a ``d`` with no
+# drawing command is a bare anchor point.
+_DRAWING_COMMANDS = set("LlHhVvCcSsQqTtAa")
+
+
+def _draws(path_elem: ET.Element) -> bool:
+    return any(c in _DRAWING_COMMANDS for c in path_elem.get("d") or "")
 
 
 def _compute_bbox(elem: ET.Element, tag: str) -> QRectF:
